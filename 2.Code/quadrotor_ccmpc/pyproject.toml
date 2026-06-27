@@ -1,0 +1,80 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quadrotor-ccmpc"
+version = "0.1.0"
+description = "Chance-Constrained MPC for Quadrotor Obstacle Avoidance"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy<2",
+    "cvxpy",
+    "scipy",
+    "matplotlib",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7",
+    "mypy>=1.0",
+    "ruff>=0.5",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.setuptools.package-data]
+quadrotor_ccmpc = [
+    "config/*.yaml",
+    "models/*.xml",
+]
+
+# ---------------------------------------------------------------------------
+# Type checking (mypy)
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.10"
+strict = false
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+
+# numpy + cvxpy have incomplete stubs — suppress noise
+[[tool.mypy.overrides]]
+module = ["numpy.*", "cvxpy.*", "mujoco.*", "yaml.*", "matplotlib.*"]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# Linting + formatting (ruff)
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "F",      # pyflakes
+    "I",      # isort (import ordering)
+    "N",      # pep8-naming
+    "W",      # pycodestyle warnings
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "SIM",    # flake8-simplify
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "N806",   # non-lowercase variable in function (common in numpy/mpc)
+    "N803",   # non-lowercase argument name
+    "SIM108", # use ternary operator (not always clearer)
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.ruff.lint.isort]
+known-first-party = ["ccmpc"]

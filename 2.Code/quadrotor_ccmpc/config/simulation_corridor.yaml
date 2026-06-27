@@ -1,0 +1,18 @@
+# Narrow corridor scenario
+start: [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+goal: [8.0, 0.0, 1.5]
+goal_threshold: 0.4
+sim_timestep: 0.02
+obstacles:
+  - position: [2.0, -1.5, 1.0]
+    size: [0.5, 4.0, 2.0]
+    yaw: 0.0
+    velocity: [0.0, 0.0, 0.0]
+  - position: [5.0, -1.5, 1.0]
+    size: [0.5, 3.0, 2.0]
+    yaw: 0.0
+    velocity: [0.0, 0.0, 0.0]
+  - position: [3.5, 1.5, 1.0]
+    size: [0.5, 2.0, 2.0]
+    yaw: 0.0
+    velocity: [0.0, 0.0, 0.0]

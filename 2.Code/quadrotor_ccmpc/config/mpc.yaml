@@ -1,0 +1,102 @@
+# Chance-Constrained MPC Configuration
+# Based on: Lin, Zhu, Alonso-Mora — ICRA 2020
+
+model:
+  quadrotor:
+    # Gravity
+    g: 9.81
+    
+    # Drag coefficient (velocity damping)
+    kD: 0.5
+    
+    # Attitude gains (first-order lag: dot = (k*u - x)/tau)
+    k_phi: 1.0
+    k_theta: 1.0
+    k_vz: 3.0
+    
+    # Attitude time constants (seconds)
+    tau_phi: 0.2
+    tau_theta: 0.2
+    tau_vz: 0.4
+
+controller:
+  prediction:
+    # Horizon parameters
+    horizon_time: 1.8     # Total horizon (seconds)
+    timestep: 0.06        # Discretization interval (seconds)
+    max_iter: 5           # Max iMPC iterations
+    tolerance: 0.01       # iMPC convergence tolerance
+    solver: CLARABEL      # CVXPY solver: CLARABEL (fast, accurate) or OSQP
+
+  # Cost weights
+  weights:
+    # Terminal cost: weight on [x, y, z] position error to goal
+    terminal_cost: [30.0, 30.0, 20.0]
+    
+    # Control effort cost: [phi_c, theta_c, vz_c, psi_dot_c]
+    control_cost: [0.1, 0.1, 0.5, 0.1]
+    
+    # Yaw alignment cost coefficient
+    yaw_cost: 20.0
+
+    # Logistic obstacle potential field cost (Eq 12):
+    # J_o^k = Q_o / (1 + exp(λ_o(d_o^k - r_o)))
+    # Smooth, bounded collision cost — linearized around guess trajectory.
+    logistic_cost:
+      Q_o: 0.5           # Weight coefficient (keep small to avoid solver instability)
+      lambda_o: 2.0      # Steepness (larger = sharper transition)
+      r_o: 1.5           # Distance where cost = Q_o/2 (meters)
+
+  # Field of View constraints (Eq 17-18)
+  # Ensures obstacles remain within camera FOV across the horizon.
+  # MAV must position itself so that obstacles are visible.
+  # Paper specs: 87°×58°×5m (Intel RealSense D435i)
+  # Wider values used here for simulation feasibility.
+  fov:
+    enabled: false          # Set true to enable FOV constraints
+    hfov_deg: 170.0         # Horizontal FOV (degrees) — max safe: <180 to avoid tan(90°)=∞
+    vfov_deg: 120.0         # Vertical FOV (degrees) — paper: 58°
+    max_range: 10.0         # Max depth sensing range (meters) — paper: 5m
+    slack_penalty: 10.0     # Soft constraint penalty
+
+  # Obstacle avoidance parameters
+  obstacle:
+    # Collision probability threshold (Eq 16: delta)
+    # delta = 0.03  ->  97% confidence, erf^-1(0.94) ≈ 1.56 sigma
+    delta: 0.03
+    
+    # MAV collision radius (meters) — inflated for safety
+    mav_radius: 0.4
+    
+    # Safety margin added around obstacle (meters)
+    safety_margin: 0.1
+    
+    # Slack penalty for soft constraint (prevents infeasibility)
+    slack_penalty: 1000.0
+    
+    # Max number of obstacles fed to MPC (closest ones)
+    max_obstacles: 2
+
+  # Actuator limits
+  limits:
+    max_roll: 0.35        # Max roll command (rad) ~20 deg
+    max_pitch: 0.35       # Max pitch command (rad) ~20 deg
+    max_vert_vel: 3.0     # Max vertical velocity (m/s)
+    max_yaw_rate: 0.8     # Max yaw rate (rad/s) — gentler turns prevent oscillation
+    max_speed: 8.0        # Max horizontal speed (m/s)
+
+  uncertainty:
+    # Process noise standard deviations
+    process_noise_pos: 0.01
+    process_noise_vel: 0.1
+    process_noise_att: 0.02
+    
+    # Initial state uncertainty (VIO noise)
+    init_pos_noise: 0.05
+    init_vel_noise: 0.1
+    init_att_noise: 0.03
+
+    # Time-correlated VIO drift (random walk bias)
+    vio_drift_pos: 0.005
+    vio_drift_vel: 0.02
+    vio_drift_att: 0.005
