@@ -5,11 +5,9 @@ This module intentionally keeps the main controller thin.  It coordinates:
 - canonical input validation from ``ccmpc.types``
 - optimization solving through ``SolverAdapter``
 - safety fallback through ``FallbackController``
-- future optimization construction through an injectable ``problem_builder``
+- future optimization construction through an injectable ``formulation``
 
-It does not build the CVXPY problem directly.  The CVXPY variables,
-constraints, and objective should live in a dedicated problem builder module
-such as ``ccmpc/controllers/problem_builder.py``.
+It does not build the CVXPY problem directly.  The CVXPY variables, constraints, and objective should live in the domain formulation module ``ccmpc/ccmpc.py``.
 
 Canonical contracts
 -------------------
@@ -89,7 +87,7 @@ class CCMPCConfig:
     name: str = "ccmpc"
     fallback_mode: FallbackMode | str = FallbackMode.HOVER
     use_fallback_on_failure: bool = True
-    require_problem_builder: bool = False
+    require_formulation: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "dt", _as_positive_float(self.dt, "dt"))
@@ -107,8 +105,8 @@ class CCMPCConfig:
         if not isinstance(self.use_fallback_on_failure, bool):
             raise CCMPCConfigError("use_fallback_on_failure must be bool.")
 
-        if not isinstance(self.require_problem_builder, bool):
-            raise CCMPCConfigError("require_problem_builder must be bool.")
+        if not isinstance(self.require_formulation, bool):
+            raise CCMPCConfigError("require_formulation must be bool.")
 
     @classmethod
     def from_config(cls, config: Mapping[str, Any] | None) -> "CCMPCConfig":
@@ -151,8 +149,8 @@ class CCMPCConfig:
                 use_fallback_on_failure=bool(
                     controller_cfg.get("use_fallback_on_failure", True)
                 ),
-                require_problem_builder=bool(
-                    controller_cfg.get("require_problem_builder", False)
+                require_formulation=bool(
+                    controller_cfg.get("require_formulation", False)
                 ),
             )
 
@@ -165,13 +163,13 @@ class CCMPCConfig:
             name=str(config.get("name", "ccmpc")),
             fallback_mode=config.get("fallback_mode", config.get("mode", FallbackMode.HOVER)),
             use_fallback_on_failure=bool(config.get("use_fallback_on_failure", True)),
-            require_problem_builder=bool(config.get("require_problem_builder", False)),
+            require_formulation=bool(config.get("require_formulation", False)),
         )
 
 
 @dataclass(frozen=True)
 class MPCProblemBundle:
-    """Bundle returned by an external problem builder.
+    """Bundle returned by an external formulation.
 
     Attributes
     ----------
@@ -207,8 +205,8 @@ class MPCProblemBundle:
 
 
 @runtime_checkable
-class MPCProblemBuilderProtocol(Protocol):
-    """Structural protocol for future CC-MPC problem builders."""
+class CCMPCFormulationProtocol(Protocol):
+    """Structural protocol for future CC-MPC formulations."""
 
     def build(
         self,
@@ -344,7 +342,7 @@ class CCMPCController:
         self,
         config: str | Path | Mapping[str, Any] | None = None,
         *,
-        problem_builder: MPCProblemBuilderProtocol | None = None,
+        formulation: CCMPCFormulationProtocol | None = None,
         solver_adapter: SolverAdapter | None = None,
         fallback_controller: FallbackController | None = None,
         horizon: int | None = None,
@@ -360,7 +358,7 @@ class CCMPCController:
                 name=ccmpc_config.name,
                 fallback_mode=ccmpc_config.fallback_mode,
                 use_fallback_on_failure=ccmpc_config.use_fallback_on_failure,
-                require_problem_builder=ccmpc_config.require_problem_builder,
+                require_formulation=ccmpc_config.require_formulation,
             )
 
         if timestep is not None:
@@ -370,12 +368,12 @@ class CCMPCController:
                 name=ccmpc_config.name,
                 fallback_mode=ccmpc_config.fallback_mode,
                 use_fallback_on_failure=ccmpc_config.use_fallback_on_failure,
-                require_problem_builder=ccmpc_config.require_problem_builder,
+                require_formulation=ccmpc_config.require_formulation,
             )
 
         self.config = ccmpc_config
         self._config_data = config_data
-        self.problem_builder = problem_builder
+        self.formulation = formulation
         self.solver_adapter = (
             SolverAdapter.from_config(config_data)
             if solver_adapter is None
@@ -401,10 +399,10 @@ class CCMPCController:
         cls,
         config: str | Path | Mapping[str, Any] | None,
         *,
-        problem_builder: MPCProblemBuilderProtocol | None = None,
+        formulation: CCMPCFormulationProtocol | None = None,
     ) -> "CCMPCController":
         """Construct controller from config."""
-        return cls(config, problem_builder=problem_builder)
+        return cls(config, formulation=formulation)
 
     @property
     def dt(self) -> float:
@@ -455,7 +453,7 @@ class CCMPCController:
         goal:
             Goal3.
         obstacles / obstacle_manager:
-            Optional obstacle context passed through to the problem builder.
+            Optional obstacle context passed through to the formulation.
         covariance / Gamma_0:
             Optional Gamma9x9 state covariance.  ``Gamma_0`` is accepted for
             legacy compatibility.
@@ -477,16 +475,16 @@ class CCMPCController:
         meta = dict(metadata or {})
         meta["time_s"] = _as_non_negative_float(time_s, "time_s")
 
-        if self.problem_builder is None:
-            if self.config.require_problem_builder:
+        if self.formulation is None:
+            if self.config.require_formulation:
                 raise CCMPCConfigError(
-                    "CCMPCController requires a problem_builder, but none was provided."
+                    "CCMPCController requires a formulation, but none was provided."
                 )
 
             return self._fallback(
                 state=state,
                 goal=target,
-                reason="problem_builder_missing",
+                reason="formulation_missing",
                 start_time=call_start,
                 metadata={
                     **meta,
@@ -495,7 +493,7 @@ class CCMPCController:
             )
 
         try:
-            bundle = self._build_problem_bundle(
+            bundle = self._build_formulation_bundle(
                 estimated_state=state,
                 goal=target,
                 obstacles=obstacle_tuple,
@@ -510,7 +508,7 @@ class CCMPCController:
             return self._fallback(
                 state=state,
                 goal=target,
-                reason="problem_builder_failed",
+                reason="formulation_failed",
                 start_time=call_start,
                 metadata={
                     **meta,
@@ -583,7 +581,7 @@ class CCMPCController:
         """Convenience wrapper returning only ControlCommand4."""
         return self.solve(estimated_state, goal, **kwargs).command
 
-    def _build_problem_bundle(
+    def _build_formulation_bundle(
         self,
         *,
         estimated_state: FloatArray,
@@ -593,10 +591,10 @@ class CCMPCController:
         reference_trajectory: FloatArray | None,
         metadata: dict[str, Any],
     ) -> MPCProblemBundle:
-        """Call external problem builder and normalize its return type."""
-        assert self.problem_builder is not None
+        """Call external formulation and normalize its return type."""
+        assert self.formulation is not None
 
-        raw = self.problem_builder.build(
+        raw = self.formulation.build(
             estimated_state=estimated_state,
             goal=goal,
             obstacles=obstacles,
@@ -614,7 +612,7 @@ class CCMPCController:
             return MPCProblemBundle(problem=raw)
 
         raise CCMPCOutputError(
-            "problem_builder.build() must return MPCProblemBundle or a problem "
+            "formulation.build() must return MPCProblemBundle or a problem "
             "object exposing solve()."
         )
 
@@ -1024,7 +1022,7 @@ __all__ = [
     "CCMPCOutputError",
     "CCMPCSolveInfo",
     "CCMPCSolveResult",
-    "MPCProblemBuilderProtocol",
+    "CCMPCFormulationProtocol",
     "MPCProblemBundle",
     "load_controller_config",
 ]
