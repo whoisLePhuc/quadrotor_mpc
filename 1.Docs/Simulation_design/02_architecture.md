@@ -472,6 +472,7 @@ quadrotor_ccmpc/
 │   │   ├── __init__.py
 │   │   ├── schema.py
 │   │   ├── loader.py
+│   │   ├── legacy.py
 │   │   └── validation.py
 │   │
 │   ├── runtime/
