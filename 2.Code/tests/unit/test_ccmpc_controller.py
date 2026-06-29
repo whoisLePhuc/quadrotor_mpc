@@ -8,7 +8,7 @@ small fake problem/builder objects so the controller orchestration can be tested
 independently from optimization model construction.
 
 The real CVXPY variables, constraints, and objective should be covered later in
-tests/unit/test_problem_builder.py.
+tests/unit/test_formulation.py.
 """
 
 from __future__ import annotations
@@ -127,8 +127,8 @@ class ValueLike:
         self.value = value
 
 
-class FakeProblemBuilder:
-    """Problem builder returning a preconfigured MPCProblemBundle."""
+class FakeFormulation:
+    """Formulation returning a preconfigured MPCProblemBundle."""
 
     def __init__(
         self,
@@ -158,7 +158,7 @@ class FakeProblemBuilder:
         )
 
 
-class RawProblemBuilder:
+class RawFormulation:
     """Builder that returns only a problem object."""
 
     def __init__(self, problem: FakeProblem | None = None) -> None:
@@ -170,7 +170,7 @@ class RawProblemBuilder:
         return self.problem
 
 
-class RaisingProblemBuilder:
+class RaisingFormulation:
     """Builder whose build call raises."""
 
     def __init__(self, exc: Exception | None = None) -> None:
@@ -204,7 +204,7 @@ def make_config(
     horizon: int = 5,
     dt: float = 0.2,
     fallback_mode: str = "hover",
-    require_problem_builder: bool = False,
+    require_formulation: bool = False,
     use_fallback_on_failure: bool = True,
 ) -> dict[str, Any]:
     """Create direct controller config."""
@@ -212,7 +212,7 @@ def make_config(
         "dt": dt,
         "horizon": horizon,
         "fallback_mode": fallback_mode,
-        "require_problem_builder": require_problem_builder,
+        "require_formulation": require_formulation,
         "use_fallback_on_failure": use_fallback_on_failure,
         "solver": "CLARABEL",
     }
@@ -255,7 +255,7 @@ def test_ccmpc_config_defaults() -> None:
     assert config.name == "ccmpc"
     assert config.fallback_mode is FallbackMode.HOVER
     assert config.use_fallback_on_failure is True
-    assert config.require_problem_builder is False
+    assert config.require_formulation is False
 
 
 def test_ccmpc_config_from_direct_config() -> None:
@@ -345,8 +345,8 @@ def test_mpc_problem_bundle_rejects_bad_metadata() -> None:
         MPCProblemBundle(problem=FakeProblem(), metadata=["bad"])  # type: ignore[arg-type]
 
 
-def test_solve_without_problem_builder_uses_fallback() -> None:
-    """Controller should return fallback result if no problem_builder is provided."""
+def test_solve_without_formulation_uses_fallback() -> None:
+    """Controller should return fallback result if no formulation is provided."""
     controller = CCMPCController(make_config(horizon=3))
     state = make_state(z=1.0)
     goal = make_goal()
@@ -357,7 +357,7 @@ def test_solve_without_problem_builder_uses_fallback() -> None:
     assert result.used_fallback is True
     assert result.status == "fallback"
     assert result.fallback_result is not None
-    assert result.fallback_result.reason == "problem_builder_missing"
+    assert result.fallback_result.reason == "formulation_missing"
     assert np.allclose(result.command, np.zeros(4))
     assert result.predicted_states.shape == (4, 9)
     assert result.predicted_controls.shape == (3, 4)
@@ -366,11 +366,11 @@ def test_solve_without_problem_builder_uses_fallback() -> None:
     assert controller.last_info.fallback_used is True
 
 
-def test_solve_without_problem_builder_can_be_required_to_raise() -> None:
-    """require_problem_builder=True should raise instead of fallback."""
-    controller = CCMPCController(make_config(require_problem_builder=True))
+def test_solve_without_formulation_can_be_required_to_raise() -> None:
+    """require_formulation=True should raise instead of fallback."""
+    controller = CCMPCController(make_config(require_formulation=True))
 
-    with pytest.raises(CCMPCConfigError, match="problem_builder"):
+    with pytest.raises(CCMPCConfigError, match="formulation"):
         controller.solve(make_state(), make_goal())
 
 
@@ -382,13 +382,13 @@ def test_solve_success_uses_first_predicted_control() -> None:
     controls = make_controls_time_major(horizon)
     states = make_states_time_major(horizon, state)
     problem = FakeProblem(status="optimal", value=12.0, solver_stats=FakeSolverStats(9))
-    builder = FakeProblemBuilder(
+    builder = FakeFormulation(
         problem=problem,
         predicted_states=states,
         predicted_controls=controls,
         metadata={"builder": "ok"},
     )
-    controller = CCMPCController(make_config(horizon=horizon), problem_builder=builder)
+    controller = CCMPCController(make_config(horizon=horizon), formulation=builder)
 
     result = controller.solve(state, goal, metadata={"request_id": "abc"})
 
@@ -418,11 +418,11 @@ def test_solve_success_uses_explicit_command_value_object() -> None:
     horizon = 3
     explicit_command = np.array([0.2, -0.1, 0.05, 0.3], dtype=np.float64)
     controls = make_controls_time_major(horizon, first=np.array([9.0, 9.0, 9.0, 9.0]))
-    builder = FakeProblemBuilder(
+    builder = FakeFormulation(
         command=ValueLike(explicit_command),
         predicted_controls=controls,
     )
-    controller = CCMPCController(make_config(horizon=horizon), problem_builder=builder)
+    controller = CCMPCController(make_config(horizon=horizon), formulation=builder)
 
     result = controller.solve(make_state(), make_goal())
 
@@ -442,11 +442,11 @@ def test_solve_success_accepts_state_major_and_control_major_trajectories() -> N
     states_time_major = make_states_time_major(horizon, state)
     controls_time_major = make_controls_time_major(horizon)
 
-    builder = FakeProblemBuilder(
+    builder = FakeFormulation(
         predicted_states=states_time_major.T,
         predicted_controls=controls_time_major.T,
     )
-    controller = CCMPCController(make_config(horizon=horizon), problem_builder=builder)
+    controller = CCMPCController(make_config(horizon=horizon), formulation=builder)
 
     result = controller.solve(state, make_goal())
 
@@ -459,8 +459,8 @@ def test_solve_success_with_only_command_creates_hold_trajectories() -> None:
     horizon = 5
     state = make_state(x=1.0, y=2.0, z=3.0)
     command = np.array([0.1, 0.2, -0.1, 0.0], dtype=np.float64)
-    builder = FakeProblemBuilder(command=command)
-    controller = CCMPCController(make_config(horizon=horizon), problem_builder=builder)
+    builder = FakeFormulation(command=command)
+    controller = CCMPCController(make_config(horizon=horizon), formulation=builder)
 
     result = controller.solve(state, make_goal())
 
@@ -474,13 +474,13 @@ def test_solve_success_with_only_command_creates_hold_trajectories() -> None:
 def test_solve_solver_failure_uses_fallback() -> None:
     """Infeasible solver status should route to fallback."""
     problem = FakeProblem(status="infeasible", value=None, raw_return=None)
-    builder = FakeProblemBuilder(
+    builder = FakeFormulation(
         problem=problem,
         predicted_controls=make_controls_time_major(3),
     )
     controller = CCMPCController(
         make_config(horizon=3, fallback_mode="hover"),
-        problem_builder=builder,
+        formulation=builder,
     )
 
     result = controller.solve(make_state(vx=1.0), make_goal())
@@ -498,36 +498,36 @@ def test_solve_solver_failure_uses_fallback() -> None:
 def test_solve_solver_failure_can_raise_when_fallback_disabled() -> None:
     """If fallback disabled, solver failure should raise through SolverResult."""
     problem = FakeProblem(status="infeasible", value=None, raw_return=None)
-    builder = FakeProblemBuilder(problem=problem, predicted_controls=make_controls_time_major(3))
+    builder = FakeFormulation(problem=problem, predicted_controls=make_controls_time_major(3))
     controller = CCMPCController(
         make_config(horizon=3, use_fallback_on_failure=False),
-        problem_builder=builder,
+        formulation=builder,
     )
 
     with pytest.raises(Exception, match="infeasible"):
         controller.solve(make_state(), make_goal())
 
 
-def test_solve_problem_builder_exception_uses_fallback() -> None:
-    """Problem builder exceptions should route to fallback by default."""
-    builder = RaisingProblemBuilder(RuntimeError("builder failed"))
-    controller = CCMPCController(make_config(horizon=3), problem_builder=builder)
+def test_solve_formulation_exception_uses_fallback() -> None:
+    """Formulation exceptions should route to fallback by default."""
+    builder = RaisingFormulation(RuntimeError("builder failed"))
+    controller = CCMPCController(make_config(horizon=3), formulation=builder)
 
     result = controller.solve(make_state(), make_goal())
 
     assert result.used_fallback is True
     assert result.fallback_result is not None
-    assert result.fallback_result.reason == "problem_builder_failed"
+    assert result.fallback_result.reason == "formulation_failed"
     assert result.metadata["exception_type"] == "RuntimeError"
     assert result.metadata["error_message"] == "builder failed"
 
 
-def test_solve_problem_builder_exception_can_raise_when_fallback_disabled() -> None:
-    """Problem builder exception should raise when fallback is disabled."""
-    builder = RaisingProblemBuilder(RuntimeError("builder failed"))
+def test_solve_formulation_exception_can_raise_when_fallback_disabled() -> None:
+    """Formulation exception should raise when fallback is disabled."""
+    builder = RaisingFormulation(RuntimeError("builder failed"))
     controller = CCMPCController(
         make_config(horizon=3, use_fallback_on_failure=False),
-        problem_builder=builder,
+        formulation=builder,
     )
 
     with pytest.raises(CCMPCOutputError, match="builder failed"):
@@ -536,8 +536,8 @@ def test_solve_problem_builder_exception_can_raise_when_fallback_disabled() -> N
 
 def test_solve_solution_extraction_failure_uses_fallback() -> None:
     """Successful solver but missing command/controls should route to fallback."""
-    builder = RawProblemBuilder(FakeProblem(status="optimal", value=1.0))
-    controller = CCMPCController(make_config(horizon=3), problem_builder=builder)
+    builder = RawFormulation(FakeProblem(status="optimal", value=1.0))
+    controller = CCMPCController(make_config(horizon=3), formulation=builder)
 
     result = controller.solve(make_state(), make_goal())
 
@@ -550,10 +550,10 @@ def test_solve_solution_extraction_failure_uses_fallback() -> None:
 
 def test_solve_solution_extraction_failure_can_raise_when_fallback_disabled() -> None:
     """Missing command/controls should raise when fallback is disabled."""
-    builder = RawProblemBuilder(FakeProblem(status="optimal", value=1.0))
+    builder = RawFormulation(FakeProblem(status="optimal", value=1.0))
     controller = CCMPCController(
         make_config(horizon=3, use_fallback_on_failure=False),
-        problem_builder=builder,
+        formulation=builder,
     )
 
     with pytest.raises(CCMPCOutputError, match="command or predicted_controls"):
@@ -596,8 +596,8 @@ def test_solve_accepts_legacy_initial_state_and_gamma_0() -> None:
     """solve should accept legacy initial_state and Gamma_0 names."""
     horizon = 3
     gamma = make_gamma()
-    builder = FakeProblemBuilder(predicted_controls=make_controls_time_major(horizon))
-    controller = CCMPCController(make_config(horizon=horizon), problem_builder=builder)
+    builder = FakeFormulation(predicted_controls=make_controls_time_major(horizon))
+    controller = CCMPCController(make_config(horizon=horizon), formulation=builder)
 
     result = controller.solve(
         initial_state=make_state(),
@@ -633,8 +633,8 @@ def test_solve_rejects_mismatched_covariance_aliases() -> None:
 def test_solve_passes_obstacles_sequence_to_builder() -> None:
     """obstacles sequence should be passed through as tuple."""
     obstacles = [{"id": "obs_1"}, {"id": "obs_2"}]
-    builder = FakeProblemBuilder(predicted_controls=make_controls_time_major(3))
-    controller = CCMPCController(make_config(horizon=3), problem_builder=builder)
+    builder = FakeFormulation(predicted_controls=make_controls_time_major(3))
+    controller = CCMPCController(make_config(horizon=3), formulation=builder)
 
     result = controller.solve(make_state(), make_goal(), obstacles=obstacles)
 
@@ -647,8 +647,8 @@ def test_solve_accepts_obstacle_manager_obstacles_attr() -> None:
     """obstacle_manager exposing .obstacles should be accepted."""
     obstacles = ({"id": "obs_1"},)
     manager = ObjectWithObstacles(obstacles)
-    builder = FakeProblemBuilder(predicted_controls=make_controls_time_major(3))
-    controller = CCMPCController(make_config(horizon=3), problem_builder=builder)
+    builder = FakeFormulation(predicted_controls=make_controls_time_major(3))
+    controller = CCMPCController(make_config(horizon=3), formulation=builder)
 
     result = controller.solve(make_state(), make_goal(), obstacle_manager=manager)
 
@@ -661,8 +661,8 @@ def test_solve_accepts_obstacle_manager_active_obstacles_callable() -> None:
     """obstacle_manager exposing active_obstacles() should be accepted."""
     obstacles = ({"id": "obs_1"}, {"id": "obs_2"})
     manager = ObjectWithActiveObstacles(obstacles)
-    builder = FakeProblemBuilder(predicted_controls=make_controls_time_major(3))
-    controller = CCMPCController(make_config(horizon=3), problem_builder=builder)
+    builder = FakeFormulation(predicted_controls=make_controls_time_major(3))
+    controller = CCMPCController(make_config(horizon=3), formulation=builder)
 
     result = controller.solve(make_state(), make_goal(), obstacle_manager=manager)
 
@@ -688,8 +688,8 @@ def test_solve_passes_reference_trajectory_to_builder() -> None:
     """reference_trajectory should be validated and passed to builder."""
     horizon = 3
     reference = make_states_time_major(horizon)
-    builder = FakeProblemBuilder(predicted_controls=make_controls_time_major(horizon))
-    controller = CCMPCController(make_config(horizon=horizon), problem_builder=builder)
+    builder = FakeFormulation(predicted_controls=make_controls_time_major(horizon))
+    controller = CCMPCController(make_config(horizon=horizon), formulation=builder)
 
     result = controller.solve(
         make_state(),
@@ -716,8 +716,8 @@ def test_solve_rejects_invalid_reference_trajectory() -> None:
 def test_previous_solution_is_passed_to_next_build() -> None:
     """Controller should pass previous_solution to builder for warm-start use."""
     horizon = 3
-    builder = FakeProblemBuilder(predicted_controls=make_controls_time_major(horizon))
-    controller = CCMPCController(make_config(horizon=horizon), problem_builder=builder)
+    builder = FakeFormulation(predicted_controls=make_controls_time_major(horizon))
+    controller = CCMPCController(make_config(horizon=horizon), formulation=builder)
 
     first = controller.solve(make_state(), make_goal())
     second = controller.solve(make_state(x=0.1), make_goal())
@@ -731,8 +731,8 @@ def test_previous_solution_is_passed_to_next_build() -> None:
 
 def test_reset_clears_previous_result_and_last_info() -> None:
     """reset should clear warm-start/diagnostic state."""
-    builder = FakeProblemBuilder(predicted_controls=make_controls_time_major(3))
-    controller = CCMPCController(make_config(horizon=3), problem_builder=builder)
+    builder = FakeFormulation(predicted_controls=make_controls_time_major(3))
+    controller = CCMPCController(make_config(horizon=3), formulation=builder)
 
     controller.solve(make_state(), make_goal())
     assert controller.previous_result is not None
@@ -747,8 +747,8 @@ def test_reset_clears_previous_result_and_last_info() -> None:
 def test_compute_command_returns_command_only() -> None:
     """compute_command should return only ControlCommand4."""
     controls = make_controls_time_major(3)
-    builder = FakeProblemBuilder(predicted_controls=controls)
-    controller = CCMPCController(make_config(horizon=3), problem_builder=builder)
+    builder = FakeFormulation(predicted_controls=controls)
+    controller = CCMPCController(make_config(horizon=3), formulation=builder)
 
     command = controller.compute_command(make_state(), make_goal())
 
@@ -759,8 +759,8 @@ def test_compute_command_returns_command_only() -> None:
 def test_solve_result_info_property() -> None:
     """CCMPCSolveResult.info should expose compact diagnostics."""
     controls = make_controls_time_major(3)
-    builder = FakeProblemBuilder(predicted_controls=controls)
-    controller = CCMPCController(make_config(horizon=3), problem_builder=builder)
+    builder = FakeFormulation(predicted_controls=controls)
+    controller = CCMPCController(make_config(horizon=3), formulation=builder)
 
     result = controller.solve(make_state(), make_goal())
     info = result.info
@@ -777,8 +777,8 @@ def test_solve_result_legacy_tuple_unpacking() -> None:
     horizon = 3
     states = make_states_time_major(horizon)
     controls = make_controls_time_major(horizon)
-    builder = FakeProblemBuilder(predicted_states=states, predicted_controls=controls)
-    controller = CCMPCController(make_config(horizon=horizon), problem_builder=builder)
+    builder = FakeFormulation(predicted_states=states, predicted_controls=controls)
+    controller = CCMPCController(make_config(horizon=horizon), formulation=builder)
 
     result = controller.solve(make_state(), make_goal())
     x_traj, u_traj = result
