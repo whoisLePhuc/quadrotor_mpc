@@ -27,49 +27,79 @@ After refactor, all simulation modules shall follow this data model.
 
 ## 2. Scope
 
-This document covers the data exchanged between the following modules:
+This document covers the canonical data exchanged between the main modules of the refactored simulation system.
+
+The data model applies to the following target architecture:
 
 ```text
-simulation/
-├── app.py
-├── world.py
-├── scenario.py
-├── engines/
-│   ├── base.py
-│   ├── ode_engine.py
-│   └── mujoco_engine.py
-├── runtime/
-├── logging/
-└── visualization/
-
-ccmpc/
-├── controller/
-├── dynamics/
-├── perception/
-├── low_level/
-└── math/
+quadrotor_ccmpc/
+├── ccmpc/
+│   ├── types.py
+│   ├── dynamics.py
+│   ├── linearization.py
+│   ├── uncertainty.py
+│   ├── obstacle.py
+│   ├── mixer.py
+│   ├── utils.py
+│   └── controllers/
+│       ├── ccmpc_controller.py
+│       ├── fallback_controller.py
+│       └── solver_adapter.py
+│
+├── simulation/
+│   ├── app.py
+│   ├── config/
+│   │   ├── schema.py
+│   │   ├── loader.py
+│   │   ├── legacy.py
+│   │   └── validation.py
+│   ├── runtime/
+│   │   ├── loop.py
+│   │   ├── dispatch.py
+│   │   ├── timing.py
+│   │   ├── termination.py
+│   │   └── metrics.py
+│   ├── engines/
+│   │   ├── base.py
+│   │   ├── metadata.py
+│   │   ├── factory.py
+│   │   ├── ode_engine.py
+│   │   ├── mujoco_engine.py
+│   │   └── adapters/
+│   ├── controllers/
+│   │   ├── base.py
+│   │   ├── metadata.py
+│   │   └── factory.py
+│   ├── estimation/
+│   ├── obstacles/
+│   ├── logging/
+│   └── rendering/
 ```
 
-This document does not define:
-
-1. The full MPC optimization problem.
-2. The solver implementation.
-3. The detailed MuJoCo XML model.
-4. Visualization rendering details.
-5. File I/O format beyond the required schema-level data fields.
-
-Those topics shall be defined in separate documents:
+This document defines the data contracts exchanged between those modules, including:
 
 ```text
-05_ENGINE_INTERFACE.md
-06_CONTROLLER_INTERFACE.md
-07_SCENARIO_CONFIG.md
-08_LOGGING_AND_METRICS.md
-MPC_SOLVER.md
-DYNAMICS.md
-LOW_LEVEL.md
-PERCEPTION.md
+State9
+Goal3
+ControlCommand4
+ActuatorCommand4
+Trajectory9
+ControlTrajectory4
+Gamma9x9
+Sigma3x3
+ObstacleSpec
+ObstaclePrediction
+ControllerInput
+ControllerOutput
+StepResult
+LogRecord
+RunSummary
+ScenarioConfig
 ```
+
+This document does not define the full implementation of each module.
+It only defines the canonical data shapes, ordering, units, frames, and ownership rules used at module boundaries.
+
 
 ---
 
