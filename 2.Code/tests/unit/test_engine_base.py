@@ -46,18 +46,17 @@ def test_engine_metadata_valid_ode() -> None:
 
 
 def test_engine_metadata_valid_mujoco() -> None:
-    """Default MuJoCo metadata should expose State9 while using quaternion internally."""
+    """Default MuJoCo metadata should expose State9 and consume ActuatorCommand4."""
     metadata = DEFAULT_MUJOCO_METADATA
 
     assert metadata.engine_type is EngineType.MUJOCO
     assert metadata.name == "MuJoCoPhysicsEngine"
-    assert metadata.command_type is EngineCommandType.CONTROL_COMMAND4
+    assert metadata.command_type is EngineCommandType.ACTUATOR_COMMAND4
     assert metadata.state_dim == 9
     assert metadata.command_dim == 4
-    assert metadata.supports_control_command is True
+    assert metadata.supports_control_command is False
     assert metadata.supports_actuator_command is True
     assert metadata.uses_quaternion_internal is True
-
 
 def test_engine_metadata_reject_wrong_state_dim() -> None:
     """Engine metadata rejects any public state dimension other than State9."""

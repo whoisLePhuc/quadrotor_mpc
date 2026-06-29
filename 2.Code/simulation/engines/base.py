@@ -10,14 +10,16 @@ All engines expose the same external state contract:
 
     State9 = [x, y, z, vx, vy, vz, roll, pitch, yaw]
 
-Engines may consume one of two command contracts:
+Engines consume exactly one public command contract:
 
     ControlCommand4  = [phi_c, theta_c, vz_c, psi_dot_c]
     ActuatorCommand4 = [T1, T2, T3, T4]
 
-The ODE engine will usually consume ControlCommand4 directly.  The MuJoCo engine
-may consume ActuatorCommand4 directly or convert ControlCommand4 to
-ActuatorCommand4 internally through a mixer.
+Phase 4 policy:
+- ODEPhysicsEngine consumes ControlCommand4 directly.
+- MuJoCoPhysicsEngine consumes ActuatorCommand4 directly.
+- ControlCommand4 -> ActuatorCommand4 mixing stays outside MuJoCoPhysicsEngine.
+- MuJoCo qpos/qvel/quaternion/MjModel/MjData must not leak to runtime/controller.
 """
 
 from __future__ import annotations
@@ -92,12 +94,12 @@ class EngineMetadata:
     command_type:
         Primary command contract accepted by ``step``.
     native_dt:
-        Native integration timestep if the engine has one.  For pure ODE
-        wrappers this can be None because runtime ``dt`` is passed explicitly.
+        Native integration timestep if the engine has one. For pure ODE wrappers
+        this can be None because runtime ``dt`` is passed explicitly.
     state_dim:
-        External canonical state dimension.  Should remain 9.
+        External canonical state dimension. Should remain 9.
     command_dim:
-        Dimension of the primary command vector.  Should be 4.
+        Dimension of the primary command vector. Should be 4.
     supports_control_command:
         True if the engine can accept ControlCommand4 at its public boundary.
     supports_actuator_command:
@@ -111,8 +113,8 @@ class EngineMetadata:
     description:
         Optional human-readable description.
     extra:
-        Optional engine-specific static metadata.  Keep this out of core
-        runtime logic.
+        Optional engine-specific static metadata. Keep this out of core runtime
+        logic.
     """
 
     engine_type: EngineType
@@ -132,22 +134,18 @@ class EngineMetadata:
         """Validate metadata consistency."""
         if not self.name.strip():
             raise EngineConfigurationError("EngineMetadata.name must be non-empty.")
-
         if self.state_dim != STATE_DIM:
             raise EngineConfigurationError(
                 f"EngineMetadata.state_dim must be {STATE_DIM}, got {self.state_dim}."
             )
-
         expected_dim = command_dim_for_type(self.command_type)
         if self.command_dim != expected_dim:
             raise EngineConfigurationError(
                 "EngineMetadata.command_dim is inconsistent with command_type: "
                 f"expected {expected_dim}, got {self.command_dim}."
             )
-
         if self.native_dt is not None and self.native_dt <= 0.0:
             raise EngineConfigurationError("EngineMetadata.native_dt must be > 0.")
-
         if (
             self.command_type is EngineCommandType.CONTROL_COMMAND4
             and not self.supports_control_command
@@ -156,7 +154,6 @@ class EngineMetadata:
                 "EngineMetadata.command_type is CONTROL_COMMAND4 but "
                 "supports_control_command is False."
             )
-
         if (
             self.command_type is EngineCommandType.ACTUATOR_COMMAND4
             and not self.supports_actuator_command
@@ -172,28 +169,6 @@ class StepResult:
     """Result returned by ``PhysicsEngine.step``.
 
     The state is always the external canonical State9 after the step.
-
-    Attributes
-    ----------
-    state:
-        Canonical State9 after the physics step.
-    time:
-        Simulation time after the physics step, in seconds.
-    dt:
-        Runtime timestep used for this call, in seconds.
-    step_index:
-        Number of completed physics steps after this call.
-    status:
-        Step status.  Runtime may terminate or fallback on FAILED.
-    message:
-        Optional human-readable warning/error message.
-    command_type:
-        Command type consumed by this step.
-    applied_command:
-        Command actually applied at the engine boundary.  For MuJoCo this may
-        be ActuatorCommand4 even if the runtime submitted ControlCommand4.
-    diagnostics:
-        Optional engine-specific diagnostics for logging only.
     """
 
     state: FloatArray
@@ -209,27 +184,19 @@ class StepResult:
     def __post_init__(self) -> None:
         """Validate result contract."""
         as_state9(self.state)
-
         if self.time < 0.0 or not np.isfinite(self.time):
             raise EngineStateError("StepResult.time must be finite and >= 0.")
-
         if self.dt <= 0.0 or not np.isfinite(self.dt):
             raise EngineStateError("StepResult.dt must be finite and > 0.")
-
         if self.step_index < 0:
             raise EngineStateError("StepResult.step_index must be >= 0.")
-
         if self.applied_command is not None and self.command_type is not None:
             validate_engine_command(self.applied_command, self.command_type)
 
 
 @runtime_checkable
 class PhysicsEngineProtocol(Protocol):
-    """Structural protocol for physics engines.
-
-    This is useful for static typing and tests.  Concrete engines may inherit
-    from ``PhysicsEngine`` below or simply implement this protocol.
-    """
+    """Structural protocol for physics engines."""
 
     def reset(self, initial_state: FloatArray) -> None:
         """Reset engine to canonical State9."""
@@ -254,37 +221,19 @@ class PhysicsEngineProtocol(Protocol):
 
 
 class PhysicsEngine(ABC):
-    """Abstract base class for canonical physics engines.
-
-    Runtime code should use this base class or ``PhysicsEngineProtocol`` as its
-    dependency boundary.
-    """
+    """Abstract base class for canonical physics engines."""
 
     @abstractmethod
     def reset(self, initial_state: FloatArray) -> None:
-        """Reset engine to canonical State9.
-
-        Implementations must validate ``initial_state`` using ``as_state9``.
-        """
+        """Reset engine to canonical State9."""
 
     @abstractmethod
     def step(self, command: FloatArray, dt: float) -> StepResult:
-        """Advance physics by ``dt`` seconds.
-
-        Implementations must:
-            1. validate command according to ``get_metadata().command_type``
-            2. validate ``dt > 0``
-            3. update internal state and time
-            4. return ``StepResult`` containing canonical State9
-        """
+        """Advance physics by ``dt`` seconds."""
 
     @abstractmethod
     def get_state(self) -> FloatArray:
-        """Return current canonical State9.
-
-        The returned array should be a copy or otherwise protected from
-        accidental mutation by the caller.
-        """
+        """Return current canonical State9."""
 
     @abstractmethod
     def get_time(self) -> float:
@@ -299,20 +248,15 @@ class PhysicsEngine(ABC):
         """Return static engine metadata."""
 
     def close(self) -> None:
-        """Release engine resources.
-
-        Stateless engines may keep the default no-op implementation.
-        """
+        """Release engine resources. Stateless engines may keep the no-op default."""
 
 
 def command_dim_for_type(command_type: EngineCommandType) -> int:
     """Return expected vector dimension for a command type."""
     if command_type is EngineCommandType.CONTROL_COMMAND4:
         return CONTROL_DIM
-
     if command_type is EngineCommandType.ACTUATOR_COMMAND4:
         return ACTUATOR_DIM
-
     raise EngineConfigurationError(f"Unsupported command type: {command_type!r}.")
 
 
@@ -320,16 +264,11 @@ def validate_engine_command(
     command: FloatArray,
     command_type: EngineCommandType,
 ) -> FloatArray:
-    """Validate command according to engine command type.
-
-    Returns a float64 NumPy array with the canonical command shape.
-    """
+    """Validate command according to engine command type."""
     if command_type is EngineCommandType.CONTROL_COMMAND4:
         return as_control_command4(command)
-
     if command_type is EngineCommandType.ACTUATOR_COMMAND4:
         return as_actuator_command4(command)
-
     raise EngineConfigurationError(f"Unsupported command type: {command_type!r}.")
 
 
@@ -337,15 +276,12 @@ def validate_step_dt(dt: float) -> float:
     """Validate and return a physics step duration."""
     if isinstance(dt, bool):
         raise EngineStepError("dt must be a finite positive number, got bool.")
-
     try:
         dt_value = float(dt)
     except (TypeError, ValueError) as exc:
         raise EngineStepError("dt must be a finite positive number.") from exc
-
     if not np.isfinite(dt_value) or dt_value <= 0.0:
         raise EngineStepError("dt must be finite and > 0.")
-
     return dt_value
 
 
@@ -361,10 +297,7 @@ def make_step_result(
     message: str | None = None,
     diagnostics: dict[str, Any] | None = None,
 ) -> StepResult:
-    """Construct and validate a ``StepResult``.
-
-    This helper keeps concrete engines small and ensures consistent validation.
-    """
+    """Construct and validate a ``StepResult``."""
     return StepResult(
         state=as_state9(state),
         time=float(time),
@@ -397,15 +330,15 @@ DEFAULT_ODE_METADATA: Final[EngineMetadata] = EngineMetadata(
 DEFAULT_MUJOCO_METADATA: Final[EngineMetadata] = EngineMetadata(
     engine_type=EngineType.MUJOCO,
     name="MuJoCoPhysicsEngine",
-    command_type=EngineCommandType.CONTROL_COMMAND4,
+    command_type=EngineCommandType.ACTUATOR_COMMAND4,
     native_dt=None,
-    supports_control_command=True,
+    supports_control_command=False,
     supports_actuator_command=True,
     uses_quaternion_internal=True,
     deterministic=True,
     description=(
-        "MuJoCo physics engine exposing State9 through an adapter and "
-        "optionally converting ControlCommand4 to ActuatorCommand4 internally."
+        "MuJoCo physics engine exposing canonical State9 through adapters "
+        "and consuming ActuatorCommand4 at the engine boundary."
     ),
 )
 

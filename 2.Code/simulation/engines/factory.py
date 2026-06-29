@@ -3,16 +3,13 @@
 This module centralizes engine construction so runtime code does not need to
 know how each concrete engine is initialized.
 
-Current scope:
-    - ODE engine: supported
-    - MuJoCo engine: intentionally not implemented yet
+Current Phase 4 scope:
+- ODE engine: supported and consumes ControlCommand4.
+- MuJoCo engine: constructed explicitly with MuJoCoEngineFactoryConfig and
+  consumes ActuatorCommand4.
 
-The MuJoCo path is kept explicit because it needs additional pieces that should
-be designed separately:
-    - State9 <-> MuJoCo qpos/qvel adapter
-    - quaternion <-> Euler conversion policy
-    - ControlCommand4 -> ActuatorCommand4 mixer
-    - model XML path and MuJoCo timestep handling
+The factory does not run controllers, mixers, loggers, scenario runners, or
+visualizers. Those belong to later phases.
 """
 
 from __future__ import annotations
@@ -23,42 +20,36 @@ from typing import Any
 
 from ccmpc.dynamics import QuadrotorDynamics
 from ccmpc.types import FloatArray, as_state9
-
 from simulation.engines.base import (
+    DEFAULT_MUJOCO_METADATA,
     DEFAULT_ODE_METADATA,
     EngineConfigurationError,
     EngineMetadata,
     EngineType,
     PhysicsEngine,
 )
-from simulation.engines.ode_engine import (
-    DiscreteDynamicsProtocol,
-    ODEPhysicsEngine,
-)
-
+from simulation.engines.mujoco_engine import MuJoCoEngineConfig, MuJoCoPhysicsEngine
+from simulation.engines.ode_engine import DiscreteDynamicsProtocol, ODEPhysicsEngine
 
 PathLike = str | Path
 
 
 @dataclass(frozen=True)
 class ODEEngineFactoryConfig:
-    """Configuration used by the factory to build an ODE engine.
-
-    Attributes
-    ----------
-    dynamics_config:
-        Optional path or dictionary accepted by ``QuadrotorDynamics.from_config``.
-        If omitted, ``QuadrotorDynamics()`` is used.
-    metadata_name:
-        Optional name override for engine metadata.
-    native_dt:
-        Optional native timestep metadata.  ODE engine still accepts runtime dt
-        at every step.
-    """
+    """Configuration used by the factory to build an ODE engine."""
 
     dynamics_config: PathLike | dict[str, Any] | None = None
     metadata_name: str | None = None
     native_dt: float | None = None
+
+
+@dataclass(frozen=True)
+class MuJoCoEngineFactoryConfig:
+    """Configuration used by the factory to build a MuJoCo engine."""
+
+    xml_path: PathLike
+    free_joint_name: str | None = None
+    actuator_start_index: int = 0
 
 
 def create_physics_engine(
@@ -67,35 +58,10 @@ def create_physics_engine(
     initial_state: FloatArray,
     dynamics: DiscreteDynamicsProtocol | None = None,
     ode_config: ODEEngineFactoryConfig | None = None,
+    mujoco_config: MuJoCoEngineFactoryConfig | None = None,
     metadata: EngineMetadata | None = None,
 ) -> PhysicsEngine:
-    """Create a physics engine from canonical factory arguments.
-
-    Parameters
-    ----------
-    engine_type:
-        Engine type enum or string.  Currently supports ``"ode"``.
-    initial_state:
-        Canonical State9 used to reset the created engine.
-    dynamics:
-        Optional dynamics object implementing ``discrete(state, command, dt)``.
-        For ODE engine, if this is omitted the factory creates
-        ``QuadrotorDynamics``.
-    ode_config:
-        Optional ODE-specific factory config.
-    metadata:
-        Optional metadata override.  If omitted, default metadata is used.
-
-    Returns
-    -------
-    PhysicsEngine
-        Concrete engine instance behind the common interface.
-
-    Raises
-    ------
-    EngineConfigurationError
-        If the engine type is unsupported or configuration is invalid.
-    """
+    """Create a physics engine from canonical factory arguments."""
     parsed_engine_type = parse_engine_type(engine_type)
     state = as_state9(initial_state)
 
@@ -108,10 +74,15 @@ def create_physics_engine(
         )
 
     if parsed_engine_type is EngineType.MUJOCO:
-        raise EngineConfigurationError(
-            "MuJoCo engine factory is not implemented yet. "
-            "Implement simulation.engines.mujoco_engine after defining the "
-            "State9/qpos-qvel adapter and ControlCommand4/ActuatorCommand4 policy."
+        if mujoco_config is None:
+            raise EngineConfigurationError(
+                "mujoco_config is required for MuJoCoPhysicsEngine. "
+                "Provide xml_path, free_joint_name, and actuator_start_index explicitly."
+            )
+        return create_mujoco_engine(
+            initial_state=state,
+            config=mujoco_config,
+            metadata=metadata,
         )
 
     if parsed_engine_type is EngineType.CUSTOM:
@@ -130,12 +101,7 @@ def create_ode_engine(
     config: ODEEngineFactoryConfig | None = None,
     metadata: EngineMetadata | None = None,
 ) -> ODEPhysicsEngine:
-    """Create an ``ODEPhysicsEngine``.
-
-    If ``dynamics`` is provided, it is used directly.  Otherwise the factory
-    constructs ``QuadrotorDynamics`` using ``config.dynamics_config`` when
-    available, or default constructor values when not.
-    """
+    """Create an ``ODEPhysicsEngine``."""
     state = as_state9(initial_state)
     config = ODEEngineFactoryConfig() if config is None else config
 
@@ -144,7 +110,6 @@ def create_ode_engine(
         dynamics_obj = create_quadrotor_dynamics(config.dynamics_config)
 
     metadata_obj = metadata if metadata is not None else DEFAULT_ODE_METADATA
-
     if config.metadata_name is not None or config.native_dt is not None:
         metadata_obj = replace(
             metadata_obj,
@@ -159,30 +124,38 @@ def create_ode_engine(
     )
 
 
+def create_mujoco_engine(
+    *,
+    initial_state: FloatArray,
+    config: MuJoCoEngineFactoryConfig,
+    metadata: EngineMetadata | None = None,
+) -> MuJoCoPhysicsEngine:
+    """Create a ``MuJoCoPhysicsEngine`` from explicit MuJoCo configuration."""
+    state = as_state9(initial_state)
+    metadata_obj = metadata if metadata is not None else DEFAULT_MUJOCO_METADATA
+    return MuJoCoPhysicsEngine(
+        config=MuJoCoEngineConfig(
+            xml_path=config.xml_path,
+            free_joint_name=config.free_joint_name,
+            actuator_start_index=config.actuator_start_index,
+        ),
+        initial_state=state,
+        metadata=metadata_obj,
+    )
+
+
 def create_quadrotor_dynamics(
     dynamics_config: PathLike | dict[str, Any] | None = None,
 ) -> QuadrotorDynamics:
-    """Create ``QuadrotorDynamics`` for the ODE engine.
-
-    Parameters
-    ----------
-    dynamics_config:
-        None, YAML path, or parsed dictionary.
-        - None: use ``QuadrotorDynamics()`` defaults.
-        - path/dict: use ``QuadrotorDynamics.from_config(...)``.
-    """
+    """Create ``QuadrotorDynamics`` for the ODE engine."""
     if dynamics_config is None:
         return QuadrotorDynamics()
-
     if isinstance(dynamics_config, Path):
         return QuadrotorDynamics.from_config(str(dynamics_config))
-
     if isinstance(dynamics_config, str):
         return QuadrotorDynamics.from_config(dynamics_config)
-
     if isinstance(dynamics_config, dict):
         return QuadrotorDynamics.from_config(dynamics_config)
-
     raise EngineConfigurationError(
         "dynamics_config must be None, str, pathlib.Path, or dict."
     )
@@ -192,7 +165,6 @@ def parse_engine_type(engine_type: EngineType | str) -> EngineType:
     """Parse engine type from enum or string."""
     if isinstance(engine_type, EngineType):
         return engine_type
-
     if isinstance(engine_type, str):
         normalized = engine_type.strip().lower()
         try:
@@ -201,14 +173,15 @@ def parse_engine_type(engine_type: EngineType | str) -> EngineType:
             raise EngineConfigurationError(
                 f"Unsupported engine type string: {engine_type!r}."
             ) from exc
-
     raise EngineConfigurationError(
         f"engine_type must be EngineType or str, got {type(engine_type).__name__}."
     )
 
 
 __all__ = [
+    "MuJoCoEngineFactoryConfig",
     "ODEEngineFactoryConfig",
+    "create_mujoco_engine",
     "create_ode_engine",
     "create_physics_engine",
     "create_quadrotor_dynamics",

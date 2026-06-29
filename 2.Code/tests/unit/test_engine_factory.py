@@ -24,6 +24,7 @@ from simulation.engines.base import (
     EngineType,
 )
 from simulation.engines.factory import (
+    MuJoCoEngineFactoryConfig,
     ODEEngineFactoryConfig,
     create_ode_engine,
     create_physics_engine,
@@ -237,14 +238,13 @@ def test_create_physics_engine_rejects_invalid_initial_state() -> None:
         )
 
 
-def test_create_physics_engine_rejects_mujoco_for_now() -> None:
-    """MuJoCo factory path should fail explicitly until MuJoCo engine is implemented."""
-    with pytest.raises(EngineConfigurationError, match="MuJoCo engine factory"):
+def test_create_physics_engine_mujoco_requires_config() -> None:
+    """MuJoCo factory path requires explicit XML/config instead of implicit defaults."""
+    with pytest.raises(EngineConfigurationError, match="mujoco_config"):
         create_physics_engine(
             EngineType.MUJOCO,
             initial_state=make_state(),
         )
-
 
 def test_create_physics_engine_rejects_custom_for_now() -> None:
     """CUSTOM factory path should fail explicitly until custom engine support is added."""
