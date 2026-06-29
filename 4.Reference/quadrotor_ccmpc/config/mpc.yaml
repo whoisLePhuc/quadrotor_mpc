@@ -1,0 +1,113 @@
+# Chance-Constrained MPC Configuration
+# Based on: Lin, Zhu, Alonso-Mora — ICRA 2020
+
+model:
+  quadrotor:
+    # Gravity
+    g: 9.81
+    
+    # Drag coefficient (velocity damping)
+    kD: 0.5
+    
+    # Attitude gains (first-order lag: dot = (k*u - x)/tau)
+    k_phi: 1.0
+    k_theta: 1.0
+    # FIX #20 (LOW): was 3.0 in config but dynamics.py default is 1.0 — unified to 3.0
+    # (faster vertical response, matches intent of config author).
+    k_vz: 3.0
+    
+    # Attitude time constants (seconds)
+    # FIX: measured from MuJoCo step response — actual tau ≈ 0.33s, not 0.2s.
+    # Using the correct value reduces ODE-MuJoCo model mismatch and prevents
+    # the MPC from over-commanding attitude to compensate for perceived slowness.
+    tau_phi: 0.33
+    tau_theta: 0.33
+    tau_vz: 0.4
+
+controller:
+  prediction:
+    # Horizon parameters
+    # FIX #12 (MEDIUM): 1.8s is too short at max_speed=8m/s (covers only 14.4m).
+    # Raised to 2.4s so the drone can see ~19m ahead and avoid goal overshoot.
+    horizon_time: 2.4     # Total horizon (seconds)
+    timestep: 0.06        # Discretization interval (seconds)
+    # FIX #11 (MEDIUM): 5 iterations is too few for convergence from a cold guess.
+    # Raised to 8; CLARABEL is fast enough that this adds <50ms per cycle.
+    max_iter: 8           # Max iMPC iterations
+    tolerance: 0.01       # iMPC convergence tolerance
+    solver: CLARABEL      # CVXPY solver: CLARABEL (fast, accurate) or OSQP
+
+  # Cost weights
+  weights:
+    # Terminal cost: weight on [x, y, z] position error to goal
+    terminal_cost: [30.0, 30.0, 100.0]   # z weight 20->100: drone must maintain altitude
+    
+    # Control effort cost: [phi_c, theta_c, vz_c, psi_dot_c]
+    control_cost: [3.0, 3.0, 5.0, 1.0]   # increased 10×: balance with terminal position cost
+    
+    # Yaw alignment cost coefficient
+    yaw_cost: 20.0
+
+    # Logistic obstacle potential field cost (Eq 12):
+    # J_o^k = Q_o / (1 + exp(λ_o(d_o^k - r_o)))
+    # Smooth, bounded collision cost — linearized around guess trajectory.
+    logistic_cost:
+      Q_o: 0.5           # Weight coefficient (keep small to avoid solver instability)
+      lambda_o: 2.0      # Steepness (larger = sharper transition)
+      r_o: 1.5           # Distance where cost = Q_o/2 (meters)
+
+  # Field of View constraints (Eq 17-18)
+  # FIX #19 (LOW): original config used hfov=170°/vfov=120°/range=10m which are
+  # physically unrealistic and make the constraint trivially satisfied.
+  # Restored to Intel RealSense D435i values from the paper (87°×58°×5m).
+  # Use the wider values only if your sensor truly has that FOV.
+  fov:
+    enabled: false          # Set true to enable FOV constraints
+    hfov_deg: 87.0          # Horizontal FOV — paper: 87° (Intel RealSense D435i)
+    vfov_deg: 58.0          # Vertical FOV   — paper: 58°
+    max_range: 5.0          # Max depth sensing range (meters) — paper: 5m
+    slack_penalty: 10.0     # Soft constraint penalty
+
+  # Obstacle avoidance parameters
+  obstacle:
+    # Collision probability threshold (Eq 16: delta)
+    # delta = 0.03  ->  97% confidence, erf^-1(0.94) ≈ 1.56 sigma
+    delta: 0.03
+    
+    # MAV collision radius (meters) — inflated for safety
+    mav_radius: 0.4
+    
+    # Safety margin added around obstacle (meters)
+    safety_margin: 0.1
+    
+    # Slack penalty for soft constraint (prevents infeasibility)
+    slack_penalty: 1000.0
+    
+    # Max number of obstacles fed to MPC (closest ones)
+    max_obstacles: 2
+
+  # Actuator limits
+  limits:
+    max_roll: 0.25         # Max roll command (rad) ~14 deg
+    max_pitch: 0.25        # Max pitch command (rad) ~14 deg
+    max_vert_vel: 3.0     # Max vertical velocity (m/s)
+    max_yaw_rate: 0.8     # Max yaw rate (rad/s) — gentler turns prevent oscillation
+    max_speed: 8.0        # Max horizontal speed (m/s)
+    # FIX #1 (CRITICAL): altitude floor — drone must never plan below this height.
+    min_altitude: 0.15    # meters above ground (rotor clearance ~0.1m + margin)
+
+  uncertainty:
+    # Process noise standard deviations
+    process_noise_pos: 0.01
+    process_noise_vel: 0.1
+    process_noise_att: 0.02
+    
+    # Initial state uncertainty (VIO noise)
+    init_pos_noise: 0.05
+    init_vel_noise: 0.1
+    init_att_noise: 0.03
+
+    # Time-correlated VIO drift (random walk bias)
+    vio_drift_pos: 0.005
+    vio_drift_vel: 0.02
+    vio_drift_att: 0.005

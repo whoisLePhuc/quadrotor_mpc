@@ -1,0 +1,84 @@
+Fri Jun 26 14:08:45 2026
+ERROR: could not initialize GLFW
+
+Fri Jun 26 14:22:04 2026
+ERROR: could not initialize GLFW
+
+Fri Jun 26 15:38:05 2026
+ERROR: could not initialize GLFW
+
+Fri Jun 26 16:02:11 2026
+ERROR: could not initialize GLFW
+
+Sun Jun 28 11:20:08 2026
+WARNING: Nan, Inf or huge value in QACC at DOF 0. The simulation is unstable. Time = 740.1700.
+
+Sun Jun 28 11:26:35 2026
+WARNING: Nan, Inf or huge value in QACC at DOF 0. The simulation is unstable. Time = 383.4100.
+
+Sun Jun 28 11:29:52 2026
+WARNING: Nan, Inf or huge value in QACC at DOF 3. The simulation is unstable. Time = 854.7200.
+
+Sun Jun 28 11:30:42 2026
+WARNING: Nan, Inf or huge value in QACC at DOF 0. The simulation is unstable. Time = 735.0250.
+
+Sun Jun 28 11:38:06 2026
+WARNING: Nan, Inf or huge value in QACC at DOF 0. The simulation is unstable. Time = 493.9850.
+
+Sun Jun 28 11:38:39 2026
+WARNING: Nan, Inf or huge value in QACC at DOF 0. The simulation is unstable. Time = 286.7500.
+
+Sun Jun 28 11:40:02 2026
+WARNING: Nan, Inf or huge value in QACC at DOF 0. The simulation is unstable. Time = 486.9900.
+
+Sun Jun 28 11:40:06 2026
+WARNING: Nan, Inf or huge value in QPOS at DOF 0. The simulation is unstable. Time = 0.0000.
+
+Sun Jun 28 11:40:06 2026
+WARNING: Nan, Inf or huge value in QACC at DOF 1. The simulation is unstable. Time = 0.0600.
+
+Sun Jun 28 11:40:06 2026
+WARNING: Nan, Inf or huge value in QPOS at DOF 0. The simulation is unstable. Time = 0.0000.
+
+Sun Jun 28 11:40:06 2026
+WARNING: Nan, Inf or huge value in QACC at DOF 1. The simulation is unstable. Time = 0.0600.
+
+Sun Jun 28 11:40:06 2026
+WARNING: Nan, Inf or huge value in QPOS at DOF 0. The simulation is unstable. Time = 0.0000.
+
+Sun Jun 28 11:40:06 2026
+WARNING: Nan, Inf or huge value in QACC at DOF 1. The simulation is unstable. Time = 0.0600.
+
+Sun Jun 28 11:40:06 2026
+WARNING: Nan, Inf or huge value in QPOS at DOF 0. The simulation is unstable. Time = 0.0000.
+
+Sun Jun 28 11:40:06 2026
+WARNING: Nan, Inf or huge value in QACC at DOF 1. The simulation is unstable. Time = 0.0600.
+
+Sun Jun 28 11:40:06 2026
+WARNING: Nan, Inf or huge value in QPOS at DOF 1. The simulation is unstable. Time = -6584790.5115.
+
+Sun Jun 28 11:40:06 2026
+WARNING: Nan, Inf or huge value in QACC at DOF 0. The simulation is unstable. Time = 0.0600.
+
+Sun Jun 28 11:40:06 2026
+WARNING: Nan, Inf or huge value in QVEL at DOF 5. The simulation is unstable. Time = -0.0000.
+
+Sun Jun 28 11:40:06 2026
+WARNING: Nan, Inf or huge value in QACC at DOF 1. The simulation is unstable. Time = 0.0600.
+
+Sun Jun 28 11:40:06 2026
+WARNING: Nan, Inf or huge value in QPOS at DOF 1. The simulation is unstable. Time = -6584790.5115.
+
+Sun Jun 28 11:40:06 2026
+WARNING: Nan, Inf or huge value in QACC at DOF 0. The simulation is unstable. Time = 0.0600.
+
+Sun Jun 28 11:40:06 2026
+WARNING: Nan, Inf or huge value in QVEL at DOF 5. The simulation is unstable. Time = -0.0000.
+
+Sun Jun 28 11:40:06 2026
+WARNING: Nan, Inf or huge value in QACC at DOF 1. The simulation is unstable. Time = 0.0600.
+
+Sun Jun 28 20:39:15 2026
+ERROR: could not initialize GLFW
+

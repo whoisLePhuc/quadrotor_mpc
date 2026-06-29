@@ -1,0 +1,28 @@
+# Quadrotor CC-MPC Simulation Configuration
+
+# Initial state: [x, y, z, vx, vy, vz, phi, theta, psi]
+start: [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+# Goal position: [x, y, z]
+goal: [6.0, 4.0, 2.5]
+
+# Target altitude for hover segments (meters)
+target_altitude: 2.0
+
+# Obstacles in world frame
+# Each obstacle: position [x,y,z], size [length, width, height], yaw, velocity [vx, vy, vz]
+obstacles:
+  - position: [2.5, 1.0, 1.5]
+    size: [0.6, 0.6, 1.0]
+    yaw: 0.3
+    velocity: [0.2, 0.0, 0.0]
+  - position: [4.0, 2.5, 1.8]
+    size: [0.8, 0.5, 1.2]
+    yaw: -0.5
+    velocity: [-0.15, 0.1, 0.0]
+
+# Goal reached threshold (meters)
+goal_threshold: 0.4
+
+# Simulation timestep (seconds) — must match or be smaller than MPC dt
+sim_timestep: 0.02
