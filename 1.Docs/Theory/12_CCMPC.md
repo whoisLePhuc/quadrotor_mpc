@@ -182,7 +182,7 @@ $$\begin{aligned}
 
 ## 12.7 Field of View (FOV) Constraints
 
-For vision-based obstacle avoidance, the planned trajectory must keep obstacles within the camera's FOV:
+For vision-based obstacle avoidance, the planned trajectory (reference path) must remain within the camera's FOV to ensure the visual-inertial odometry (VIO) system has sufficient visual features for state estimation along the entire planned path:
 
 $$\text{FOV}^k = \{\mathbf{p} \mid \mathbf{n}_j^k \cdot \mathbf{p} \leq m_j^k, \; j = 1,\ldots,5\}$$
 

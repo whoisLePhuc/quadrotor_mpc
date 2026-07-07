@@ -22,15 +22,22 @@ All formulas are numbered by order of appearance in the source papers.
 
 ### Vision & Detection (Lin, Zhu & Alonso-Mora, 2020)
 
-| Eq | Formula | Description | Verified |
-|----|---------|-------------|----------|
-| (1) | $T_{\text{POI}} = f \cdot T_{h_o} / d_{\text{bin}}$ | U-depth POI threshold | ✅ |
-| (2) | $x_o^B = d_b, \; y_o^B = \frac{(u_l+u_r)d_b}{2f}, \; l_o^B = 2(d_b-d_t), \; w_o^B = \frac{(u_r-u_l)d_b}{f}$ | Horizontal position/size | ✅ |
-| (3) | $z_o^B = \frac{(h_t+h_b)d_b}{2f}, \; h_o^B = \frac{|h_t-h_b|d_b}{f}$ | Vertical position/height | ✅ |
-| (4) | $\mathbf{p}_o^W = \mathbf{R}_B^W\mathbf{p}_o^B + \mathbf{p}^W, \; \boldsymbol{\Sigma}_o^W = \mathbf{R}_B^{W\;T}\boldsymbol{\Sigma}_o^B\mathbf{R}_B^W + \boldsymbol{\Sigma}^W$ | World frame transform | ✅ |
-| (5) | $p_d = p_G(\mathbf{x}_o^m \mid \hat{\mathbf{x}}_o^{m|m-1}, \mathbf{P}_o^{m|m-1})$ | Gaussian data association | ✅ |
-| (6) | $\hat{\mathbf{p}}_o^{k+1} = \hat{\mathbf{p}}_o^{k} + \hat{\mathbf{v}}_o^{k}\Delta t, \; \hat{\mathbf{v}}_o^{k+1} = \hat{\mathbf{v}}_o^{k}, \; \boldsymbol{\Sigma}_o^{k+1} = \boldsymbol{\Sigma}_o^{k} + \boldsymbol{\Sigma}_{o,v}\Delta t^2$ | Constant velocity prediction | ✅ |
-| (7) | $(a_o, b_o, c_o) = \frac{\sqrt{3}}{2}(l_o, w_o, h_o)$ | Box-to-ellipsoid bounding | ✅ |
+| Eq | Formula | Description |
+|----|---------|-------------|
+| (1) | $T_{\text{POI}} = f \, T_{h_o} / d_{\text{bin}}$ | U-depth POI threshold |
+| (2) | $x_o^B = d_b$ | Box center x (body frame) |
+| (2b) | $y_o^B = (u_l+u_r)d_b / 2f$ | Box center y (body frame) |
+| (2c) | $l_o^B = 2(d_b-d_t)$ | Box length |
+| (2d) | $w_o^B = (u_r-u_l)d_b / f$ | Box width |
+| (3) | $z_o^B = (h_t+h_b)d_b / 2f$ | Box center z (body frame) |
+| (3b) | $h_o^B = \lvert h_t-h_b\rvert \, d_b / f$ | Box height |
+| (4) | $\mathbf{p}_o^W = \mathbf{R}_B^W\mathbf{p}_o^B + \mathbf{p}^W$ | Position to world frame |
+| (4b) | $\boldsymbol{\Sigma}_o^W = \mathbf{R}_B^{W\;T}\boldsymbol{\Sigma}_o^B\mathbf{R}_B^W + \boldsymbol{\Sigma}^W$ | Covariance to world frame |
+| (5) | $p_d = p_G\!\left(\mathbf{x}_o^m \mid \hat{\mathbf{x}}_o^{m\vert m-1}, \mathbf{P}_o^{m\vert m-1}\right)$ | Gaussian data association |
+| (6) | $\hat{\mathbf{p}}_o^{k+1} = \hat{\mathbf{p}}_o^{k} + \hat{\mathbf{v}}_o^{k}\Delta t$ | Position prediction |
+| (6b) | $\hat{\mathbf{v}}_o^{k+1} = \hat{\mathbf{v}}_o^{k}$ | Velocity (constant) |
+| (6c) | $\boldsymbol{\Sigma}_o^{k+1} = \boldsymbol{\Sigma}_o^{k} + \boldsymbol{\Sigma}_{o,v}\Delta t^2$ | Covariance growth |
+| (7) | $(a_o,b_o,c_o) = \tfrac{\sqrt{3}}{2}(l_o,w_o,h_o)$ | Box-to-ellipsoid bounding |
 
 ### Dynamics Model
 

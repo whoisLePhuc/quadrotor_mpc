@@ -227,9 +227,9 @@ When velocity estimation is noisy (large $\boldsymbol{\Sigma}_{o,v}$), the predi
 
 ## 15.8 Field of View (FOV) Constraints
 
-For vision-based avoidance, the planned trajectory must keep the camera pointing at obstacles. The FOV constraint ensures:
+For vision-based avoidance, the planned trajectory (reference path) must stay within the camera's FOV to maintain visual features for state estimation. The FOV constraint ensures:
 
-1. Obstacles remain within camera field of view
+1. The trajectory initialized by the MPC remains visible to the camera (preventing VIO drift from lack of features)
 2. Camera faces direction of motion (via yaw cost)
 
 **Half-space representation** (in body frame):
