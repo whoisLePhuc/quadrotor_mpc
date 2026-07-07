@@ -55,14 +55,60 @@ Based on:
 
 ## Quick Start
 
+### Install Dependencies
+
 ```bash
 git clone https://github.com/whoisLePhuc/quadrotor_mpc.git
 cd quadrotor_mpc
-pip install -e .
-python sim_demo.py
+pip install -r 2.Code/requirements.txt
+```
+
+### Matplotlib Simulation (No MuJoCo Required)
+
+Run the CC-MPC algorithm with 2D visualization — no binary dependencies:
+
+```bash
+cd 2.Code
+python run_simulation.py --config config/scenarios/two_static.yaml
+```
+
+This produces `output/trajectory.png` showing the quadrotor path avoiding obstacles.
+
+**More options:**
+```bash
+cd 2.Code
+# Animated output (requires imageio-ffmpeg, included in requirements)
+python run_simulation.py --config config/scenarios/one_moving.yaml --animate
+
+# Compare CC-MPC vs deterministic MPC
+python run_simulation.py --config config/scenarios/two_static.yaml --compare
+
+# Monte Carlo trials
+python run_simulation.py --config config/scenarios/two_static.yaml --trials 10
+
+# Interactive exploration
+jupyter notebook notebooks/interactive_demo.ipynb
 ```
 
 > ⚠️ Code is under active development. See [Roadmap](#roadmap) below.
+
+---
+
+## Features
+
+### Matplotlib Simulation (New)
+
+The `2.Code/` directory provides a standalone matplotlib-based simulation that runs the CC-MPC algorithm without requiring MuJoCo or any binary dependencies:
+
+| Feature | Command | Output |
+|---------|---------|--------|
+| **Basic run** | `run_simulation.py --config config/scenarios/two_static.yaml` | Trajectory PNG + summary panel |
+| **Animation** | Add `--animate` | MP4 video of the flight path |
+| **CC-MPC vs Deterministic** | Add `--compare` | Side-by-side comparison plot |
+| **Monte Carlo** | Add `--trials N` | Aggregated statistics over N runs |
+| **Interactive** | `jupyter notebook notebooks/interactive_demo.ipynb` | Inline plots + parameter tweaking |
+
+All code is in `2.Code/` — no changes needed to the core `ccmpc/` math modules.
 
 ---
 
@@ -111,17 +157,21 @@ quadrotor_mpc/
 ├── 1.Docs/                  # Theory + papers
 │   ├── Theory/              # 21-chapter knowledge base (Obsidian-ready)
 │   └── Paper/               # Original paper PDFs
-├── 2.Code/                  # Implementation
-│   ├── quadrotor_mpc/       # Python package
-│   │   ├── dynamics.py      # Quadrotor model (RK4, Jacobians)
-│   │   ├── ccmpc.py         # CC-MPC controller
-│   │   ├── obstacle.py      # Ellipsoidal obstacle model
-│   │   ├── uncertainty.py   # EKF covariance propagation
-│   │   ├── utils.py         # Math utilities (erfinv, Omega, quaternion)
-│   │   └── ...
-│   ├── config/              # YAML configuration files
-│   └── tests/               # Unit + formula verification tests
-├── 3.Notebooks/             # Jupyter notebooks
+├── 2.Code/                  # Implementation (see details below)
+│   ├── ccmpc/               # Core CC-MPC math (dynamics, obstacle, uncertainty, types)
+│   ├── simulation/          # Simulation infrastructure
+│   │   ├── runner.py        # SimulationRunner — orchestrates sim loop
+│   │   ├── visualizer.py    # MatplotlibVisualizer — 2D plots + animation
+│   │   ├── config/          # ScenarioConfig, YAML loader
+│   │   ├── engines/         # Physics engines (ODE, MuJoCo)
+│   │   └── controllers/     # Controller factory, protocol
+│   ├── config/scenarios/    # Scenario YAML files
+│   ├── notebooks/           # Jupyter notebooks
+│   ├── tests/               # Unit + formula verification tests (22 files)
+│   ├── run_simulation.py    # CLI entry point
+│   └── requirements.txt     # Python dependencies
+├── 3.Notebooks/             # (legacy) Jupyter notebooks
+├── 4.Reference/             # Reference implementation & configs
 └── README.md
 ```
 
@@ -137,6 +187,7 @@ quadrotor_mpc/
 - [x] Uncertainty propagation (EKF)
 - [x] Multi-robot coordination (DC strategy)
 - [x] MuJoCo simulation environment
+- [x] Matplotlib simulation (no MuJoCo required) — 2D trajectory plots, animation, Monte Carlo
 - [ ] Vision-based obstacle detection pipeline
 - [ ] ROS2 integration
 - [ ] Hardware deployment (Bebop 2 / custom quadrotor)

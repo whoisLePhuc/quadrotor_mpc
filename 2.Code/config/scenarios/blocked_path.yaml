@@ -1,0 +1,19 @@
+# Blocked path — obstacles fully block direct route to test infeasibility handling
+start: [0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+goal: [8.0, 8.0, 2.0]
+target_altitude: 2.0
+obstacles:
+  - position: [2.0, 2.0, 1.5]
+    size: [3.0, 3.0, 3.0]
+    yaw: 0.0
+    velocity: [0.0, 0.0, 0.0]
+  - position: [5.0, 5.0, 1.5]
+    size: [3.0, 3.0, 3.0]
+    yaw: 0.0
+    velocity: [0.0, 0.0, 0.0]
+  - position: [7.0, 3.0, 1.5]
+    size: [3.0, 3.0, 3.0]
+    yaw: 0.0
+    velocity: [0.0, 0.0, 0.0]
+goal_threshold: 0.05
+sim_timestep: 0.02
