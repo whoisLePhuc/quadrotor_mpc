@@ -59,7 +59,7 @@ Then apply $\mathbf{u}^*(0)$ to the system, wait one time step, and repeat.
 
 ### Terminal Cost $J^N$
 
-Guarantees stability by penalizing the final state:
+Penalizes the final state and can support a stability proof when paired with suitable terminal-set, terminal-controller, and recursive-feasibility assumptions:
 
 $$J^N(\mathbf{x}^N) = \|\mathbf{x}^N - \mathbf{x}_{\text{ref}}\|_{\mathbf{P}}^2$$
 
@@ -90,7 +90,7 @@ The choice of horizon $N$ involves trade-offs:
 | Stability | May need terminal cost | Easier to guarantee |
 | Deadlock avoidance | Prone to | Less prone |
 
-**CC-MPC defaults**: $N = 30$, $\Delta t = 0.06$ s → $T = 1.8$ s horizon.
+**Project configuration example**: $N = 30$, $\Delta t = 0.06$ s gives a 1.8 s horizon. The source papers use 1.0 s (2019) and 1.5 s (2020), so this must be labeled as a project choice.
 
 ## 11.5 Linear vs. Nonlinear MPC
 
@@ -108,7 +108,7 @@ The choice of horizon $N$ involves trade-offs:
 - Requires iteration (iMPC) for nonlinear systems
 - Used by: CC-MPC implementation (CVXPY + CLARABEL)
 
-The CC-MPC uses **iMPC**: iterate between solving a QP and re-linearizing until convergence.
+The source papers use nonlinear MPC solvers. This project optionally uses **iMPC**, iterating between a convex QP and re-linearization until convergence.
 
 ## 11.6 iMPC Algorithm
 
@@ -134,7 +134,7 @@ Output: Optimal control sequence u*
 3. Return (x_new, u_new)
 ```
 
-**Convergence**: Typically 2–3 iterations. Max: 5 iterations.
+**Project settings**: A maximum of 5 iterations and a target of roughly 2–3 iterations may be used initially, but the actual iteration distribution must be established from benchmark logs.
 
 ## 11.7 Constraints in MPC
 
@@ -147,10 +147,12 @@ Output: Optimal control sequence u*
 - Allowed to be violated with penalty
 - Example: obstacle avoidance with slack variable $s \geq 0$
 - Form: $g(\mathbf{x}) \leq s$, with $s$ heavily penalized in cost
-- Benefits: Always feasible, prioritizes critical constraints
+- Benefits: Can improve feasibility for the softened constraint; it does not guarantee that the complete optimization remains feasible
 
-### CC-MPC uses soft chance constraints:
+### Project-specific soft chance constraints
 $$\mathbf{a}^T\hat{\mathbf{p}} - 1 + s \geq \text{rhs}, \quad s \geq 0, \quad \text{cost} += 1000 \cdot s$$
+
+When $s>0$, the original chance constraint is violated and the probability bound $\delta$ is no longer guaranteed. Slack changes the formulation into risk-aware MPC with a penalized relaxation; its value must be reported and monitored.
 
 ## 11.8 Stability and Feasibility
 
@@ -160,12 +162,12 @@ If the optimization at step $t$ is feasible, the shifted solution (dropping firs
 - Changing chance constraint parameters
 - Nonlinear dynamics
 
-**Fallback**: PID controller when QP is infeasible.
+**Safety-oriented fallback**: The 2019 paper commands deceleration when optimization is infeasible. A generic go-to-goal PID may drive directly toward an obstacle; a practical fallback should brake/hover, maintain a safe altitude policy, continue sensing and replanning, or use a separately verified safety filter.
 
 ### Stability
 For linear MPC with terminal cost, stability can be proven via Lyapunov arguments. For nonlinear iMPC with soft constraints, stability is empirical — in practice, the receding horizon strategy works well when:
-- Horizon is long enough (1–2 s)
-- Re-planning frequency is high (≥ 15 Hz)
+- Horizon is long enough for the tested scenario
+- Re-planning is fast enough relative to vehicle and obstacle motion
 - Fallback controller exists
 
 ## 11.9 Implementation Considerations
@@ -180,8 +182,8 @@ $$\Delta t = 0.06 \text{ s} \quad \text{(≈ 16.7 Hz control)}$$
 
 ### Warm-Starting
 
-The previous solution provides an excellent initial guess:
-- Reduced iterations: 5 → 2–3
+The previous solution often provides a useful initial guess:
+- It may reduce the number of sequential-convex iterations; the magnitude must be measured for this implementation
 - Better convergence: Avoids local minima
 - Implementation: Shift trajectory by 1, duplicate last step
 
@@ -190,10 +192,10 @@ The previous solution provides an excellent initial guess:
 CVXPY provides a clean interface:
 ```python
 problem = opt.Problem(opt.Minimize(cost), constraints)
-problem.solve(solver=opt.CLARABEL, warm_start=False)
+problem.solve(solver=opt.CLARABEL, warm_start=True)
 ```
 
-Note: warm_start is set to False because DPP parameters change between iterations; the warm-start is done manually via guess trajectory.
+Changing DPP parameter values does not prohibit solver warm-starting. Manual trajectory shifting provides the nonlinear/iMPC guess, while `warm_start=True` can independently reuse numerical solver state. Both should be benchmarked.
 
 ## 11.10 Prerequisites and Related Chapters
 

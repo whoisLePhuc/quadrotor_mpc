@@ -23,22 +23,22 @@ To evaluate chance constraints at each step of the prediction horizon, we need t
 
 $$\mathbf{x}_{k+1} = \mathbf{f}(\mathbf{x}_k, \mathbf{u}_k) + \boldsymbol{\omega}_k$$
 
-where $\boldsymbol{\omega}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{Q}_k)$ is process noise.
+where $\boldsymbol{\omega}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{W}_d^k)$ is the discrete per-step process noise.
 
 ## 14.2 Approaches to Uncertainty Propagation
 
 There are three main approaches (from least to most expensive):
 
-| Method | Accuracy | Computation | Used Here? |
-|--------|----------|-------------|------------|
-| **EKF linearization** | Good for short horizons | Very fast | ✅ Yes |
-| Unscented Transform (UKF) | Better for strong nonlinearities | Moderate | No |
-| Polynomial Chaos Expansion | Excellent for long horizons | Expensive | No |
+| Method | Local accuracy profile | Typical computation | Used Here? |
+|--------|------------------------|---------------------|------------|
+| **EKF linearization** | First-order; suitable when local linearization is adequate | Low | ✅ Yes |
+| Unscented Transform (UKF) | Captures some nonlinear moment effects without Jacobians | Moderate | No |
+| Polynomial Chaos Expansion | Higher-order approximation with basis/truncation choices | High | No |
 
 The EKF approach is chosen because:
 1. The prediction horizon is short (1–2 seconds)
 2. Real-time performance is critical (~16 Hz control loop)
-3. For the quadrotor dynamics over short horizons, linearization error is small
+3. The short horizon makes a local linearization plausible, but its error still requires validation for the chosen maneuvers and timestep
 
 ## 14.3 EKF-Type Propagation (Eq. 19)
 
@@ -49,14 +49,14 @@ $$\boxed{\boldsymbol{\Gamma}^{k+1} = \mathbf{F}^k \boldsymbol{\Gamma}^k \mathbf{
 where:
 
 - $\boldsymbol{\Gamma}^k \in \mathbb{R}^{9 \times 9}$: Full state covariance at step $k$
-- $\mathbf{F}^k = \frac{\partial \mathbf{f}}{\partial \mathbf{x}}\big|_{\hat{\mathbf{x}}^k, \mathbf{u}^k}$: State transition Jacobian (9×9)
-- $\mathbf{W}^k$: Process noise covariance (9×9), typically $\mathbf{W} \cdot \Delta t$
+- $\mathbf{F}^k = \frac{\partial \mathbf{f}_d}{\partial \mathbf{x}}\big|_{\hat{\mathbf{x}}^k, \mathbf{u}^k}$: discrete state-transition Jacobian (9×9)
+- $\mathbf{W}_d^k$: discrete process-noise covariance (9×9)
 
 ### Initial Covariance
 
 $$\boldsymbol{\Gamma}^0 = \text{diag}\left([\sigma_{p0}^2]_{1\times 3}, [\sigma_{v0}^2]_{1\times 3}, [\sigma_{a0}^2]_{1\times 3}\right)$$
 
-Typical values from VIO:
+Illustrative project values, to be replaced by estimator output or identified noise statistics:
 - $\sigma_{p0} = 0.05$ m (position uncertainty)
 - $\sigma_{v0} = 0.1$ m/s (velocity uncertainty)
 - $\sigma_{a0} = 0.03$ rad (attitude uncertainty)
@@ -65,7 +65,7 @@ Typical values from VIO:
 
 $$\mathbf{W} = \text{diag}\left([\sigma_{p,w}^2]_{1\times 3}, [\sigma_{v,w}^2]_{1\times 3}, [\sigma_{a,w}^2]_{1\times 3}\right)$$
 
-Typical values:
+Illustrative tuning values, not universal values from the two papers:
 - $\sigma_{p,w} = 0.01$ m (per-step position noise)
 - $\sigma_{v,w} = 0.1$ m/s (per-step velocity noise)
 - $\sigma_{a,w} = 0.02$ rad (per-step attitude noise)
@@ -80,7 +80,7 @@ $$\boldsymbol{\Sigma}^k = \boldsymbol{\Gamma}^k_{[0:3, 0:3]}$$
 
 ## 14.4 State Transition Jacobian
 
-$\mathbf{F}^k = \frac{\partial \mathbf{f}}{\partial \mathbf{x}}$ at the linearization point $(\hat{\mathbf{x}}^k, \mathbf{u}^k)$.
+$\mathbf{F}^k=\partial\mathbf{f}_d/\partial\mathbf{x}$ is the Jacobian of the discrete transition. If a continuous Jacobian $\mathbf{A}_c=\partial\mathbf{f}_c/\partial\mathbf{x}$ is used, $\mathbf{F}^k\approx\mathbf{I}+\Delta t\mathbf{A}_c$ is only a first-order discretization.
 
 For the quadrotor dynamics, this is a 9×9 matrix computed via finite differences:
 
@@ -98,9 +98,9 @@ def jacobian_state(f, x, u, eps=1e-6):
 
 The analytical form has significant structure:
 
-$$\mathbf{F} = \begin{bmatrix}
+$$\mathbf{A}_c = \begin{bmatrix}
 \mathbf{0}_{3\times 3} & \mathbf{I}_{3\times 3} & \mathbf{0}_{3\times 3} \\
-\mathbf{0}_{3\times 3} & -k_D\mathbf{I}_{3\times 3} & \frac{\partial \dot{\mathbf{v}}}{\partial \boldsymbol{\eta}} \\
+\mathbf{0}_{3\times 3} & \operatorname{diag}(-k_D,-k_D,-1/\tau_{vz}) & \frac{\partial \dot{\mathbf{v}}}{\partial \boldsymbol{\eta}} \\
 \mathbf{0}_{3\times 3} & \mathbf{0}_{3\times 3} & \frac{\partial \dot{\boldsymbol{\eta}}}{\partial \boldsymbol{\eta}}
 \end{bmatrix}$$
 
@@ -118,8 +118,12 @@ $$\frac{\partial \dot{v}_y}{\partial \theta} = 0, \quad \frac{\partial \dot{v}_y
 
 At non-zero attitude angles, the trigonometric derivatives become more complex:
 
-$$\frac{\partial \dot{v}_x}{\partial \theta} = g \cdot \frac{1}{\cos^2\theta}(\cos\psi - \tan\phi \sin\psi)$$
-$$\frac{\partial \dot{v}_x}{\partial \phi} = g \cdot \frac{1}{\cos^2\phi}(\tan\theta \sin\psi + \sin\psi)$$
+$$\frac{\partial \dot{v}_x}{\partial \theta} = g\sec^2\theta\cos\psi$$
+$$\frac{\partial \dot{v}_x}{\partial \phi} = g\sec^2\phi\sin\psi$$
+
+The remaining horizontal derivatives are:
+
+$$\frac{\partial \dot{v}_y}{\partial \theta}=g\sec^2\theta\sin\psi,\qquad \frac{\partial \dot{v}_y}{\partial \phi}=-g\sec^2\phi\cos\psi.$$
 
 ## 14.5 Why Last-Loop Trajectory?
 
@@ -129,11 +133,11 @@ $$\frac{\partial \dot{v}_x}{\partial \phi} = g \cdot \frac{1}{\cos^2\phi}(\tan\t
 - $\mathbf{F}^k = \mathbf{F}^k(\hat{\mathbf{x}}^k, \mathbf{u}^k)$
 - $\boldsymbol{\Gamma}^{k+1}$ depends on $\mathbf{F}^k$
 - The chance constraint depends on $\boldsymbol{\Gamma}^{k+1}$
-- This introduces $N(n_x^2 + n_x)$ additional variables in the optimization
+- This introduces nonlinear coupling between state decisions, covariance propagation, and chance constraints, greatly increasing optimization complexity
 
 With last-loop propagation, $\mathbf{F}^k$ is fixed before solving the QP, keeping the problem size manageable.
 
-**Justification**: In receding-horizon MPC, the trajectory changes only slightly between consecutive solves (especially near convergence), so the linearization error is small.
+**Justification and limitation**: Near a converged receding-horizon solution, consecutive trajectories may be close enough for this approximation to work well. Large disturbances, a new obstacle, or a poor warm start can invalidate that assumption, so covariance and constraint residuals must be checked after the solve.
 
 ## 14.6 Implementation
 
@@ -159,7 +163,8 @@ class UncertaintyPropagator:
  Gamma_k = Gamma_list[-1]
  A_cont = dynamics.jacobian_state(x_guess[:, k], u_guess[:, k])
  F_k = np.eye(9) + dt * A_cont # Discrete-time Jacobian
- Gamma_k1 = F_k @ Gamma_k @ F_k.T + self.W * dt
+ W_d = self.discrete_process_covariance(A_cont, dt)
+ Gamma_k1 = F_k @ Gamma_k @ F_k.T + W_d
  Gamma_list.append(Gamma_k1)
  
  return Gamma_list
@@ -169,17 +174,18 @@ class UncertaintyPropagator:
 
 The following properties are verified numerically:
 
-1. **Monotonic growth**: $\text{tr}(\boldsymbol{\Gamma}^{k+1}) > \text{tr}(\boldsymbol{\Gamma}^k)$ for all $k$ (uncertainty increases with time)
-2. **Positive definiteness**: All $\boldsymbol{\Gamma}^k$ have positive eigenvalues
-3. **Position submatrix valid**: $\boldsymbol{\Sigma}^k = \boldsymbol{\Gamma}^k_{[0:3,0:3]}$ is positive definite
+1. **Symmetry**: $\boldsymbol{\Gamma}^k\approx\boldsymbol{\Gamma}^{kT}$ within numerical tolerance.
+2. **Positive semidefiniteness**: All eigenvalues satisfy $\lambda_{\min}\geq-\epsilon$; strict positive definiteness is not required.
+3. **Position submatrix validity**: $\boldsymbol{\Sigma}^k=\boldsymbol{\Gamma}^k_{[0:3,0:3]}$ is positive semidefinite.
+4. **Monte Carlo consistency**: Over a locally valid horizon, sampled covariance should agree with predicted covariance within statistical tolerance.
+
+The trace need not grow monotonically: stable dynamics can contract existing uncertainty more than process noise increases it.
 
 ```python
-# Verification: trace grows monotonically
-traces = [np.trace(Gamma_0)]
-for k in range(N):
- Gamma = F @ Gamma @ F.T + W
- traces.append(np.trace(Gamma))
-assert all(traces[i] > traces[i-1] for i in range(1, len(traces)))
+# Verification: symmetry and positive semidefiniteness
+Gamma = 0.5 * (Gamma + Gamma.T)
+assert np.allclose(Gamma, Gamma.T, atol=1e-10)
+assert np.linalg.eigvalsh(Gamma).min() >= -1e-10
 ```
 
 ## 14.8 Obstacle Uncertainty Propagation
@@ -192,10 +198,13 @@ $$\begin{aligned}
 \boldsymbol{\Sigma}_o^{k+1} &= \boldsymbol{\Sigma}_o^k + \boldsymbol{\Sigma}_{o,v} \Delta t^2
 \end{aligned}$$
 
-Key properties:
-- Position propagates linearly (constant velocity)
-- Velocity remains constant (no acceleration model)
-- Position uncertainty grows quadratically with time: $\boldsymbol{\Sigma}_o^k = \boldsymbol{\Sigma}_o^0 + k \cdot \boldsymbol{\Sigma}_{o,v} \Delta t^2$
+This is the simplified position-only expression printed in the 2020 paper. Recursively applying it gives growth linear in step index $k$, despite the factor $\Delta t^2$ in each increment; it should not be described as quadratic growth in time.
+
+For a consistent constant-velocity Gaussian state $\mathbf{z}_o=[\mathbf{p}_o^T,\mathbf{v}_o^T]^T$, prefer:
+
+$$\mathbf{F}_{pv}=\begin{bmatrix}\mathbf{I}&\Delta t\mathbf{I}\\\mathbf{0}&\mathbf{I}\end{bmatrix},\qquad \boldsymbol{\Sigma}_{pv}^{k+1}=\mathbf{F}_{pv}\boldsymbol{\Sigma}_{pv}^{k}\mathbf{F}_{pv}^T+\mathbf{Q}_{pv}^k.$$
+
+This retains position–velocity cross-covariance and produces the expected $(k\Delta t)^2\boldsymbol{\Sigma}_{v,0}$ term when velocity uncertainty is constant.
 
 **Note on velocity uncertainty**: If obstacle velocity estimation is very noisy (large $\boldsymbol{\Sigma}_{o,v}$), the predicted covariance grows rapidly. In practice, $\boldsymbol{\Sigma}_{o,v}$ is bounded to prevent excessive growth.
 

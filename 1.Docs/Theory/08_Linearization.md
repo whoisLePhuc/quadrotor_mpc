@@ -20,14 +20,14 @@ aliases:
 
 The quadrotor dynamics $\mathbf{f}(\mathbf{x}, \mathbf{u})$ are **nonlinear** due to:
 - Trigonometric functions (sin, cos, tan of Euler angles)
-- Product terms ($v_x \cos\psi$, etc.)
+- Products of trigonometric attitude terms and yaw-dependent rotations
 - Aerodynamic drag ($-k_D v_x$)
 
 However, standard MPC solvers work best with **linear (or quadratic) constraints and costs**. Linearization approximates the nonlinear system as a linear time-varying (LTV) system around a nominal trajectory:
 
 $$\mathbf{x}_{k+1} \approx \mathbf{A}_k \mathbf{x}_k + \mathbf{B}_k \mathbf{u}_k + \mathbf{C}_k$$
 
-This is the standard **iterative MPC (iMPC)** approach: solve a QP, update the linearization point, repeat until convergence.
+This is one possible **sequential convex/iMPC implementation**: solve a QP, update the linearization point, and repeat. The two source papers themselves solve nonlinear MPC problems using FORCES Pro and ACADO; the QP iteration described here is an implementation extension.
 
 ## 8.2 Taylor Series Expansion
 
@@ -129,9 +129,9 @@ Only the attitude and vertical velocity derivatives depend directly on control:
 - $\partial\dot{v}_z/\partial v_{zc} = k_{vz}/\tau_{vz}$
 - $\partial\dot{\psi}/\partial\dot{\psi}_c = 1$
 
-## 8.5 Second-Order B-Matrix Correction
+## 8.5 Optional Second-Order B-Matrix Approximation
 
-**Critical insight** from the implementation: The standard first-order $\mathbf{B}_k = \Delta t \cdot \mathbf{B}_{\text{cont}}$ fails to capture important coupling at hover.
+The first-order approximation $\mathbf{B}_k = \Delta t \mathbf{B}_{\text{cont}}$ does not capture within-step attitude-command-to-velocity coupling at hover. This is a first-order truncation error, not a mathematical failure of linearization.
 
 ### The Problem
 
@@ -139,24 +139,26 @@ At hover ($\theta = 0, v_x = 0$), the first-order model predicts:
 
 $$v_x^{k+1} = v_x^k + \Delta t(g\theta^k - k_D v_x^k) = 0 + 0.06(0 - 0) = 0$$
 
-This is **wrong**: a pitch command $\theta_c$ causes $\theta$ to rise during the step, which should produce velocity change. The first-order model misses this because it treats $\theta$ as constant during the step.
+This is first-order accurate but predicts no same-step velocity response. The true zero-order-hold response contains an $O(\Delta t^2)$ term because pitch changes during the interval.
 
 ### The Solution
 
-Use a second-order Taylor expansion for $\mathbf{B}$:
+For a frozen local LTI pair $(\mathbf{A}_{\text{cont}},\mathbf{B}_{\text{cont}})$, truncate the exact zero-order-hold input matrix:
 
 $$\boxed{\mathbf{B}_k = \Delta t \cdot \mathbf{B}_{\text{cont}} + \frac{\Delta t^2}{2} \cdot \mathbf{A}_{\text{cont}} \cdot \mathbf{B}_{\text{cont}}}$$
 
-The $\frac{\Delta t^2}{2}\mathbf{A}_{\text{cont}}\mathbf{B}_{\text{cont}}$ term captures the **cascade coupling**:
+The $\frac{\Delta t^2}{2}\mathbf{A}_{\text{cont}}\mathbf{B}_{\text{cont}}$ term captures the leading **cascade coupling**:
 
 $$\theta_c \xrightarrow{k_\theta/\tau_\theta} \dot{\theta} \xrightarrow{\Delta t} \theta \xrightarrow{g} \dot{v}_x \xrightarrow{\Delta t} v_x$$
 
-Without this term (first-order $\mathbf{B}$):
+This approximation is not stated in either source paper and is not the exact Jacobian of the RK4 map. The most internally consistent alternative is to differentiate the actual discrete map $\mathbf{f}_d$ and use $\mathbf{A}_d=\partial\mathbf{f}_d/\partial\mathbf{x}$ and $\mathbf{B}_d=\partial\mathbf{f}_d/\partial\mathbf{u}$.
+
+Without this optional term (first-order $\mathbf{B}$):
 
 ```python
 # First-order: B_k = dt * B_cont
 # At hover: vx_{k+1} = vx_k + dt * (g * theta_k - kD * vx_k) + 0*theta_c
-# Since theta_k = 0, vx_k = 0: vx_{k+1} = 0 ← WRONG
+# Since theta_k = 0, vx_k = 0: no same-step response at first order
 ```
 
 With second-order correction:
@@ -165,7 +167,7 @@ With second-order correction:
 # Second-order: B_k = dt*B_cont + dt²/2 * A_cont * B_cont
 # Additional term: dt²/2 * d(dvx)/dtheta * d(dtheta)/dtheta_c * theta_c
 # = 0.06²/2 * g * (k_theta/tau_theta) * theta_c
-# = 0.0018 * 9.81 * 5.0 * theta_c ≈ 0.088 * theta_c ← CORRECT
+# = 0.0018 * 9.81 * 5.0 * theta_c ≈ 0.088 * theta_c (leading second-order term)
 ```
 
 ## 8.6 Affine Offset $\mathbf{C}_k$
@@ -180,7 +182,7 @@ where $\mathbf{x}_{k+1}^{\text{true}} = \text{RK4}(\bar{\mathbf{x}}_k, \bar{\mat
 
 $$\mathbf{A}_k\bar{\mathbf{x}}_k + \mathbf{B}_k\bar{\mathbf{u}}_k + \mathbf{C}_k = \mathbf{x}_{k+1}^{\text{true}}$$
 
-Without $\mathbf{C}_k$, there can be 7 mm/step error that accumulates over the horizon.
+Without $\mathbf{C}_k$, the affine approximation generally fails to reproduce the nonlinear rollout even at its own linearization point. The resulting error is trajectory- and timestep-dependent and must be quantified numerically rather than assigned a universal per-step value.
 
 ## 8.7 Implementation
 
@@ -218,7 +220,7 @@ def jacobian(f, x0, eps=1e-6):
  return J
 ```
 
-This computes all 9×9 = 81 entries in a loop but is:
+For a 9-state input this requires 18 dynamics evaluations (two per perturbed state coordinate), each returning all nine output derivatives. It is:
 - **Simple** to implement and verify
 - **Accurate** to O(eps²) (central difference)
 - **Fast enough** for 9D state (81 function evaluations ≈ microseconds)

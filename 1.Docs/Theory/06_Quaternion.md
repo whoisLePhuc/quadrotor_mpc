@@ -32,6 +32,8 @@ The quaternion represents a rotation by angle $\alpha$ about axis $\mathbf{v} = 
 
 $$\mathbf{q} = \begin{bmatrix} \cos(\alpha/2) \\ v_x \sin(\alpha/2) \\ v_y \sin(\alpha/2) \\ v_z \sin(\alpha/2) \end{bmatrix}$$
 
+The quaternions $\mathbf{q}$ and $-\mathbf{q}$ represent the same physical rotation. Code that compares or interpolates quaternions should account for this double covering and should normalize estimator/simulator outputs before conversion.
+
 ## 6.3 Rotation Matrix from Quaternion
 
 $$\mathbf{R}(\mathbf{q}) = \begin{bmatrix}

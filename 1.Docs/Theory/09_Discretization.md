@@ -48,17 +48,13 @@ $$\begin{aligned}
 \mathbf{x}_{k+1} &= \mathbf{x}_k + \frac{\Delta t}{6}(\mathbf{k}_1 + 2\mathbf{k}_2 + 2\mathbf{k}_3 + \mathbf{k}_4)
 \end{aligned}$$
 
-- **Pros**: 4th-order accuracy O(Δt⁴), stable, industry standard
+- **Pros**: Fourth-order global accuracy $O(\Delta t^4)$ and local truncation error $O(\Delta t^5)$ for sufficiently smooth dynamics
 - **Cons**: 4 function evaluations per step
 - **Usage**: Primary discretization in CC-MPC implementation
 
 ### Why RK4?
 
-For $\Delta t = 0.06$ s:
-- Euler error: ~O(0.06²) ≈ 0.0036 per step → ~0.11 m over 30 steps
-- RK4 error: ~O(0.06⁵) ≈ 7.8×10⁻⁷ per step → ~2.3×10⁻⁵ m over 30 steps
-
-The quadrotor's velocity dynamics ($\dot{v}_x \approx g\theta$) are sensitive enough that Euler introduces visible drift.
+Error-order notation does not directly produce a position error in metres; the omitted constants and trajectory derivatives matter. RK4 should therefore be selected from convergence tests against a smaller-step reference integration, not from multiplying powers of $\Delta t$ by the number of horizon steps.
 
 ## 9.3 Discrete-Time State-Space Model
 
@@ -84,18 +80,22 @@ $$\begin{aligned}
 \mathbf{B}_k &= \Delta t \cdot \mathbf{B}_{\text{cont}}
 \end{aligned}$$
 
-**Second-order B correction** (used in CC-MPC):
+**Optional second-order frozen-Jacobian approximation used by this project implementation**:
 $$\mathbf{B}_k = \Delta t \cdot \mathbf{B}_{\text{cont}} + \frac{\Delta t^2}{2} \cdot \mathbf{A}_{\text{cont}} \cdot \mathbf{B}_{\text{cont}}$$
 
 The second-order term captures **cascade coupling** — the effect of controls acting through the state during the timestep. See [[08_Linearization|Ch.8: Linearization]] for detailed derivation.
 
-## 9.5 Process Noise Scaling
+## 9.5 Process Noise Discretization
 
-In discrete time, the process noise covariance scales with $\Delta t$:
+If $\mathbf{W}$ denotes a continuous-time white-noise spectral density entering additively through $\mathbf{G}=\mathbf{I}$, a first-order approximation is:
 
 $$\mathbf{Q}_k = \mathbf{W} \cdot \Delta t$$
 
-This is because continuous-time white noise with power spectral density $\mathbf{W}$ produces variance $\mathbf{W}\Delta t$ when integrated over one step.
+In general:
+
+$$\boxed{\mathbf{Q}_d = \int_0^{\Delta t} e^{\mathbf{A}\tau}\mathbf{G}\mathbf{Q}_c\mathbf{G}^T e^{\mathbf{A}^T\tau}\,d\tau}$$
+
+If $\mathbf{W}$ is already a per-step discrete covariance, it must be added directly and must not be multiplied by $\Delta t$ again. The source papers denote discrete process covariance by $\mathbf{Q}^k$ or $\mathbf{W}^k$ without prescribing the project-specific scaling rule.
 
 ## 9.6 Implementation
 
@@ -123,23 +123,23 @@ Then:
 $$\boldsymbol{\Gamma}_{k+1} = \mathbf{F}_k \boldsymbol{\Gamma}_k \mathbf{F}_k^T + \mathbf{W}\Delta t$$
 
 > [!note] 
-> This uses first-order discretization for the Jacobian (consistent with EKF practice). Higher-order discretization of the Jacobian would be unusual and computationally expensive for minimal benefit given the short horizon.
+> This is a first-order approximation. When RK4 is already available, differentiating the RK4 discrete map or integrating the variational equations gives a more consistent transition Jacobian and should be used when covariance accuracy is important.
 
 ## 9.8 Timestep Selection
 
 The timestep $\Delta t$ is a critical design parameter:
 
-| $\Delta t$ (s) | Horizon Steps ($N$) for 1.8 s | Computation | Control Accuracy |
+| $\Delta t$ (s) | Horizon Steps ($N$) for a project-specific 1.8 s horizon | Computation | Control Resolution |
 |----------------|-------------------------------|-------------|------------------|
 | 0.10 | 18 | Fastest | Low (coarse control) |
 | **0.06** | **30** | **Balanced** | **Good** |
 | 0.03 | 60 | Slow | High (fine control) |
 | 0.01 | 180 | Too slow | Overkill |
 
-$\Delta t = 0.06$ s is chosen because:
+$\Delta t = 0.06$ s and $N=30$ are project implementation choices. The source papers use 0.05 s with a 1.0 s horizon (2019) and 0.06 s with a 1.5 s horizon (2020). The project setting may be retained if justified by measured solve time and closed-loop tests because:
 1. It matches the control loop frequency (~16.7 Hz)
 2. It provides sufficient resolution for obstacle avoidance
-3. The QP with $N = 30$ steps is solvable in real-time (~14 ms)
+3. Its measured solve time on the actual implementation and hardware can be checked against the 60 ms deadline; the papers' runtimes are not CLARABEL benchmarks
 
 ## 9.9 Interpolation for Control
 

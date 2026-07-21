@@ -81,26 +81,31 @@ where:
 | $\delta$ | Confidence | $1-2\delta$ | $\text{erf}^{-1}(1-2\delta)$ | $\approx$ |
 |----------|------------|-------------|-------------------------------|----------|
 | 0.50 | 50% | 0.00 | 0.000 | 0σ |
-| 0.16 | 84% | 0.68 | 0.714 | 1σ |
+| 0.16 | 84% | 0.68 | 0.703 | 0.99σ |
 | 0.05 | 95% | 0.90 | 1.163 | 1.64σ |
-| **0.03** | **97%** | **0.94** | **1.329** | **1.88σ** |
+| **0.03** | **97%** | **0.94** | **1.3299** | **1.88σ** |
 | 0.01 | 99% | 0.98 | 1.645 | 2.33σ |
-| 0.003 | 99.7% | 0.994 | 1.862 | 2.63σ |
+| 0.003 | 99.7% | 0.994 | 1.943 | 2.75σ |
+| 0.00135 | 99.865% | 0.9973 | 2.121 | 3.00σ |
 
 > [!important] 
-> $\delta = 0.03$ corresponds to approximately $1.88\sigma$, NOT $3\sigma$ (which would be $\delta \approx 0.003$). Using $\delta = 0.03$ means we accept a 3% collision probability per step, trusting that re-planning at each step handles accumulated risk.
+> For a one-dimensional one-sided projection, $\delta=0.03$ corresponds to $1.88\sigma$, and a one-sided $3\sigma$ tail corresponds to $\delta\approx0.00135$. A three-dimensional Mahalanobis ellipsoid of radius 3 contains about 97.1% probability, however, so the papers' phrase “3σ confidence ellipsoid” is not the same as a one-dimensional $3\sigma$ half-space quantile.
 
 ## 13.4 Why Not 3σ?
 
-Using 3σ bounding volumes (as in some alternative approaches) corresponds to $\delta = 0.003$ per independent dimension. This is:
+The meaning of “3σ” depends on dimension and geometry. For a 3D Gaussian, a Mahalanobis-radius-3 ellipsoid has coverage $P(\chi_3^2\leq9)\approx0.9707$. Bounding-volume approaches use that geometric confidence region and can be more conservative than a locally oriented half-space bound.
+
+The bounding-volume approach is:
 - **Overly conservative**: In cluttered environments, the inflated volumes make the problem infeasible
 - **Computationally cheaper**: No erf computation needed — just check geometric intersection
-- **Tighter bound**: The CC approach directly computes collision probability, avoiding the conservatism of bounding volumes
+- **Compared with a tighter local bound**: The CC approach evaluates the Gaussian probability of a containing half-space, yielding an upper bound rather than the exact ellipsoidal collision probability
 
-The experimental results (Zhu & Alonso-Mora, Table II) show:
+The experimental results (Zhu & Alonso-Mora, Table II; 50 trials per method and noise level) show:
 - Deterministic MPC: 64% success rate at moderate noise
-- Bounding volume (3σ): 100% safety but longer trajectories
-- CC-MPC (δ = 0.03): 100% safety with shorter trajectories (more efficient)
+- Bounding volume (3σ): 100% reported success rate at moderate noise, with longer trajectories
+- CC-MPC ($\delta = 0.03$): 100% reported success rate at moderate noise, with shorter trajectories
+
+These finite-trial success rates are empirical results, not proofs of zero collision risk.
 
 ## 13.5 The Inverse Error Function
 
@@ -127,7 +132,7 @@ def erfinv(y, tol=1e-12):
 
 ```python
 import scipy.special as sp
-sp.erfinv(0.94) # → 1.3293 (for δ = 0.03)
+sp.erfinv(0.94) # → 1.32992 (for δ = 0.03)
 sp.erfinv(0.90) # → 1.1631 (for δ = 0.05)
 ```
 
@@ -137,7 +142,7 @@ In the obstacle avoidance context, the chance constraint takes the specific form
 
 $$\mathbb{P}\left(\|\mathbf{p}_i - \mathbf{p}_o\|_{\boldsymbol{\Omega}} \leq 1\right) \leq \delta$$
 
-where $\|\mathbf{p}\|_{\boldsymbol{\Omega}} = \mathbf{p}^T\boldsymbol{\Omega}\mathbf{p}$ is the weighted norm defining the ellipsoid.
+where the papers use $\|\mathbf{p}\|_{\boldsymbol{\Omega}} := \mathbf{p}^T\boldsymbol{\Omega}\mathbf{p}$ for a weighted squared norm. Under the conventional norm definition one would write $\sqrt{\mathbf{p}^T\boldsymbol{\Omega}\mathbf{p}}$; both give the same boundary when compared with 1.
 
 This is **not** linear in $\mathbf{p}_i - \mathbf{p}_o$ (it's quadratic), so Lemma 2 cannot be directly applied. We must first **linearize** the collision condition.
 
@@ -145,15 +150,15 @@ This is **not** linear in $\mathbf{p}_i - \mathbf{p}_o$ (it's quadratic), so Lem
 
 ### Step 1: Affine Transformation to Unit Sphere
 
-Apply the coordinate transformation $\tilde{\mathbf{p}} = \boldsymbol{\Omega}^{1/2}\mathbf{p}$:
+Choose $\mathbf{U}$ such that $\mathbf{U}^T\mathbf{U}=\boldsymbol{\Omega}$ and apply $\tilde{\mathbf{p}}=\mathbf{U}\mathbf{p}$. If $\mathbf{L}=\operatorname{chol}(\boldsymbol{\Omega})$ is lower triangular with $\mathbf{L}\mathbf{L}^T=\boldsymbol{\Omega}$, then $\mathbf{U}=\mathbf{L}^T$:
 
 $$\|\mathbf{p}_i - \mathbf{p}_o\|_{\boldsymbol{\Omega}} \leq 1 \iff \|\tilde{\mathbf{p}}_i - \tilde{\mathbf{p}}_o\| \leq 1$$
 
 Under this transformation, the Gaussian distributions become:
 
 $$\begin{aligned}
-\tilde{\mathbf{p}}_i &\sim \mathcal{N}(\boldsymbol{\Omega}^{1/2}\hat{\mathbf{p}}_i,\; \boldsymbol{\Omega}^{1/2}\boldsymbol{\Sigma}_i\boldsymbol{\Omega}^{1/2\;T}) \\
-\tilde{\mathbf{p}}_o &\sim \mathcal{N}(\boldsymbol{\Omega}^{1/2}\hat{\mathbf{p}}_o,\; \boldsymbol{\Omega}^{1/2}\boldsymbol{\Sigma}_o\boldsymbol{\Omega}^{1/2\;T})
+\tilde{\mathbf{p}}_i &\sim \mathcal{N}(\mathbf{U}\hat{\mathbf{p}}_i,\; \mathbf{U}\boldsymbol{\Sigma}_i\mathbf{U}^T) \\
+\tilde{\mathbf{p}}_o &\sim \mathcal{N}(\mathbf{U}\hat{\mathbf{p}}_o,\; \mathbf{U}\boldsymbol{\Sigma}_o\mathbf{U}^T)
 \end{aligned}$$
 
 ### Step 2: Linearize Unit Sphere to Half-Space
@@ -180,11 +185,15 @@ $$\mathbf{n}^T(\hat{\tilde{\mathbf{p}}}_i - \hat{\tilde{\mathbf{p}}}_o) - 1 \geq
 
 ### Step 4: Transform Back to Original Space
 
-Substituting $\tilde{\mathbf{p}} = \boldsymbol{\Omega}^{1/2}\mathbf{p}$ and $\tilde{\boldsymbol{\Sigma}} = \boldsymbol{\Omega}^{1/2}\boldsymbol{\Sigma}\boldsymbol{\Omega}^{1/2\;T}$:
+Substituting $\tilde{\mathbf{p}}=\mathbf{U}\mathbf{p}$ and $\tilde{\boldsymbol{\Sigma}}=\mathbf{U}\boldsymbol{\Sigma}\mathbf{U}^T$:
 
-$$\boxed{\mathbf{n}_o^T\boldsymbol{\Omega}^{1/2}(\hat{\mathbf{p}}_i - \hat{\mathbf{p}}_o) - 1 \geq \text{erf}^{-1}(1-2\delta)\sqrt{2\mathbf{n}_o^T\boldsymbol{\Omega}^{1/2}(\boldsymbol{\Sigma}_i + \boldsymbol{\Sigma}_o)\boldsymbol{\Omega}^{1/2\;T}\mathbf{n}_o}}$$
+$$\boxed{\mathbf{n}^T\mathbf{U}(\hat{\mathbf{p}}_i - \hat{\mathbf{p}}_o) - 1 \geq z_{1-\delta}\sqrt{\mathbf{n}^T\mathbf{U}(\boldsymbol{\Sigma}_i + \boldsymbol{\Sigma}_o)\mathbf{U}^T\mathbf{n}}}$$
 
-where $\mathbf{n}_o = \frac{\hat{\mathbf{p}}_i - \hat{\mathbf{p}}_o}{\|\hat{\mathbf{p}}_i - \hat{\mathbf{p}}_o\|}$ is the unit normal in original space.
+where
+
+$$\boxed{\mathbf{n}=\frac{\mathbf{U}(\hat{\mathbf{p}}_i-\hat{\mathbf{p}}_o)}{\|\mathbf{U}(\hat{\mathbf{p}}_i-\hat{\mathbf{p}}_o)\|}},\qquad z_{1-\delta}=\sqrt{2}\,\operatorname{erf}^{-1}(1-2\delta).$$
+
+This is the tight transformed-space normal from the 2019 derivation. Equation (16) of the 2020 paper writes the normal using the untransformed mean direction; that alternative remains a containing-half-space construction for a unit vector but is generally less tight for anisotropic ellipsoids. Do not mix its normal definition with the 2019 derivation without labeling the variant.
 
 ## 13.8 Verification (Python)
 
@@ -222,14 +231,14 @@ c = erfinv(1 - 2*delta) * np.sqrt(2) * sigma_proj
 
 - **Too small (δ < 0.01)**: Overly conservative, may cause infeasibility
 - **Too large (δ > 0.1)**: Insufficient safety margin
-- **Recommended**: δ = 0.03 (97% confidence per step)
+- **Paper setting**: δ = 0.03 in both experimental studies. It is not a universal recommendation; the application should allocate and validate risk at the system level.
 
 ### Receding-Horizon Justification
 
-The chance constraint is applied per step, not over the whole trajectory. This is valid because:
+The chance constraint is applied per step, not over the whole trajectory. Fast replanning provides an engineering rationale, but it does not make the per-step constraint equal to a whole-trajectory risk guarantee:
 1. The MPC re-plans at every control cycle (~16 Hz)
 2. At each re-plan, the initial state is updated with new measurements
-3. The collision probability for the entire trajectory is bounded by $N\delta$ (conservative)
+3. For one constrained collision event at each of $N$ steps, the union bound gives at most $\min(1,N\delta)$; with multiple robots or obstacles, sum the allocated risks over all relevant events
 4. With discounted chance constraints (Eq. 17 in Zhu & Alonso-Mora), early steps are weighted more heavily
 
 ### Discounted Chance Constraints
@@ -238,13 +247,17 @@ $$\sum_{k=1}^{N} \gamma^k \mathbb{P}(\mathbf{x}_k \in \mathcal{C}_k) \leq \delta
 
 where $\gamma \in (0, 1)$ is a discount factor. Our per-step constraint $\mathbb{P}(\mathbf{x}_k \in \mathcal{C}_k) \leq \delta_o$ guarantees this when $\gamma < 0.5$ (Lemma 3 in Zhu & Alonso-Mora, 2019).
 
-## 13.10 Numerical Verification Results
+## 13.10 Required Numerical Verification
 
-All formulas verified with 13/13 tests passing (see `verify_formulas.py`):
+After implementing the corrected transformation, the verification suite should check:
 
-- **Lemma 1**: Analytical probability matches Monte Carlo (500k samples) within 0.005
-- **Lemma 2**: Deterministic constraint correctly bounds violation probability
-- **Full pipeline**: Detection → ellipsoid → chance constraint yields feasible solutions
+- **Lemma 1**: Analytical half-space probability matches Monte Carlo sampling.
+- **Lemma 2**: The deterministic inequality bounds the sampled half-space violation rate.
+- **Rotated ellipsoids**: Verify $\|\mathbf{U}\mathbf{d}\|^2=\mathbf{d}^T\boldsymbol{\Omega}\mathbf{d}$ for non-axis-aligned obstacles.
+- **Collision bound**: Monte Carlo estimates of true ellipsoid collision probability do not exceed the half-space bound within sampling tolerance.
+- **Regression**: Axis-aligned and rotated cases produce consistent results.
+
+Previous “13/13 tests passing” claims must be rerun after the Cholesky correction before being treated as validation evidence.
 
 ## 13.11 Prerequisites and Related Chapters
 

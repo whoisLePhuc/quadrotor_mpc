@@ -28,8 +28,8 @@ Describing the motion of a quadrotor requires multiple coordinate frames. The re
 
 - **Origin**: Fixed point in space (e.g., takeoff location)
 - **Axes**: 
- - $X_W$: Horizontal (typically North or forward)
- - $Y_W$: Horizontal (typically East or left)
+ - $X_W$: First horizontal axis of the chosen local map frame
+ - $Y_W$: Second horizontal axis, chosen with $X_W$ and $Z_W$ to form a right-handed frame
  - $Z_W$: Vertical upward (opposite gravity)
 
 - **Used for**: Global position, goal specification, obstacle world positions
@@ -87,11 +87,11 @@ where $\mathbf{R}_W^B = \mathbf{R}_B^{W\;T}$.
 
 $$\mathbf{p}^W = \mathbf{R}_B^W(\mathbf{R}_C^B \mathbf{p}^C + \mathbf{t}_C^B) + \mathbf{t}_B^W$$
 
-For simplicity, the camera is assumed to be at the body origin ($\mathbf{t}_C^B = \mathbf{0}$) with its forward axis aligned with $X_B$ and downward axis with $Z_B$ (standard for forward-facing depth cameras).
+If the camera uses $X_C$ forward, $Y_C$ right, $Z_C$ down while the body uses $X_B$ forward, $Y_B$ left, $Z_B$ up, the frames are not identical. For a co-located, forward-facing camera the idealized extrinsic rotation is $\mathbf{R}_C^B=\operatorname{diag}(1,-1,-1)$. A real implementation should use the calibrated camera-to-body extrinsics.
 
-### Yaw-Only Transformation
+### Yaw-Only Approximation
 
-For FOV constraints, only the yaw rotation is needed (camera is assumed to point in the horizontal plane):
+The source implementation constructs its FOV from the current pose. A yaw-only transform is a project-specific approximation that is valid only when roll/pitch, camera translation, and camera-to-body axis differences are deliberately neglected:
 
 $$\mathbf{p}^B = \mathbf{R}_Z(\psi)^T(\mathbf{p}^W - \mathbf{t}_B^W)$$
 
@@ -105,9 +105,9 @@ $$\boldsymbol{\Sigma}^W = \mathbf{R}_B^W \boldsymbol{\Sigma}^B \mathbf{R}_B^{W\;
 
 This is the **push-forward of covariance** under rotation. The MAV's own position uncertainty adds to the transformed obstacle uncertainty:
 
-$$\boldsymbol{\Sigma}_o^W = \mathbf{R}_B^{W\;T} \boldsymbol{\Sigma}_o^B \mathbf{R}_B^W + \boldsymbol{\Sigma}^W$$
+$$\boxed{\boldsymbol{\Sigma}_o^W = \mathbf{R}_B^W \boldsymbol{\Sigma}_o^B \mathbf{R}_B^{W\;T} + \boldsymbol{\Sigma}_{\text{MAV}}^W}$$
 
-Note the transpose convention: $\mathbf{R}_B^{W\;T}\boldsymbol{\Sigma}_o^B\mathbf{R}_B^W$ rotates the obstacle covariance from body to world. This matches the paper's Eq. (4).
+This follows from $\mathbf{p}_o^W=\mathbf{R}_B^W\mathbf{p}_o^B+\mathbf{p}_{\text{MAV}}^W$ and assumes the body-frame detection error is independent of the MAV position error. If correlations are retained, cross-covariance terms must also be included.
 
 ## 3.5 Practical Considerations
 
@@ -142,14 +142,14 @@ def body_to_world(p_body, position, roll, pitch, yaw):
  R = euler_to_rotation(roll, pitch, yaw) # ZYX rotation matrix
  return R @ p_body + position
 
-def world_to_body(p_world, position, yaw):
- """Transform point from world to body frame (using only yaw)."""
+def world_to_yaw_aligned_body(p_world, position, yaw):
+ """Yaw-only approximation; this is not a full world-to-body transform."""
  Rz = yaw_to_rotation(yaw) # Z-axis rotation
  return Rz.T @ (p_world - position)
 
 def transform_covariance(Sigma_body, R_body_to_world):
  """Transform covariance from body to world frame."""
- return R_body_to_world.T @ Sigma_body @ R_body_to_world
+ return R_body_to_world @ Sigma_body @ R_body_to_world.T
 ```
 
 ## 3.7 Prerequisites and Related Chapters

@@ -77,10 +77,10 @@ The detection in body (camera) frame is transformed to world frame:
 
 $$\begin{aligned}
 \mathbf{p}_o^W &= \mathbf{R}_B^W \mathbf{p}_o^B + \mathbf{p}^W \\
-\boldsymbol{\Sigma}_o^W &= \mathbf{R}_B^{W\;T} \boldsymbol{\Sigma}_o^B \mathbf{R}_B^W + \boldsymbol{\Sigma}^W
+\boldsymbol{\Sigma}_o^W &= \mathbf{R}_B^W \boldsymbol{\Sigma}_o^B \mathbf{R}_B^{W\;T} + \boldsymbol{\Sigma}_{\text{MAV}}^W
 \end{aligned}$$
 
-where $\mathbf{R}_B^W$ is the MAV's rotation matrix (from VIO) and $\boldsymbol{\Sigma}^W$ is the MAV position uncertainty.
+where $\mathbf{R}_B^W$ maps body-frame vectors to world coordinates. The covariance sum assumes independent detection and MAV-position errors; correlated errors require cross-covariance terms.
 
 For the size, a compensation matrix accounts for MAV pitch/roll:
 
@@ -154,7 +154,9 @@ $$\|\mathbf{p}_i - \mathbf{p}_o\|_{\boldsymbol{\Omega}_{io}} \leq 1$$
 
 where $\boldsymbol{\Omega}_{io}$ is the **collision matrix**:
 
-$$\boxed{\boldsymbol{\Omega}_{io} = \mathbf{R}_o^T \text{diag}\left(\frac{1}{(a_o+r_i)^2}, \frac{1}{(b_o+r_i)^2}, \frac{1}{(c_o+r_i)^2}\right)\mathbf{R}_o}$$
+$$\boxed{\boldsymbol{\Omega}_{io} = \mathbf{R}_{OW}^T \text{diag}\left(\frac{1}{(a_o+r_i)^2}, \frac{1}{(b_o+r_i)^2}, \frac{1}{(c_o+r_i)^2}\right)\mathbf{R}_{OW}}$$
+
+Here $\mathbf{R}_{OW}$ maps world vectors into the obstacle-aligned frame. If the implementation instead stores an obstacle-to-world rotation $\mathbf{R}_{WO}$, use $\boldsymbol{\Omega}_{io}=\mathbf{R}_{WO}\mathbf{D}\mathbf{R}_{WO}^T$.
 
 > [!note] 
 > The robot radius $r_i$ is incorporated by **enlarging** the obstacle ellipsoid. This is an approximation that avoids computing the true sphere-ellipsoid distance (which has no closed form).
@@ -171,15 +173,21 @@ With $\delta_o = 0.03$: "At most 3% chance of collision with this obstacle at th
 
 Following the linearization procedure ([[13_Chance_Constraints|Ch.13]]), the chance constraint becomes:
 
-$$\mathbf{n}_o^T\boldsymbol{\Omega}_{io}^{1/2}(\hat{\mathbf{p}}_i - \hat{\mathbf{p}}_o) - 1 \geq \text{erf}^{-1}(1-2\delta_o)\sqrt{2\mathbf{n}_o^T\boldsymbol{\Omega}_{io}^{1/2}(\boldsymbol{\Sigma}_i + \boldsymbol{\Sigma}_o)\boldsymbol{\Omega}_{io}^{1/2\;T}\mathbf{n}_o}$$
+Choose $\mathbf{U}_{io}$ such that $\mathbf{U}_{io}^T\mathbf{U}_{io}=\boldsymbol{\Omega}_{io}$ and define
 
-where $\mathbf{n}_o = \frac{\hat{\mathbf{p}}_i - \hat{\mathbf{p}}_o}{\|\hat{\mathbf{p}}_i - \hat{\mathbf{p}}_o\|}$.
+$$\mathbf{n}_{io}=\frac{\mathbf{U}_{io}(\hat{\mathbf{p}}_i-\hat{\mathbf{p}}_o)}{\|\mathbf{U}_{io}(\hat{\mathbf{p}}_i-\hat{\mathbf{p}}_o)\|}.$$
+
+The tight transformed-space version is:
+
+$$\boxed{\mathbf{n}_{io}^T\mathbf{U}_{io}(\hat{\mathbf{p}}_i - \hat{\mathbf{p}}_o) - 1 \geq z_{1-\delta_o}\sqrt{\mathbf{n}_{io}^T\mathbf{U}_{io}(\boldsymbol{\Sigma}_i + \boldsymbol{\Sigma}_o)\mathbf{U}_{io}^T\mathbf{n}_{io}}}$$
+
+with $z_{1-\delta_o}=\sqrt{2}\operatorname{erf}^{-1}(1-2\delta_o)$. For a lower Cholesky factor $\mathbf{L}\mathbf{L}^T=\boldsymbol{\Omega}$, use $\mathbf{U}=\mathbf{L}^T$.
 
 ### Interpretation
 
 The left-hand side (LHS) is the **transformed nominal distance**:
 
-$$\text{LHS} = \mathbf{n}_o^T\boldsymbol{\Omega}_{io}^{1/2}(\hat{\mathbf{p}}_i - \hat{\mathbf{p}}_o) - 1$$
+$$\text{LHS} = \mathbf{n}_{io}^T\mathbf{U}_{io}(\hat{\mathbf{p}}_i - \hat{\mathbf{p}}_o) - 1=\|\mathbf{U}_{io}(\hat{\mathbf{p}}_i-\hat{\mathbf{p}}_o)\|-1$$
 
 - LHS > 0: Nominal positions are collision-free
 - LHS = 0: On the boundary
@@ -187,7 +195,7 @@ $$\text{LHS} = \mathbf{n}_o^T\boldsymbol{\Omega}_{io}^{1/2}(\hat{\mathbf{p}}_i -
 
 The right-hand side (RHS) is the **uncertainty margin**:
 
-$$\text{RHS} = \text{erf}^{-1}(1-2\delta_o)\sqrt{2\mathbf{n}_o^T\boldsymbol{\Omega}_{io}^{1/2}(\boldsymbol{\Sigma}_i + \boldsymbol{\Sigma}_o)\boldsymbol{\Omega}_{io}^{1/2\;T}\mathbf{n}_o}$$
+$$\text{RHS} = z_{1-\delta_o}\sqrt{\mathbf{n}_{io}^T\mathbf{U}_{io}(\boldsymbol{\Sigma}_i + \boldsymbol{\Sigma}_o)\mathbf{U}_{io}^T\mathbf{n}_{io}}$$
 
 - Large $\boldsymbol{\Sigma}$: Large RHS → need more nominal clearance
 - Small $\delta_o$: Large $\text{erf}^{-1}(1-2\delta_o)$ → more conservative
@@ -209,7 +217,7 @@ From Zhu & Alonso-Mora (2019), Table I:
 - **Bounding volume**: Massively overestimates collision probability → infeasible
 - **Center point PDF**: Severely underestimates → unsafe
 - **Cube approximation**: Overestimates → infeasible
-- **CC-MPC**: Tight bound, computationally efficient → optimal
+- **CC-MPC bound**: A tighter upper bound in this example, with low reported evaluation time; “optimal” applies only to the solution of the chosen MPC problem, not to the probability approximation itself
 
 ## 15.7 Obstacle Sensing Uncertainty
 
@@ -221,20 +229,20 @@ In practice, an empirically determined detection covariance is used:
 
 $$\boldsymbol{\Sigma}_o^B = \text{diag}(\sigma_{x}^2, \sigma_{y}^2, \sigma_{z}^2)$$
 
-with $\sigma \approx 0.05$ m at typical ranges (2–3 m).
+The covariance should be calibrated from the actual depth sensor and detection pipeline; the paper uses empirically determined covariance and does not prescribe a universal 0.05 m standard deviation.
 
 When velocity estimation is noisy (large $\boldsymbol{\Sigma}_{o,v}$), the predicted covariance grows rapidly. In this case, $\boldsymbol{\Sigma}_{o,v}$ is bounded to prevent unrealistic covariance growth.
 
 ## 15.8 Field of View (FOV) Constraints
 
-For vision-based avoidance, the planned trajectory (reference path) must stay within the camera's FOV to maintain visual features for state estimation. The FOV constraint ensures:
+For vision-based avoidance, the FOV constraint keeps predicted MAV positions inside the currently sensed FOV and depth volume. It does not by itself require every obstacle to remain visible. Yaw alignment separately encourages the camera to face the motion direction.
 
-1. The trajectory initialized by the MPC remains visible to the camera (preventing VIO drift from lack of features)
-2. Camera faces direction of motion (via yaw cost)
+1. The planned local motion remains in observed space
+2. The camera tends to face the direction of motion through the yaw cost
 
-**Half-space representation** (in body frame):
+**Half-space representation** (in camera frame, $X_C$ forward, $Y_C$ right, $Z_C$ down):
 
-| Constraint | Body-frame inequality |
+| Constraint | Camera-frame inequality |
 |-----------|----------------------|
 | Left | $-\tan(\alpha_h/2) \cdot x - y \leq 0$ |
 | Right | $-\tan(\alpha_h/2) \cdot x + y \leq 0$ |
@@ -244,7 +252,9 @@ For vision-based avoidance, the planned trajectory (reference path) must stay wi
 
 where $\alpha_h, \alpha_v$ are the FOV angles (e.g., 87° × 58° for RealSense D435i).
 
-**Implementation simplification**: Only the worst-violated constraint is enforced at each step to keep the QP size manageable.
+Transform these planes to world coordinates with the calibrated camera-to-world rotation and camera position. A yaw-only body transform neglects the camera/body axis sign change and roll/pitch, so it must be treated as an explicit approximation.
+
+All five half-spaces must be satisfied because the FOV is their intersection. A worst-violated-only active-set method is valid only if it iterates and confirms every half-space before accepting the solution.
 
 ## 15.9 Experimental Validation
 

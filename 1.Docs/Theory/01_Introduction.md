@@ -21,7 +21,7 @@ Autonomous navigation of Micro Aerial Vehicles (MAVs) in cluttered, dynamic envi
 1. **Navigate to a goal**: Plan and execute trajectories from start to goal position
 2. **Avoid obstacles**: Detect and avoid both static and moving obstacles (other robots, humans)
 3. **Handle uncertainty**: Account for sensing noise, state estimation errors, and motion disturbances
-4. **Run in real-time**: Solve the planning problem online at control frequency (15–60 Hz)
+4. **Run in real-time**: Solve the planning problem online while sensing and state-estimation processes run at their own rates
 
 The core difficulty is that **uncertainty is inevitable** in real-world operation:
 - **State estimation uncertainty**: Visual-inertial odometry (VIO) accumulates drift; GPS has noise
@@ -35,7 +35,7 @@ A purely deterministic planner that ignores these uncertainties will fail when t
 > [!tip] Key insight 
 > Instead of requiring *guaranteed* collision avoidance (which is impossible with unbounded Gaussian noise), we require *probabilistic* safety:
 
-> The probability of collision with any obstacle at any planning step must be below a user-specified threshold $\delta$.
+> The probability of collision with each modeled obstacle at each prediction step is upper-bounded by a user-specified threshold $\delta$, under the Gaussian, independence, prediction, and linearization assumptions of the papers.
 
 This is formalized as a **chance constraint**:
 
@@ -52,7 +52,7 @@ Deterministic approaches typically use **bounding volumes** (e.g., 3-$\sigma$ co
 - Leads to **infeasible solutions** in cluttered environments
 - Is overly **conservative** — avoids safe configurations
 
-The chance-constrained approach provides a **tighter bound** by directly computing collision probability from the Gaussian distributions, rather than approximating with geometric volumes.
+The chance-constrained approach constructs a tractable **upper bound** on collision probability by enclosing the nonlinear collision region with a linear half-space. It does not evaluate the exact Gaussian probability integral over the ellipsoid.
 
 ### Comparison of Methods
 
@@ -71,29 +71,29 @@ The chance-constrained approach provides a **tighter bound** by directly computi
 The complete system (from Lin, Zhu & Alonso-Mora, 2020) consists of three components:
 
 ```
-┌──────────────┐    ┌──────────────┐    ┌─────────────────┐
-│ State Estim. │    │Obstacle Det. │    │   CC-MPC Core   │
-│  (VIO / UKF) │    │(Depth → Box  │    │  (QP Solver)    │
-│              │    │ → Ellipsoid) │    │                 │
-└──────┬───────┘    └──────┬───────┘    └────────┬────────┘
-       │                   │                     │
-       ▼                   ▼                     ▼
-   x̂₀, Γ₀            p̂ₒ, v̂ₒ, Σₒ              u* (command)
-       │                    │                     │
-       └────────────────────┼─────────────────────┘
-                            │
-                            ▼
-                   ┌────────────────┐
-                   │  Quadrotor     │
-                   │ (Sim / Real)   │
-                   └────────────────┘
+┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
+│ State Estimation │ │ Obstacle Sensing │ │ CC-MPC Planner │
+│ (UKF or VIO)     │ │ (Depth → U-depth │ │ (online NMPC)   │
+│                  │ │ → Box → Ellipsoid)│ │                 │
+└────────┬──────────┘ └────────┬──────────┘ └────────┬──────────┘
+ │ │ │
+ ▼ ▼ ▼
+ x̂₀, Γ₀ p̂ₒ, v̂ₒ, Σₒ u* (control command)
+ │ │ │
+ └────────────────────────┼────────────────────────┘
+ │
+ ▼
+ ┌──────────────────┐
+ │ Quadrotor │
+ │ (Parrot Bebop 2) │
+ └──────────────────┘
 ```
 
-**State Estimation**: Visual-inertial odometry (S-MSCKF) running at 15 Hz provides $\hat{\mathbf{x}}_0$ (mean) and $\boldsymbol{\Gamma}_0$ (covariance).
+**State Estimation**: The 2019 work uses a UKF with motion-capture-derived measurements, while the 2020 system uses S-MSCKF visual-inertial odometry at 15 Hz. In both cases the planner receives $\hat{\mathbf{x}}_0$ and $\boldsymbol{\Gamma}_0$.
 
 **Obstacle Sensing**: Depth images (60 Hz) → U-depth maps → box detection → ellipsoidal model with position $\hat{\mathbf{p}}_o$, velocity $\hat{\mathbf{v}}_o$, size $(a,b,c)$, and uncertainty $\boldsymbol{\Sigma}_o$.
 
-**CC-MPC Planner**: Solves a receding-horizon chance-constrained optimization at each control cycle.
+**CC-MPC Planner**: The source papers solve a chance-constrained nonlinear MPC problem. The QP/iMPC formulation described later in this document set is a separate implementation choice and must not be presented as the solver formulation used in the papers.
 
 ## 1.4 Key Mathematical Concepts Used
 
@@ -120,7 +120,7 @@ Throughout this knowledge base:
 - **Subscript** $\mathbf{x}_i$: belonging to robot/obstacle $i$
 - **Calligraphic** $\mathcal{C}$: sets/regions
 - $\|\mathbf{x}\|$: Euclidean norm
-- $\|\mathbf{x}\|_{\mathbf{Q}} = \mathbf{x}^T\mathbf{Q}\mathbf{x}$: weighted squared norm
+- $\|\mathbf{x}\|_{\mathbf{Q}} := \mathbf{x}^T\mathbf{Q}\mathbf{x}$: the papers' notation for a weighted squared norm (not the conventional square-root norm)
 - $\mathbb{P}[\cdot]$: probability of event
 - $p[\cdot]$: probability density function
 

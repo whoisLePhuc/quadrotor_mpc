@@ -37,13 +37,13 @@ $$\mathbf{R}_X(\phi) = \begin{bmatrix} 1 & 0 & 0 \\ 0 & \cos\phi & -\sin\phi \\ 
 
 $$\mathbf{R}_Y(\theta) = \begin{bmatrix} \cos\theta & 0 & \sin\theta \\ 0 & 1 & 0 \\ -\sin\theta & 0 & \cos\theta \end{bmatrix}$$
 
-**At $\theta = \pi/2$**: X-axis rotates to Z-axis (nose pointing up)
+**At $\theta = \pi/2$**: The positive X-axis rotates to the negative Z-axis. Under the FLU convention used here, positive pitch points the nose downward.
 
 ### Rotation about Z-axis (Yaw)
 
 $$\mathbf{R}_Z(\psi) = \begin{bmatrix} \cos\psi & -\sin\psi & 0 \\ \sin\psi & \cos\psi & 0 \\ 0 & 0 & 1 \end{bmatrix}$$
 
-**At $\psi = \pi/2$**: X-axis rotates to Y-axis (nose pointing east)
+**At $\psi = \pi/2$**: The positive X-axis rotates to the positive Y-axis. Whether that direction is called north, east, or another map direction depends on the chosen world-frame convention.
 
 ## 4.3 Composite Rotations (ZYX Euler)
 
@@ -91,7 +91,7 @@ $$\begin{bmatrix} \dot{v}_x \\ \dot{v}_y \end{bmatrix} = \mathbf{R}_Z(\psi) \beg
 
 ## 4.5 The FOV Rotation
 
-For FOV constraints, only yaw rotation matters (camera is assumed to look in the horizontal plane):
+The full FOV transform uses the calibrated camera-to-world rotation, including camera extrinsics and the current attitude. If roll/pitch, camera translation, and the camera/body axis change are intentionally neglected, the following yaw-only approximation may be used:
 
 $$\mathbf{p}^B = \mathbf{R}_Z(\psi)^T (\mathbf{p}^W - \mathbf{p}_{\text{cam}}^W)$$
 
@@ -99,15 +99,21 @@ $$\mathbf{n}^W = \mathbf{R}_Z(\psi) \mathbf{n}^B$$
 
 ## 4.6 The Obstacle Rotation $\mathbf{R}_o$
 
-Obstacles have an orientation (yaw angle) in the world frame:
+Let the active obstacle-to-world yaw rotation be:
 
-$$\mathbf{R}_o = \mathbf{R}_Z(\psi_o) = \begin{bmatrix} \cos\psi_o & -\sin\psi_o & 0 \\ \sin\psi_o & \cos\psi_o & 0 \\ 0 & 0 & 1 \end{bmatrix}$$
+$$\mathbf{R}_{WO} = \mathbf{R}_Z(\psi_o) = \begin{bmatrix} \cos\psi_o & -\sin\psi_o & 0 \\ \sin\psi_o & \cos\psi_o & 0 \\ 0 & 0 & 1 \end{bmatrix},\qquad \mathbf{R}_{OW}=\mathbf{R}_{WO}^T.$$
 
-This is used in the collision matrix $\boldsymbol{\Omega}_{io}$:
+The collision-matrix formula depends on the direction represented by the stored rotation.
 
-$$\boldsymbol{\Omega}_{io} = \mathbf{R}_o^T \text{diag}\left(\frac{1}{(a+r)^2}, \frac{1}{(b+r)^2}, \frac{1}{(c+r)^2}\right) \mathbf{R}_o$$
+If $\mathbf{R}_{OW}$ maps world-frame vectors into the obstacle-aligned frame, as in the notation used by the papers, then:
 
-The rotation transforms the diagonal axes matrix from obstacle-aligned coordinates to world coordinates.
+$$\boldsymbol{\Omega}_{io} = \mathbf{R}_{OW}^T \text{diag}\left(\frac{1}{(a+r)^2}, \frac{1}{(b+r)^2}, \frac{1}{(c+r)^2}\right) \mathbf{R}_{OW}$$
+
+If instead $\mathbf{R}_{WO}$ maps obstacle-frame vectors into the world frame, then the equivalent formula is:
+
+$$\boldsymbol{\Omega}_{io} = \mathbf{R}_{WO} \text{diag}\left(\frac{1}{(a+r)^2}, \frac{1}{(b+r)^2}, \frac{1}{(c+r)^2}\right) \mathbf{R}_{WO}^T$$
+
+An implementation must name the direction explicitly; a generic `yaw_to_rotation()` cannot be inserted into the paper's expression without confirming its convention.
 
 ## 4.7 Properties of Rotation Matrices
 

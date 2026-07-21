@@ -25,12 +25,13 @@ aliases:
 | $\mathbf{u}$ | Control input $[\phi_c, \theta_c, v_{zc}, \dot{\psi}_c]^T$ | $\mathbb{R}^4$ |
 | $\mathbf{f}(\cdot)$ | Nonlinear dynamics function | $\mathbb{R}^9 \times \mathbb{R}^4 \to \mathbb{R}^9$ |
 | $\boldsymbol{\omega}$ | Process noise vector | $\mathbb{R}^9$ |
-| $\mathbf{Q}$ | Process noise covariance | $\mathbb{R}^{9\times 9}$ |
-| $\mathbf{W}$ | Process noise covariance matrix | $\mathbb{R}^{9\times 9}$ |
+| $\mathbf{Q}_c$ | Continuous-time process-noise spectral density, when used | model-dependent |
+| $\mathbf{W}_d$ or $\mathbf{Q}_d$ | Discrete per-step process-noise covariance | $\mathbb{R}^{9\times 9}$ |
 | $\hat{\mathbf{x}}$ | State mean (estimate) | $\mathbb{R}^9$ |
 | $\boldsymbol{\Gamma}$ | Full state uncertainty covariance | $\mathbb{R}^{9\times 9}$ |
 | $\boldsymbol{\Sigma}$ | Position uncertainty covariance | $\mathbb{R}^{3\times 3}$ |
-| $\mathbf{F}$ | State transition Jacobian ($\partial\mathbf{f}/\partial\mathbf{x}$) | $\mathbb{R}^{9\times 9}$ |
+| $\mathbf{A}_c$ | Continuous dynamics Jacobian $\partial\mathbf{f}_c/\partial\mathbf{x}$ | $\mathbb{R}^{9\times 9}$ |
+| $\mathbf{F}_d$ | Discrete transition Jacobian $\partial\mathbf{f}_d/\partial\mathbf{x}$ | $\mathbb{R}^{9\times 9}$ |
 | $\mathbf{A}_k$ | Discrete-time state matrix | $\mathbb{R}^{9\times 9}$ |
 | $\mathbf{B}_k$ | Discrete-time control matrix | $\mathbb{R}^{9\times 4}$ |
 | $\mathbf{C}_k$ | Affine dynamics offset | $\mathbb{R}^9$ |
@@ -40,14 +41,16 @@ aliases:
 | $k$ | Time step index | $\mathbb{N}$ |
 | $i, j$ | Robot indices | $\mathbb{N}$ |
 | $o$ | Obstacle index | $\mathbb{N}$ |
-| $\delta$ | Collision probability threshold | $[0, 0.5]$ |
-| $\delta_r$ | Inter-robot collision threshold | $[0, 0.5]$ |
-| $\delta_o$ | Robot-obstacle collision threshold | $[0, 0.5]$ |
+| $\delta$ | Per-constraint violation threshold | $(0, 0.5)$ |
+| $\delta_r$ | Inter-robot per-step collision threshold | $(0, 0.5)$ |
+| $\delta_o$ | Robot-obstacle per-step collision threshold | $(0, 0.5)$ |
 | $r_i$ | Robot $i$ collision radius | m |
 | $a_o, b_o, c_o$ | Obstacle ellipsoid semi-principal axes | m |
 | $l_o, w_o, h_o$ | Obstacle box dimensions (length, width, height) | m |
-| $\mathbf{R}_o$ | Obstacle orientation (rotation matrix) | $\mathbb{R}^{3\times 3}$ |
+| $\mathbf{R}_{OW}$ | World-to-obstacle-aligned rotation used in the paper-form $\Omega=R_{OW}^TDR_{OW}$ | $\mathbb{R}^{3\times 3}$ |
 | $\boldsymbol{\Omega}_{io}$ | Collision matrix (sphere-ellipsoid) | $\mathbb{R}^{3\times 3}$ |
+| $\mathbf{U}_{io}$ | Unit-sphere transform satisfying $\mathbf{U}_{io}^T\mathbf{U}_{io}=\boldsymbol{\Omega}_{io}$ | $\mathbb{R}^{3\times 3}$ |
+| $\mathbf{L}$ | Lower Cholesky factor satisfying $\mathbf{L}\mathbf{L}^T=\boldsymbol{\Omega}$; therefore $\mathbf{U}=\mathbf{L}^T$ | $\mathbb{R}^{3\times 3}$ |
 | $\mathbf{n}$ | Unit normal vector | $\mathbb{R}^3$ |
 | $\mathbf{a}$ | Linearized constraint normal vector | $\mathbb{R}^3$ |
 | $b$ | Linearized constraint scalar | $\mathbb{R}$ |
@@ -125,7 +128,7 @@ aliases:
 
 | Frame | Description | Axes Convention |
 |-------|-------------|-----------------|
-| World ($W$) | Inertial reference frame | Z-up (NED-like) |
+| World ($W$) | Inertial reference frame | Z-up; not NED, whose Z axis points down |
 | Body ($B$) | Quadrotor body-fixed frame | X-forward, Y-left, Z-up |
 | Camera ($C$) | Stereo camera frame | X-forward (depth), Y-right, Z-down |
 

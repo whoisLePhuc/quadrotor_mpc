@@ -25,7 +25,7 @@ The key property that makes quadrotor control challenging is **under-actuation**
 
 ## 2.2 The Simplified Model (Bebop 2)
 
-The CC-MPC papers use a **first-order low-pass Euler approximation** of the Parrot Bebop 2 dynamics. This model captures the essential physics while being simple enough for real-time optimization.
+The CC-MPC papers use a **first-order closed-loop approximation** of the Parrot Bebop 2 dynamics. It models the response to high-level roll, pitch, vertical-velocity, and yaw-rate commands; it is not the open-loop rotor-force Newton–Euler model.
 
 ### State Vector
 
@@ -138,7 +138,7 @@ g(\tan\theta \sin\psi - \tan\phi \cos\psi) - k_D v_y \\
 
 The dynamics are **stochastic** due to unmodeled effects:
 
-$$\mathbf{x}_{k+1} = \mathbf{f}(\mathbf{x}_k, \mathbf{u}_k) + \boldsymbol{\omega}_k$$
+$$\mathbf{x}_{k+1} = \mathbf{f}_d(\mathbf{x}_k, \mathbf{u}_k) + \boldsymbol{\omega}_k$$
 
 where:
 
@@ -146,9 +146,9 @@ $$\boldsymbol{\omega}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{Q}_k)$$
 
 is zero-mean Gaussian process noise with diagonal covariance:
 
-$$\mathbf{Q}_k = \text{diag}\left([\sigma_p^2]_{1\times 3}, [\sigma_v^2]_{1\times 3}, [\sigma_a^2]_{1\times 3}\right)$$
+$$\mathbf{Q}_k = \text{diag}\left([\sigma_p^2]_{1\times 3}, [\sigma_v^2]_{1\times 3}, [\sigma_\eta^2]_{1\times 3}\right)$$
 
-Typical values: $\sigma_p = 0.01$ m, $\sigma_v = 0.1$ m/s, $\sigma_a = 0.02$ rad.
+Any numerical values for these standard deviations are implementation and estimator tuning parameters; the two papers do not provide a universal set that applies to every platform.
 
 ## 2.6 Intuitive Understanding
 
@@ -177,12 +177,14 @@ When the quadrotor yaws, its body-fixed axes rotate. The accelerations $g\tan\th
 
 $$\mathbf{a}_{\text{world}} = \mathbf{R}_Z(\psi) \begin{bmatrix} g\tan\theta \\ -g\tan\phi \end{bmatrix}$$
 
-At $\psi = 0$: Forward pitch → +x acceleration (moving north)
-At $\psi = 90°$: Forward pitch → +y acceleration (moving east)
+At $\psi = 0$: Forward pitch → acceleration along $+X_W$.
+At $\psi = 90°$: Forward pitch → acceleration along $+Y_W$.
+
+The labels “north/east” are deliberately omitted because a right-handed Z-up local frame may use different horizontal-axis semantics. The implementation must document its world-frame convention explicitly.
 
 ## 2.7 Model Limitations
 
-1. **Small angle approximation**: The model uses $\tan\phi \approx \phi$ for small angles. For aggressive maneuvers ($\phi > 30°$), this becomes inaccurate.
+1. **Moderate-attitude operation**: The nonlinear model retains $\tan\phi$ and $\tan\theta$; the small-angle approximation is used only when deriving the hover linearization. Nevertheless, the closed-loop model is intended for moderate roll and pitch, not aerobatic flight.
 
 2. **Neglected coupling**: In reality, yaw rotation couples with pitch/roll through gyroscopic effects (not modeled here).
 
@@ -192,12 +194,9 @@ At $\psi = 90°$: Forward pitch → +y acceleration (moving east)
 
 5. **First-order attitude**: This is a simplification of the Bebop's internal controller. Different quadrotors may have different attitude dynamics.
 
-## 2.8 Verification
+## 2.8 Validation Scope
 
-The model has been verified against real flight data. Key results:
-- Position tracking error: ~0.05 m (with external motion capture)
-- Velocity tracking: matches within 0.1 m/s
-- Attitude response: time constant $\tau_\phi \approx 0.2$ s confirmed
+The papers demonstrate that this model is adequate for their short-horizon Bebop 2 experiments, but they do not report a standalone system-identification validation for every parameter listed above. For reproduction work, $k_D$, gains, and time constants should be identified or validated against the target vehicle rather than treated as universal constants.
 
 ## 2.9 Prerequisites and Related Chapters
 

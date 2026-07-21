@@ -44,7 +44,7 @@ where:
 - $\boldsymbol{\omega} = [p, q, r]^T$: Body-frame angular velocity
 - $\boldsymbol{\tau}$: External torques
 
-For a quadrotor with "+" configuration:
+For one explicit "+"-configuration rotor numbering convention:
 
 $$\mathbf{J} = \begin{bmatrix} J_x & 0 & 0 \\ 0 & J_y & 0 \\ 0 & 0 & J_z \end{bmatrix}$$
 
@@ -92,12 +92,12 @@ This captures the **closed-loop response** of the Bebop 2's onboard attitude con
 
 ## 7.5 Rotor Speed Mixing
 
-For completeness, the mapping from commanded attitude to rotor speeds (for a "+" configuration):
+For completeness, the following mixer is consistent with the torque equations above. Rotor numbering and spin directions must still be adapted to the actual airframe:
 
 $$\begin{bmatrix} \omega_1^2 \\ \omega_2^2 \\ \omega_3^2 \\ \omega_4^2 \end{bmatrix} = \begin{bmatrix}
-1 & 0 & -1 & 1 \\
-1 & -1 & 0 & -1 \\
 1 & 0 & 1 & 1 \\
+1 & -1 & 0 & -1 \\
+1 & 0 & -1 & 1 \\
 1 & 1 & 0 & -1
 \end{bmatrix} \begin{bmatrix} T/(4c_T) \\ \tau_x/(2lc_T) \\ \tau_y/(2lc_T) \\ \tau_z/(4c_Q) \end{bmatrix}$$
 
@@ -105,18 +105,18 @@ The CC-MPC does not use this directly — the Bebop 2 handles mixing internally.
 
 ## 7.6 State Vector in Newton-Euler Form
 
-The full 12-state Newton-Euler model:
+The full quaternion Newton-Euler model has 13 scalar states:
 
 $$\mathbf{x}_{\text{NE}} = \begin{bmatrix} \mathbf{p} \\ \dot{\mathbf{p}} \\ \mathbf{q} \\ \boldsymbol{\omega} \end{bmatrix} = \begin{bmatrix} x \\ y \\ z \\ \dot{x} \\ \dot{y} \\ \dot{z} \\ w \\ x_q \\ y_q \\ z_q \\ p \\ q \\ r \end{bmatrix} \in \mathbb{R}^{13}$$
 
-The CC-MPC uses a reduced 9-state model with Euler angles instead of quaternion + angular velocity.
+The quaternion contributes four parameters subject to the unit-norm constraint, so the attitude itself still has three degrees of freedom. The CC-MPC uses a reduced 9-state model with Euler angles and omits body angular velocity states.
 
 ## 7.7 Why the Simplified Model?
 
 1. **Lower dimension**: 9 states vs. 13 — quadratic reduction in QP size
 2. **Simpler linearization**: Euler angle Jacobians are cleaner
 3. **Matched to Bebop 2 API**: The Bebop accepts $\phi_c, \theta_c, v_{zc}, \dot{\psi}_c$ directly
-4. **Adequate accuracy**: For the short prediction horizon (1.8 s), the first-order model captures the essential dynamics
+4. **Adequate accuracy in the reported experiments**: The source papers use horizons of 1.0 s (2019) and 1.5 s (2020); any 1.8 s horizon is a separate project configuration
 5. **Real-time requirement**: The simpler model = faster optimization
 
 ## 7.8 Prerequisites and Related Chapters

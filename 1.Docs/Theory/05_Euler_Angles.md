@@ -36,7 +36,7 @@ Rotation about the body's forward (X) axis. Positive = right side down.
 
 ### Pitch $\theta$
 
-Rotation about the body's lateral (Y) axis. Positive = nose up.
+Rotation about the body's lateral (left-pointing Y) axis. With the FLU body frame and the active $R_Y(\theta)$ matrix used in this document, positive $\theta$ tilts the nose downward and the thrust vector forward. This sign is consistent with $\dot v_x=g\tan\theta$ at zero yaw.
 
 - Range: $[-\pi/2, \pi/2]$ (for non-singular representation)
 - Typically $[-0.5, 0.5]$ rad in practice
@@ -45,7 +45,7 @@ Rotation about the body's lateral (Y) axis. Positive = nose up.
 
 ### Yaw $\psi$
 
-Rotation about the body's vertical (Z) axis. Positive = nose right.
+Rotation about the body's upward Z axis. By the right-hand rule, positive yaw rotates the forward X axis toward the positive Y axis. Since this document defines $Y_B$ as left, positive yaw is a left/CCW heading change when viewed from above.
 
 - Range: $[-\pi, \pi]$ (full circle)
 - Controls heading direction
@@ -81,7 +81,7 @@ $$\begin{aligned}
 \psi &= \arctan2(r_{21}, r_{11})
 \end{aligned}$$
 
-The $\arcsin$ form has a **gimbal lock singularity** at $\theta = \pm \pi/2$, where roll and yaw become indistinguishable. This is not an issue for quadrotors (they don't fly at 90° pitch).
+The $\arcsin$ form has a **gimbal lock singularity** at $\theta = \pm \pi/2$, where roll and yaw become indistinguishable. The moderate-attitude Bebop experiments remain far from this singularity, but it is relevant for aggressive or aerobatic flight.
 
 ## 5.5 Small-Angle Linearization
 

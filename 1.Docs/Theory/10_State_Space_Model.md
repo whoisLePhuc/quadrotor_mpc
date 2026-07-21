@@ -54,11 +54,11 @@ $$\mathbf{x} = \begin{bmatrix} \mathbf{p} \\ \mathbf{v} \\ \boldsymbol{\eta} \en
 
 $$\mathbf{u} = \begin{bmatrix} \phi_c \\ \theta_c \\ v_{zc} \\ \dot{\psi}_c \end{bmatrix}$$
 
-## 10.3 State Transition Function
+## 10.3 Continuous Dynamics Function
 
-The function $\mathbf{f}: \mathbb{R}^9 \times \mathbb{R}^4 \to \mathbb{R}^9$ consists of three blocks:
+The function $\mathbf{f}_c: \mathbb{R}^9 \times \mathbb{R}^4 \to \mathbb{R}^9$ returns the continuous derivative and consists of three blocks. The discrete transition $\mathbf{f}_d$ is obtained by numerical or exact integration.
 
-$$\mathbf{f}(\mathbf{x}, \mathbf{u}) = \begin{bmatrix} \mathbf{f}_p(\mathbf{x}) \\ \mathbf{f}_v(\mathbf{x}, \mathbf{u}) \\ \mathbf{f}_\eta(\mathbf{x}, \mathbf{u}) \end{bmatrix}$$
+$$\dot{\mathbf{x}}=\mathbf{f}_c(\mathbf{x}, \mathbf{u}) = \begin{bmatrix} \mathbf{f}_p(\mathbf{x}) \\ \mathbf{f}_v(\mathbf{x}, \mathbf{u}) \\ \mathbf{f}_\eta(\mathbf{x}, \mathbf{u}) \end{bmatrix}$$
 
 ### Position Block $\mathbf{f}_p$
 
@@ -84,13 +84,13 @@ $$\mathbf{f}_\eta(\mathbf{x}, \mathbf{u}) = \begin{bmatrix}
 
 For the CC-MPC formulation, we extend the deterministic model with **additive Gaussian process noise**:
 
-$$\boxed{\mathbf{x}_{k+1} = \mathbf{f}(\mathbf{x}_k, \mathbf{u}_k) + \boldsymbol{\omega}_k, \quad \boldsymbol{\omega}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{Q}_k)}$$
+$$\boxed{\mathbf{x}_{k+1} = \mathbf{f}_d(\mathbf{x}_k, \mathbf{u}_k) + \boldsymbol{\omega}_k, \quad \boldsymbol{\omega}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{Q}_k)}$$
 
 with initial state uncertainty:
 
 $$\mathbf{x}_0 \sim \mathcal{N}(\hat{\mathbf{x}}_0, \boldsymbol{\Gamma}_0)$$
 
-The process noise **does not affect the mean propagation** in the MPC (we use $\hat{\mathbf{x}}_{k+1} = \mathbf{f}(\hat{\mathbf{x}}_k, \mathbf{u}_k)$ for the nominal trajectory), but it **does affect the covariance propagation** (Eq. 19) and thus the chance constraint tightness.
+The zero-mean process noise is omitted from nominal mean propagation, so $\hat{\mathbf{x}}_{k+1}=\mathbf{f}_d(\hat{\mathbf{x}}_k,\mathbf{u}_k)$ is used as an approximation. It still affects covariance propagation and therefore the chance-constraint margin.
 
 ## 10.5 Linear Time-Varying (LTV) Approximation
 
@@ -104,23 +104,25 @@ This is a **Linear Time-Varying (LTV)** model because $\mathbf{A}_k, \mathbf{B}_
 
 At the hover equilibrium ($\mathbf{v} = 0, \phi = \theta = 0, \mathbf{u} = 0$):
 
-$$\mathbf{A}_{\text{hover}} = \begin{bmatrix}
+$$\mathbf{A}_{\text{hover}} \approx \begin{bmatrix}
 \mathbf{I}_3 & \mathbf{I}_3\Delta t & \mathbf{0} \\
-\mathbf{0} & (1-k_D\Delta t)\mathbf{I}_3 & \begin{bmatrix} 0 & g\Delta t & 0 \\ -g\Delta t & 0 & 0 \\ 0 & 0 & 0 \end{bmatrix} \\
+\mathbf{0} & \operatorname{diag}(1-k_D\Delta t,1-k_D\Delta t,1-\Delta t/\tau_{vz}) & \begin{bmatrix} 0 & g\Delta t & 0 \\ -g\Delta t & 0 & 0 \\ 0 & 0 & 0 \end{bmatrix} \\
 \mathbf{0} & \mathbf{0} & \text{diag}(1-\Delta t/\tau_\phi, 1-\Delta t/\tau_\theta, 1)
 \end{bmatrix}$$
 
-$$\mathbf{B}_{\text{hover}} = \begin{bmatrix}
-\mathbf{0} & \mathbf{0} & 0 & 0 \\
-\mathbf{0} & \mathbf{0} & 0 & 0 \\
-\mathbf{0} & \mathbf{0} & 0 & 0 \\
-\begin{matrix} \frac{g\Delta t^2 k_\phi}{2\tau_\phi} \\ 0 \\ 0 \end{matrix} & \begin{matrix} 0 \\ \frac{g\Delta t^2 k_\theta}{2\tau_\theta} \\ 0 \end{matrix} & \begin{matrix} 0 \\ 0 \\ \frac{k_{vz}\Delta t}{\tau_{vz}} \end{matrix} & \begin{matrix} 0 \\ 0 \\ 0 \end{matrix} \\
-\frac{k_\phi\Delta t}{\tau_\phi} & 0 & 0 & 0 \\
-0 & \frac{k_\theta\Delta t}{\tau_\theta} & 0 & 0 \\
-0 & 0 & 0 & \Delta t
-\end{bmatrix}$$
+For the optional second-order frozen-Jacobian input approximation, the important non-zero entries of $\mathbf{B}_{\text{hover}}$ are:
 
-(Note: $\mathbf{B}_{\text{hover}}$ uses the second-order correction; first-order would have zeros in row 3–4 columns 0–1.)
+$$\begin{aligned}
+B[v_x,\theta_c] &= \frac{g\Delta t^2}{2}\frac{k_\theta}{\tau_\theta}, &
+B[v_y,\phi_c] &= -\frac{g\Delta t^2}{2}\frac{k_\phi}{\tau_\phi},\\
+B[v_z,v_{zc}] &= \Delta t\frac{k_{vz}}{\tau_{vz}}, &
+B[z,v_{zc}] &= \frac{\Delta t^2}{2}\frac{k_{vz}}{\tau_{vz}},\\
+B[\phi,\phi_c] &= \Delta t\frac{k_\phi}{\tau_\phi}, &
+B[\theta,\theta_c] &= \Delta t\frac{k_\theta}{\tau_\theta},\\
+B[\psi,\dot\psi_c] &= \Delta t.
+\end{aligned}$$
+
+Thus pitch command affects $v_x$, while positive roll command affects $v_y$ with a negative sign under the FLU convention. Differentiating the actual RK4 map is preferable when an exact discrete Jacobian is needed.
 
 ## 10.6 Observability
 
@@ -130,26 +132,26 @@ For the CC-MPC, we use the full state estimate (not just position), because the 
 
 ## 10.7 Controllability
 
-The quadrotor is **controllable** — any state can be reached from any initial state with appropriate control inputs, despite the under-actuation (4 inputs for 6 DOF). This is because:
+The hover-linearized reduced model is controllable under non-zero gains and finite time constants. This should be checked from the rank of its discrete controllability matrix. The input chains are:
 
 1. Horizontal position is controlled **indirectly** through attitude ($\phi_c, \theta_c \to$ tilt $\to$ acceleration)
 2. Vertical position is controlled through $v_{zc}$
 3. Yaw is controlled directly through $\dot{\psi}_c$
 4. The attitude dynamics are stable (first-order response to commands)
 
-The controllable subspace has dimension 6 (position + velocity + yaw), matching the number of independent DOF we can control.
+For the nine-state reduced hover model, these chains can yield controllability rank 9. The physical system having four simultaneous input channels does not limit the multi-step controllability rank to four or six.
 
 ## 10.8 Measurement Model
 
-The simplest measurement model is:
+For analysis, a linearized measurement model may be written as:
 
 $$\mathbf{y}_k = \mathbf{H}\mathbf{x}_k + \boldsymbol{\nu}_k$$
 
-where $\mathbf{H} = [\mathbf{I}_{3\times 3}, \mathbf{0}_{3\times 6}]$ for position-only measurements, or $\mathbf{H} = \mathbf{I}_9$ for full-state measurement (motion capture).
+where $\mathbf{H} = [\mathbf{I}_{3\times 3}, \mathbf{0}_{3\times 6}]$ represents an idealized position-only sensor. Motion capture normally measures pose rather than all nine states directly; velocity and possibly angular quantities are produced by an estimator, so $\mathbf{H}=\mathbf{I}_9$ should be used only for a genuinely full-state synthetic measurement.
 
 In practice, VIO provides a full-state estimate:
 
-$$\hat{\mathbf{x}}_k \sim \mathcal{N}(\mathbf{x}_k^{\text{true}}, \boldsymbol{\Gamma}_k^{\text{VIO}})$$
+$$\mathbf{x}_k\mid\mathcal{Y}_{0:k} \approx \mathcal{N}(\hat{\mathbf{x}}_k, \boldsymbol{\Gamma}_k^{\text{VIO}})$$
 
 ## 10.9 Prerequisites and Related Chapters
 

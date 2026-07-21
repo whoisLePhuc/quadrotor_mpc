@@ -82,8 +82,8 @@ class CCMPC:
 
 1. **Problem built once**: The CVXPY `Problem` is constructed in `__init__` and reused — only parameter values change between solves
 2. **DPP compliance**: All constraints use `Parameter @ Variable` form (no Parameter×Parameter)
-3. **Warm-start via trajectory**: Previous solution is used as the guess (not CVXPY's warm_start)
-4. **Soft constraints**: Slack variables with high penalty (1000.0) prevent infeasibility
+3. **Two warm-start layers**: The shifted trajectory initializes the next linearization, while CVXPY/CLARABEL may independently reuse numerical solver state
+4. **Optional soft chance constraints**: Slack can relax collision inequalities but does not guarantee overall feasibility and removes the original hard probability guarantee whenever nonzero
 
 ## 18.4 Dynamics Implementation (`dynamics.py`)
 
@@ -94,14 +94,12 @@ The `continuous_dynamics(x, u)` function computes $\dot{\mathbf{x}} = \mathbf{f}
 ```python
 def continuous_dynamics(x, u, g=9.81, kD=0.5, ...):
  # Position derivatives
- dx = x[3:6] # vx, vy, vz
- 
- # Tilt factor: converts tan(θ), tan(φ) to body-frame accelerations
- F_theta, F_phi = _body_tilt_factor(phi, theta)
+ vx, vy, vz = x[3:6]
+ dx, dy, dz = vx, vy, vz
  
  # Velocity derivatives
- dvx = g * F_theta * cos(psi) - g * F_phi * sin(psi) - kD * vx
- dvy = g * F_theta * sin(psi) + g * F_phi * cos(psi) - kD * vy
+ dvx = g * (tan(theta)*cos(psi) + tan(phi)*sin(psi)) - kD * vx
+ dvy = g * (tan(theta)*sin(psi) - tan(phi)*cos(psi)) - kD * vy
  dvz = (k_vz * vz_c - vz) / tau_vz
  
  # Attitude derivatives (first-order lags)
@@ -112,15 +110,9 @@ def continuous_dynamics(x, u, g=9.81, kD=0.5, ...):
  return [dx, dy, dz, dvx, dvy, dvz, dphi, dtheta, dpsi]
 ```
 
-### The Tilt Factor
+### Dynamics Fidelity
 
-The function `_body_tilt_factor` normalizes the tilt:
-
-$$F_\theta = \frac{\tan\theta}{\cos\theta \cdot A}, \quad F_\phi = \frac{\tan\phi}{\cos\phi \cdot A}, \quad A = \sqrt{1 + \tan^2\theta + \tan^2\phi}$$
-
-At hover ($\phi = \theta = 0$): $F_\theta = \theta$, $F_\phi = \phi$ (small-angle approximation).
-
-For 45° pitch: $F_\theta \approx 0.707$ (the normalized horizontal component of thrust).
+The equations above reproduce the Appendix model of Zhu & Alonso-Mora (2019). A normalized thrust-vector “tilt factor” is a different physical model and must be implemented as a separately named model variant with its own Jacobians and validation. Under the adopted FLU convention, the roll contribution is $+g\tan\phi\sin\psi$ in $\dot v_x$ and $-g\tan\phi\cos\psi$ in $\dot v_y$.
 
 ### Discrete Integration (RK4)
 
@@ -162,12 +154,13 @@ class UncertaintyPropagator:
  for k in range(N):
  A_cont = dynamics.jacobian_state(x_guess[:, k], u_guess[:, k])
  F_k = np.eye(9) + dt * A_cont
- Gamma_k1 = F_k @ Gamma_list[-1] @ F_k.T + self.W * dt
+ W_d = self.discrete_process_covariance(A_cont, dt)
+ Gamma_k1 = F_k @ Gamma_list[-1] @ F_k.T + W_d
  Gamma_list.append(Gamma_k1)
  return Gamma_list
 ```
 
-Note: `self.W * dt` scales the process noise with step size, which is correct for discrete-time noise models.
+`W_d` must be an explicitly discrete covariance. If the configuration stores a continuous-time spectral density `W_c`, compute a discrete approximation such as `W_c * dt` only under the corresponding additive-white-noise assumptions; do not multiply an already discrete per-step covariance by `dt` again.
 
 ## 18.6 Obstacle Model (`obstacle.py`)
 
@@ -177,7 +170,7 @@ class EllipsoidalObstacle:
  self.p_hat = np.array(position)
  self.v_hat = np.array(velocity) if velocity else np.zeros(3)
  self.axes = box_to_ellipsoid_axes(size) # Eq (7)
- self.R_o = yaw_to_rotation(yaw)
+ self.R_OW = yaw_to_world_to_obstacle_rotation(yaw)
  self.Sigma = np.diag([pos_uncertainty**2] * 3)
  self.Sigma_v = np.diag([vel_uncertainty**2] * 3)
  
@@ -187,10 +180,12 @@ class EllipsoidalObstacle:
  
  def get_omega(self, mav_radius):
  inv_sq = 1.0 / (self.axes + mav_radius)**2
- return self.R_o.T @ np.diag(inv_sq) @ self.R_o
+ return self.R_OW.T @ np.diag(inv_sq) @ self.R_OW
  
- def get_omega_half(self, mav_radius):
- return np.linalg.cholesky(self.get_omega(mav_radius))
+ def get_collision_transform(self, mav_radius):
+     # L @ L.T = Omega; the required transform U satisfies U.T @ U = Omega
+     L = np.linalg.cholesky(self.get_omega(mav_radius))
+     return L.T
 ```
 
 ## 18.7 Math Utilities (`utils.py`)
@@ -206,14 +201,20 @@ def erfinv(y, tol=1e-12, max_iter=50):
 ### Chance Constraint RHS
 
 ```python
-def chance_constraint_rhs(L, Sigma_mav, Sigma_obs, n_o, delta):
+def chance_constraint_parameters(U, p_mav_guess, p_obs,
+                                 Sigma_mav, Sigma_obs, delta):
+ d = p_mav_guess - p_obs
+ d_tilde = U @ d
+ n_o = d_tilde / np.linalg.norm(d_tilde)
  Sigma_combined = Sigma_mav + Sigma_obs
- inner_cov = L @ Sigma_combined @ L.T # Correct: L lower triangular
+ inner_cov = U @ Sigma_combined @ U.T
  sigma_scaled = sqrt(2.0 * n_o @ inner_cov @ n_o)
- return erfinv(1.0 - 2.0 * delta) * sigma_scaled
+ margin = erfinv(1.0 - 2.0 * delta) * sigma_scaled
+ a_vec = U.T @ n_o
+ return a_vec, margin + a_vec @ p_obs
 ```
 
-**Bug fix noted**: The original code used `L.T @ Sigma @ L` which is equivalent to the correct `L @ Sigma @ L.T` only for diagonal $\boldsymbol{\Omega}$ (axis-aligned obstacles). For rotated obstacles, the correct form is `L @ Sigma @ L.T` where `L L^T = Omega`.
+**Cholesky convention**: For lower `L` with `L @ L.T = Omega`, the unit-sphere transform is `U = L.T`, so the transformed covariance is `U @ Sigma @ U.T = L.T @ Sigma @ L`. Using `L @ Sigma @ L.T` with the lower factor does not preserve $d^T\Omega d$ for a rotated obstacle.
 
 ## 18.8 CVXPY Problem Construction (`_problem.py`)
 
@@ -236,7 +237,7 @@ def build_qp_problem(mpc):
  # Chance constraints
  for k in range(N):
  for i_obs in range(max_obs):
- a_k_i = opt.Parameter(3) # n^T @ Omega^{1/2}
+ a_k_i = opt.Parameter(3) # U.T @ n
  rhs_k_i = opt.Parameter() # RHS + a^T @ p_obs
  slack_k_i = opt.Variable(nonneg=True)
  
@@ -293,14 +294,14 @@ controller:
 
 ## 18.10 Key Implementation Insights
 
-### 1. Second-order B-Matrix
-Without the $\frac{\Delta t^2}{2}\mathbf{A}_{\text{cont}}\mathbf{B}_{\text{cont}}$ term, the linearized model at hover predicts zero velocity change from attitude commands, causing the MPC to be overly aggressive then oscillate.
+### 1. Optional Second-order B-Matrix
+The $\frac{\Delta t^2}{2}\mathbf{A}_{\text{cont}}\mathbf{B}_{\text{cont}}$ term captures the leading within-step attitude-command coupling. It is a project approximation, not a formula from the papers; differentiating the RK4 discrete map is more internally consistent. Claims about oscillation must be supported by an ablation benchmark.
 
 ### 2. Affine Offset C_k
-The correct computation is $\mathbf{C}_k = \mathbf{x}_{k+1}^{\text{true}} - \mathbf{A}_k\bar{\mathbf{x}} - \mathbf{B}_k\bar{\mathbf{u}}$, NOT from Taylor residuals. The Taylor residual approach accumulates ~7 mm/step error over the horizon.
+Use $\mathbf{C}_k=\mathbf{f}_d(\bar{\mathbf{x}},\bar{\mathbf{u}})-\mathbf{A}_k\bar{\mathbf{x}}-\mathbf{B}_k\bar{\mathbf{u}}$ so the affine model matches the discrete rollout at the linearization point. Any numerical error-per-step claim must come from a reproducible test.
 
-### 3. Omega Cholesky Convention
-The matrix square root $\boldsymbol{\Omega}^{1/2}$ should satisfy $\boldsymbol{\Omega}^{1/2}\boldsymbol{\Omega}^{1/2\;T} = \boldsymbol{\Omega}$. Using the lower-triangular Cholesky factor `L` such that `L @ L.T = Omega` is correct. The contraction `L @ Sigma @ L.T` produces a symmetric matrix matching the paper's intent.
+### 3. Ellipsoid Transform Convention
+The transform in $\|\mathbf{U}d\|^2=d^T\boldsymbol{\Omega}d$ must satisfy $\mathbf{U}^T\mathbf{U}=\boldsymbol{\Omega}$. NumPy returns lower `L` with `L @ L.T = Omega`, hence `U = L.T`. Use `U @ Sigma @ U.T` and compute the normal from `U @ d`.
 
 ### 4. Warm-Start Alignment
 The first state of the shifted warm-start must be overwritten with the current measurement: `x_guess[:, 0] = initial_state`. This ensures the initial condition constraint is satisfied.
@@ -310,7 +311,7 @@ To avoid `Parameter @ Parameter` (forbidden in DPP), the chance constraint's RHS
 
 ## 18.11 Testing
 
-All components have unit tests (`tests/`) and the complete formula set has a verification script (`verify_formulas.py`) with 13/13 tests passing.
+The test suite must be rerun after the frame, sign, and Cholesky corrections. A historical “13/13 passing” result is insufficient because tests can encode the same incorrect convention as the implementation.
 
 Run tests:
 ```bash
@@ -318,6 +319,8 @@ cd 2.Code/quadrotor_ccmpc
 python -m pytest tests/ -v
 python ../verify_formulas.py
 ```
+
+Required regression cases include non-axis-aligned ellipsoids, $\|Ud\|^2=d^T\Omega d$, Monte Carlo collision-bound checks, roll/pitch sign tests, covariance frame transforms, and nonzero-slack reporting.
 
 ## 18.12 Prerequisites and Related Chapters
 
