@@ -1,0 +1,31 @@
+name: moving-obstacle
+start: [0.0, -0.5, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+goal: [5.0, 2.4, 1.8]
+goal_threshold: 0.35
+stop_speed: 0.45
+sim_timestep: 0.04
+max_time: 14.0
+seed: 23
+noise:
+  measurement_pos: 0.04
+  measurement_vel: 0.08
+  measurement_att: 0.018
+  process_vel: 0.035
+  process_att: 0.009
+model_mismatch:
+  drag_scale: 1.20
+  attitude_time_scale: 1.15
+  vertical_time_scale: 1.10
+obstacles:
+  - position: [2.4, 2.2, 1.5]
+    size: [0.70, 0.55, 1.10]
+    yaw: -0.30
+    velocity: [0.0, -0.32, 0.0]
+    pos_uncertainty: 0.08
+    vel_uncertainty: 0.16
+  - position: [3.8, 1.0, 1.6]
+    size: [0.55, 0.55, 0.95]
+    yaw: 0.20
+    velocity: [-0.10, 0.08, 0.0]
+    pos_uncertainty: 0.07
+    vel_uncertainty: 0.12

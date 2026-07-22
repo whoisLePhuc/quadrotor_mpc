@@ -1,0 +1,6 @@
+-r requirements.txt
+casadi>=3.6
+do-mpc>=4.6
+streamlit>=1.35
+graphviz>=0.20
+mujoco>=3.2

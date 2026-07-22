@@ -1,0 +1,19 @@
+name: point-to-point
+start: [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+goal: [2.5, 1.5, 1.8]
+goal_threshold: 0.25
+stop_speed: 0.35
+sim_timestep: 0.04
+max_time: 9.0
+seed: 7
+noise:
+  measurement_pos: 0.01
+  measurement_vel: 0.02
+  measurement_att: 0.005
+  process_vel: 0.01
+  process_att: 0.002
+model_mismatch:
+  drag_scale: 1.10
+  attitude_time_scale: 1.08
+  vertical_time_scale: 1.05
+obstacles: []

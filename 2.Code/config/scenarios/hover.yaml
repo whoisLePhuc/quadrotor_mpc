@@ -1,0 +1,15 @@
+name: hover
+start: [0.0, 0.0, 1.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+goal: [0.0, 0.0, 1.2]
+goal_threshold: 0.08
+stop_speed: 0.12
+sim_timestep: 0.04
+max_time: 3.0
+seed: 1
+noise:
+  measurement_pos: 0.002
+  measurement_vel: 0.004
+  measurement_att: 0.001
+  process_vel: 0.002
+  process_att: 0.0005
+obstacles: []

@@ -1,0 +1,8 @@
+numpy>=1.26,<3
+scipy>=1.11
+PyYAML>=6
+matplotlib>=3.8
+plotly>=5.20
+cvxpy>=1.5
+clarabel>=0.9
+osqp>=0.6

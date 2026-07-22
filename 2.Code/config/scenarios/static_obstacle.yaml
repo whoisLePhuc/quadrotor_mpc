@@ -1,0 +1,25 @@
+name: static-obstacle
+start: [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+goal: [4.5, 2.6, 1.8]
+goal_threshold: 0.30
+stop_speed: 0.40
+sim_timestep: 0.04
+max_time: 12.0
+seed: 11
+noise:
+  measurement_pos: 0.025
+  measurement_vel: 0.05
+  measurement_att: 0.012
+  process_vel: 0.025
+  process_att: 0.006
+model_mismatch:
+  drag_scale: 1.15
+  attitude_time_scale: 1.12
+  vertical_time_scale: 1.08
+obstacles:
+  - position: [2.15, 1.10, 1.45]
+    size: [0.75, 0.55, 1.10]
+    yaw: 0.45
+    velocity: [0.0, 0.0, 0.0]
+    pos_uncertainty: 0.06
+    vel_uncertainty: 0.02
