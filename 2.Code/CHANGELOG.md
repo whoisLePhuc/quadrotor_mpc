@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.1 — Persistent interactive session
+
+- Kept the native viewer and telemetry panel open after goal, collision stop or
+  configured duration; completion now enters a stable held state.
+- Added **Run again** (Enter) to reset plant, controller, clock, overlays,
+  recording episode and plots, then immediately resume the same scenario.
+- Preserved automatic termination for headless and batch workflows.
+
 ## 1.2.0 — Interactive native runtime
 
 - Added constant-velocity, three-axis sinusoidal and waypoint obstacle motion with

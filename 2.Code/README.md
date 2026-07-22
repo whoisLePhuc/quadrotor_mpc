@@ -65,6 +65,10 @@ MUJOCO_GL=glfw python run_mujoco_native.py \
   --config config/mujoco_native_dynamic.yaml
 ```
 
+The interactive session remains open after goal, collision stop, or configured
+duration. Use **Run again** in the panel (or `Enter` in the MuJoCo window) to
+restart the same scenario, and **Stop**/`Esc` or window close to exit.
+
 Replay a recorded run without solving the NMPC problem again:
 
 ```bash

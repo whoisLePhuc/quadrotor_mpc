@@ -122,6 +122,10 @@ class InteractiveConfigurationTests(unittest.TestCase):
         )
         self.assertEqual(queue.drain(), [])
 
+    def test_run_again_command_round_trip(self):
+        message = RuntimeCommand(CommandName.RUN_AGAIN, source="test").as_message()
+        self.assertEqual(RuntimeCommand.from_message(message).name, CommandName.RUN_AGAIN)
+
 
 class NativeRecordingTests(unittest.TestCase):
     def test_recording_round_trip_uses_numeric_arrays(self):
@@ -228,6 +232,71 @@ class InteractiveLoopTests(unittest.TestCase):
         self.assertEqual(runtime.reset_count, 1)
         self.assertEqual(len(runtime.steps), 1)
         self.assertTrue(runtime.steps[0].paused)
+        self.assertTrue(runtime.closed)
+
+    def test_goal_completion_holds_until_run_again_then_stop(self):
+        from run_coupled import run_coupled_simulation
+
+        class ScriptedRuntime:
+            def __init__(self):
+                self.poll_count = 0
+                self.steps = []
+                self.completions = []
+                self.reset_count = 0
+                self.closed = False
+
+            def open(self, _plant, _context):
+                return None
+
+            def is_running(self):
+                return True
+
+            def poll_commands(self):
+                self.poll_count += 1
+                return {
+                    2: [RuntimeCommand(CommandName.RUN_AGAIN, source="test")],
+                    4: [RuntimeCommand(CommandName.STOP, source="test")],
+                }.get(self.poll_count, [])
+
+            def on_step(self, step):
+                self.steps.append(step)
+                return True
+
+            def on_idle(self, _paused):
+                return None
+
+            def on_reset(self):
+                self.reset_count += 1
+
+            def on_completed(self, reason):
+                self.completions.append(reason)
+
+            def close(self):
+                self.closed = True
+
+        config = load_native_mujoco_config(CODE_ROOT / "config" / "mujoco_native.yaml")
+        start_goal = {axis: config.start[axis] for axis in ("x", "y", "z")}
+        runtime = ScriptedRuntime()
+        result = run_coupled_simulation(
+            x0_vals=config.start,
+            goal_pos=start_goal,
+            goal_euler={"roll": 0.0, "pitch": 0.0, "yaw": 0.0},
+            bounds=config.bounds,
+            obstacles=[],
+            margin=config.safety_margin,
+            sim_seconds=1.0,
+            mpc_dt=config.mpc_timestep_s,
+            n_horizon=4,
+            max_iter=20,
+            mj_dt=config.mujoco_timestep_s,
+            runtime=runtime,
+            stop_on_goal=True,
+            goal_tolerance=1.0,
+        )
+        self.assertEqual(result["termination_reason"], "user_stopped")
+        self.assertEqual(runtime.completions, ["goal_reached", "goal_reached"])
+        self.assertEqual(runtime.reset_count, 1)
+        self.assertEqual(len(runtime.steps), 2)
         self.assertTrue(runtime.closed)
 
     def test_replay_does_not_invoke_controller(self):

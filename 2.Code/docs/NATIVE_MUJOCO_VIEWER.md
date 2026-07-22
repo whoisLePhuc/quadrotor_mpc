@@ -91,9 +91,11 @@ python run_mujoco_native.py --no-panel
 python run_mujoco_native.py --no-record
 ```
 
-Closing the native window cleanly terminates the control loop. The result reports
-one of `completed`, `goal_reached`, `collision`, `viewer_closed` or
-`user_stopped`.
+Closing the native window cleanly terminates the control loop. In interactive
+mode, reaching the goal, a configured collision stop, or the scenario duration
+puts the simulation into a held `COMPLETED` state instead of closing either
+window. The process exits only after Stop/Esc or window close. Headless runs
+still terminate automatically for batch and Monte Carlo workflows.
 
 ## Interactive controls
 
@@ -105,6 +107,7 @@ are processed only by `run_coupled.py`; neither UI is allowed to advance physics
 | `Space` | Pause / Resume | Toggle the controller/plant loop |
 | `N` | Step | Execute exactly one MPC tick while paused |
 | `R` | Reset | Reset plant, controller history, clock and current telemetry |
+| `Enter` | Run again | Reset the complete episode and immediately resume |
 | `Esc` | Stop | End the run cleanly |
 | `S` | Snapshot | Write the latest telemetry sample into the run bundle |
 | `T` | Trail | Toggle the executed path |
@@ -115,6 +118,9 @@ are processed only by `run_coupled.py`; neither UI is allowed to advance physics
 The panel plots position, goal error, clearance, control input and measured NMPC
 solve time. Its history is bounded and updates at a lower rate than MuJoCo, so it
 does not retain an unbounded session or redraw at the 500 Hz physics rate.
+After `COMPLETED`, press **Run again** to repeat the same scenario without
+restarting Python. **Reset** preserves the current pause/run mode, while
+**Run again** always resumes.
 
 ## Configuration
 

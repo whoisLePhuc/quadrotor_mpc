@@ -78,6 +78,13 @@ class DesktopPanelProcess:
             except Full:
                 pass
 
+    def reset(self) -> None:
+        """Clear the child window's plots for a new episode."""
+        try:
+            self.telemetry_queue.put_nowait({"kind": "reset"})
+        except Full:
+            pass
+
     def close(self) -> None:
         if not self._process.is_alive():
             return
@@ -130,11 +137,14 @@ def _panel_main(
                 ("Pause / Resume", CommandName.TOGGLE_PAUSE),
                 ("Step", CommandName.STEP),
                 ("Reset", CommandName.RESET),
+                ("Run again", CommandName.RUN_AGAIN),
                 ("Snapshot", CommandName.SNAPSHOT),
                 ("Stop", CommandName.STOP),
             ):
                 button = QtWidgets.QPushButton(label)
                 button.clicked.connect(lambda _checked=False, n=name: self._send(n))
+                if name == CommandName.RUN_AGAIN:
+                    button.setStyleSheet("background:#267a4a;color:white;font-weight:bold")
                 if name == CommandName.STOP:
                     button.setStyleSheet("background:#8f2430;color:white;font-weight:bold")
                 controls.addWidget(button)
@@ -205,12 +215,18 @@ def _panel_main(
                 if message.get("kind") == "shutdown":
                     self.close()
                     return
+                if message.get("kind") == "reset":
+                    self._clear_history()
+                    self.status.setText("Episode reset — simulation running…")
+                    continue
                 latest = message
                 self._append(message)
             if latest is not None:
                 state = (
                     "COLLISION"
                     if latest["collided"]
+                    else "COMPLETED"
+                    if latest.get("completed")
                     else "PAUSED"
                     if latest.get("paused")
                     else "RUNNING"
@@ -218,6 +234,8 @@ def _panel_main(
                 color = (
                     "#f05a67"
                     if latest["collided"]
+                    else "#4ea1ff"
+                    if latest.get("completed")
                     else "#ffcf5a"
                     if latest.get("paused")
                     else "#62d68b"
@@ -227,8 +245,28 @@ def _panel_main(
                     f"t={latest['time_s']:.2f}s &nbsp; goal={latest['goal_distance_m']:.3f}m &nbsp; "
                     f"clearance={latest['min_clearance_m']:.3f}m &nbsp; "
                     f"solve={latest['solver_time_ms']:.1f}ms"
+                    + (
+                        f" &nbsp; reason={latest.get('completion_reason', 'completed')}"
+                        if latest.get("completed")
+                        else ""
+                    )
                 )
                 self._redraw()
+
+        def _clear_history(self) -> None:
+            for series in (
+                self.times,
+                self.px,
+                self.py,
+                self.pz,
+                self.goal_error,
+                self.clearance,
+                self.thrust,
+                self.tau_norm,
+                self.solve_ms,
+            ):
+                series.clear()
+            self._redraw()
 
         def _append(self, sample: dict[str, Any]) -> None:
             t = float(sample["time_s"])

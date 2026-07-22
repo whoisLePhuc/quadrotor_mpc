@@ -33,8 +33,8 @@ simulation:
   mujoco_timestep_s: 0.002
   horizon_steps: 20
   max_solver_iterations: 60
-  # Keep the interactive windows open for the complete scenario. Set true for
-  # batch runs that should terminate as soon as the goal tolerance is reached.
+  # In desktop mode, true enters a held COMPLETED state at the goal; it does not
+  # close the windows. In headless/batch mode, true terminates the run normally.
   stop_on_goal: false
   goal_tolerance_m: 0.25
   stop_on_collision: false

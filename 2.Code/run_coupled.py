@@ -75,6 +75,8 @@ class CoupledRuntime(Protocol):
 
     def on_reset(self) -> None: ...
 
+    def on_completed(self, reason: str) -> None: ...
+
     def close(self) -> None: ...
 
 
@@ -181,7 +183,9 @@ def run_coupled_simulation(
         step_once = False
         stop_requested = False
         reset_requested = False
-        while k < n_steps:
+        run_again_requested = False
+        holding_reason: str | None = None
+        while True:
             if runtime is not None and not runtime.is_running():
                 termination_reason = "viewer_closed"
                 break
@@ -200,6 +204,9 @@ def run_coupled_simulation(
                         step_once = True
                     elif name == CommandName.RESET or name == CommandName.RESET.value:
                         reset_requested = True
+                    elif name == CommandName.RUN_AGAIN or name == CommandName.RUN_AGAIN.value:
+                        reset_requested = True
+                        run_again_requested = True
 
             if stop_requested:
                 termination_reason = "user_stopped"
@@ -220,11 +227,35 @@ def run_coupled_simulation(
                 collided = False
                 t = 0.0
                 k = 0
+                holding_reason = None
+                termination_reason = "completed"
                 reset_requested = False
                 step_once = False
+                if run_again_requested:
+                    paused = False
+                run_again_requested = False
                 on_reset = getattr(runtime, "on_reset", None)
                 if on_reset is not None:
                     on_reset()
+                continue
+
+            if holding_reason is not None:
+                on_idle = getattr(runtime, "on_idle", None)
+                if on_idle is not None:
+                    on_idle(True)
+                time.sleep(0.01)
+                continue
+
+            if k >= n_steps:
+                if runtime is None:
+                    termination_reason = "completed"
+                    break
+                termination_reason = "duration_reached"
+                holding_reason = termination_reason
+                paused = True
+                on_completed = getattr(runtime, "on_completed", None)
+                if on_completed is not None:
+                    on_completed(holding_reason)
                 continue
 
             if paused and not step_once:
@@ -294,10 +325,23 @@ def run_coupled_simulation(
                 progress_cb(k / n_steps)
             if stop_on_collision and collided:
                 termination_reason = "collision"
-                break
+                if runtime is None:
+                    break
+                holding_reason = termination_reason
+                paused = True
+                on_completed = getattr(runtime, "on_completed", None)
+                if on_completed is not None:
+                    on_completed(holding_reason)
+                continue
             if stop_on_goal and goal_distance <= float(goal_tolerance):
                 termination_reason = "goal_reached"
-                break
+                if runtime is None:
+                    break
+                holding_reason = termination_reason
+                paused = True
+                on_completed = getattr(runtime, "on_completed", None)
+                if on_completed is not None:
+                    on_completed(holding_reason)
     finally:
         if runtime is not None:
             runtime.close()

@@ -12,6 +12,7 @@ class CommandName(str, Enum):
     TOGGLE_PAUSE = "toggle_pause"
     STEP = "step"
     RESET = "reset"
+    RUN_AGAIN = "run_again"
     STOP = "stop"
     SNAPSHOT = "snapshot"
     TOGGLE_TRAIL = "toggle_trail"

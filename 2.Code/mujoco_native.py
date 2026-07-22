@@ -345,6 +345,7 @@ class NativeMuJoCoViewer:
             256: CommandName.STOP,
             ord("N"): CommandName.STEP,
             ord("R"): CommandName.RESET,
+            257: CommandName.RUN_AGAIN,
             ord("S"): CommandName.SNAPSHOT,
             ord("T"): CommandName.TOGGLE_TRAIL,
             ord("P"): CommandName.TOGGLE_PREDICTION,
@@ -530,6 +531,7 @@ class InteractiveMuJoCoRuntime:
         self._last_sample: dict[str, Any] | None = None
         self._last_time_s = 0.0
         self._panel_was_alive = False
+        self._completion_reason: str | None = None
 
     def open(self, plant: "MuJoCoPlant", context: "CoupledRunContext") -> None:
         if self.panel is not None:
@@ -578,7 +580,17 @@ class InteractiveMuJoCoRuntime:
         if self._last_sample is not None and self.panel is not None and self.panel.is_alive():
             sample = dict(self._last_sample)
             sample["paused"] = bool(paused)
+            sample["completed"] = self._completion_reason is not None
+            sample["completion_reason"] = self._completion_reason
             self.panel.publish(sample)
+
+    def on_completed(self, reason: str) -> None:
+        """Expose completion without closing either interactive window."""
+        self._completion_reason = str(reason)
+        self.recorder.record_event(
+            "completed", self._last_time_s, payload={"reason": self._completion_reason}
+        )
+        self.on_idle(True)
 
     def on_reset(self) -> None:
         self.viewer.reset_visuals()
@@ -586,6 +598,9 @@ class InteractiveMuJoCoRuntime:
         self.recorder.reset_episode()
         self._last_sample = None
         self._last_time_s = 0.0
+        self._completion_reason = None
+        if self.panel is not None and self.panel.is_alive():
+            self.panel.reset()
 
     def close(self) -> None:
         self.viewer.close()
