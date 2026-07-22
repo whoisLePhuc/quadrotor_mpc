@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.0 — Interactive native runtime
+
+- Added constant-velocity, three-axis sinusoidal and waypoint obstacle motion with
+  one shared predictor used by NMPC, MuJoCo, viewer and replay.
+- Added native keyboard controls for pause, single-step, reset, stop and overlays.
+- Added a separate PySide6/pyqtgraph control panel with bounded real-time telemetry.
+- Added NMPC solve-time measurement, obstacle horizon overlays and safety status.
+- Added deterministic recording bundles, snapshots and solver-free native replay.
+- Added a dynamic-crossing scenario and regression tests for motion and recording.
+
 ## 1.1.0 — Native MuJoCo and sourced Crazyflie model
 
 - Added a native passive MuJoCo desktop entry point with follow/fixed camera,

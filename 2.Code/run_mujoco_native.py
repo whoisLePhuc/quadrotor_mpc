@@ -4,13 +4,19 @@
 from __future__ import annotations
 
 import argparse
+import importlib
+import warnings
 from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 
-from mujoco_native import NativeMuJoCoViewer, load_native_mujoco_config
-from run_coupled import run_coupled_simulation
+from mujoco_native import (
+    InteractiveMuJoCoRuntime,
+    NativeMuJoCoConfig,
+    load_native_mujoco_config,
+)
+from native_telemetry import load_native_recording
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -31,6 +37,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-prediction", action="store_true")
     parser.add_argument("--show-contacts", action="store_true")
     parser.add_argument(
+        "--no-panel",
+        action="store_true",
+        help="run only the MuJoCo window without the Qt control/plot panel",
+    )
+    parser.add_argument(
+        "--no-record",
+        action="store_true",
+        help="disable telemetry artifacts for this run",
+    )
+    parser.add_argument(
+        "--replay",
+        metavar="RUN_DIRECTORY",
+        help="replay a native recording without solving NMPC",
+    )
+    parser.add_argument(
         "--validate-config",
         action="store_true",
         help="validate YAML and exit without importing MuJoCo",
@@ -38,13 +59,30 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _resolve_input_path(value: str, base: Path) -> Path:
+    path = Path(value).expanduser()
+    if path.is_absolute():
+        return path
+    from_cwd = (Path.cwd() / path).resolve()
+    return from_cwd if from_cwd.exists() else (base / path).resolve()
+
+
 def main(argv: list[str] | None = None) -> int:
+    warnings.filterwarnings("ignore", message="The ONNX feature is not available.*")
+    warnings.filterwarnings("ignore", message="The opcua feature is not available.*")
+    warnings.filterwarnings("ignore", message="The approximateMPC feature requires PyTorch.*")
     args = build_parser().parse_args(argv)
     base = Path(__file__).resolve().parent
-    config_path = Path(args.config)
-    if not config_path.is_absolute():
-        config_path = base / config_path
-    config = load_native_mujoco_config(config_path)
+    recording = None
+    if args.replay:
+        replay_path = _resolve_input_path(args.replay, base)
+        recording = load_native_recording(replay_path)
+        config = NativeMuJoCoConfig.from_mapping(recording["scenario"])
+        config_label = replay_path / "scenario.yaml"
+    else:
+        config_path = _resolve_input_path(args.config, base)
+        config = load_native_mujoco_config(config_path)
+        config_label = config_path
 
     if args.duration is not None:
         if args.duration <= 0.0:
@@ -64,8 +102,9 @@ def main(argv: list[str] | None = None) -> int:
         viewer = replace(viewer, show_prediction=False)
     if args.show_contacts:
         viewer = replace(viewer, show_contacts=True)
+    config = replace(config, viewer=viewer)
 
-    print(f"configuration: {config_path}")
+    print(f"configuration: {config_label}")
     print(f"scenario:      {config.name}")
     print(
         f"timing:        MPC {config.mpc_timestep_s:.3f}s | "
@@ -75,24 +114,51 @@ def main(argv: list[str] | None = None) -> int:
         print("configuration is valid")
         return 0
 
-    runtime = NativeMuJoCoViewer(viewer)
-    result = run_coupled_simulation(
-        x0_vals=config.start,
-        goal_pos=config.goal_position,
-        goal_euler=config.goal_euler,
-        bounds=config.bounds,
-        obstacles=[dict(item) for item in config.obstacles],
-        margin=config.safety_margin,
-        sim_seconds=config.duration_s,
-        mpc_dt=config.mpc_timestep_s,
-        n_horizon=config.horizon_steps,
-        max_iter=config.max_solver_iterations,
-        mj_dt=config.mujoco_timestep_s,
-        runtime=runtime,
-        stop_on_goal=config.stop_on_goal,
-        goal_tolerance=config.goal_tolerance_m,
-        stop_on_collision=config.stop_on_collision,
+    panel_enabled = config.panel.enabled and not args.no_panel
+    if panel_enabled:
+        try:
+            importlib.import_module("PySide6.QtWidgets")
+            importlib.import_module("pyqtgraph")
+        except (ImportError, OSError) as exc:
+            raise SystemExit(
+                f"desktop panel could not start: {exc}. "
+                "Install with `python -m pip install -r requirements-ui.txt` "
+                "and ensure the Linux EGL/XCB runtime libraries are present, "
+                "or pass --no-panel."
+            ) from exc
+
+    runtime = InteractiveMuJoCoRuntime(
+        config,
+        base_dir=base,
+        enable_panel=panel_enabled,
+        enable_recording=not args.no_record and recording is None,
     )
+    if recording is not None:
+        from native_replay import replay_native_recording
+
+        print(f"replay:         {recording['directory']}")
+        result = replay_native_recording(config, recording, runtime)
+    else:
+        from run_coupled import run_coupled_simulation
+
+        result = run_coupled_simulation(
+            x0_vals=config.start,
+            goal_pos=config.goal_position,
+            goal_euler=config.goal_euler,
+            bounds=config.bounds,
+            obstacles=[dict(item) for item in config.obstacles],
+            margin=config.safety_margin,
+            sim_seconds=config.duration_s,
+            mpc_dt=config.mpc_timestep_s,
+            n_horizon=config.horizon_steps,
+            max_iter=config.max_solver_iterations,
+            mj_dt=config.mujoco_timestep_s,
+            runtime=runtime,
+            stop_on_goal=config.stop_on_goal,
+            goal_tolerance=config.goal_tolerance_m,
+            stop_on_collision=config.stop_on_collision,
+        )
+    recording_path = runtime.finalize(result) if recording is None else None
 
     if len(result["pos"]):
         final_position = result["pos"][-1]
@@ -114,6 +180,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"min clearance:  {min_clearance:.3f} m")
     print(f"collision:      {result['collided']}")
     print(f"termination:    {result['termination_reason']}")
+    if recording_path is not None:
+        print(f"recording:      {recording_path}")
     return 0
 
 

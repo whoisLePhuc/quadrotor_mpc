@@ -1,4 +1,4 @@
-name: nmpc-mujoco-native-static
+name: nmpc-mujoco-native-dynamic-crossing
 
 start:
   x: 0.0
@@ -9,19 +9,11 @@ start:
   yaw: 0.0
 
 goal:
-  position:
-    x: 3.0
-    y: 2.0
-    z: 2.5
-  euler:
-    roll: 0.0
-    pitch: 0.0
-    yaw: 0.7853981633974483
+  position: {x: 3.0, y: 2.0, z: 2.5}
+  euler: {roll: 0.0, pitch: 0.0, yaw: 0.7853981633974483}
 
 controller:
   bounds:
-    # Crazyflie 2 hover thrust is 0.26487 N. The Menagerie model caps total
-    # thrust at 0.35 N, leaving about 0.085 N upward deviation.
     thrust: 0.085
     torque_rp: 0.002
     torque_yaw: 0.0004
@@ -33,8 +25,6 @@ simulation:
   mujoco_timestep_s: 0.002
   horizon_steps: 20
   max_solver_iterations: 60
-  # Keep the interactive windows open for the complete scenario. Set true for
-  # batch runs that should terminate as soon as the goal tolerance is reached.
   stop_on_goal: false
   goal_tolerance_m: 0.25
   stop_on_collision: false
@@ -66,16 +56,25 @@ recording:
   max_buffer_samples: 5000
 
 obstacles:
-  - type: static
-    x: 1.5
-    y: 1.0
-    z: 2.0
-    radius: 0.50
+  - name: static_gate
+    type: static
+    position: [1.45, 1.05, 2.00]
+    radius: 0.40
 
-  # Dynamic obstacles can use sinusoidal, constant_velocity or waypoints motion.
-  # - type: dynamic
-  #   x: 2.0
-  #   z: 1.6
-  #   radius: 0.35
-  #   amp: 1.0
-  #   period: 5.0
+  - name: crossing_constant_velocity
+    type: dynamic
+    radius: 0.24
+    motion:
+      type: constant_velocity
+      initial_position: [1.85, -0.80, 1.80]
+      velocity: [0.0, 0.38, 0.0]
+
+  - name: vertical_sinusoid
+    type: dynamic
+    radius: 0.20
+    motion:
+      type: sinusoidal
+      center: [2.35, 1.55, 2.10]
+      amplitude: [0.0, 0.0, 0.45]
+      period_s: 4.5
+      phase_rad: 0.0

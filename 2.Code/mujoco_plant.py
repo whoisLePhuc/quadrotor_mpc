@@ -47,14 +47,14 @@ class MuJoCoPlant:
                     f'<body name="obstacle_{index}" mocap="true" pos="{x} {y} {z}">'
                     f'<geom name="obstacle_geom_{index}" type="sphere" size="{radius}" '
                     'rgba="0.85 0.18 0.12 0.65" contype="1" conaffinity="1"/>'
-                    '</body>'
+                    "</body>"
                 )
             else:
                 obstacle_xml.append(
                     f'<body name="obstacle_{index}" pos="{x} {y} {z}">'
                     f'<geom name="obstacle_geom_{index}" type="sphere" size="{radius}" '
                     'rgba="0.85 0.18 0.12 0.65" contype="1" conaffinity="1"/>'
-                    '</body>'
+                    "</body>"
                 )
 
         goal_x, goal_y, goal_z = (float(goal_pos[axis]) for axis in ("x", "y", "z"))
@@ -83,7 +83,7 @@ class MuJoCoPlant:
             <camera name="fixed_view" pos="8 -10 7" xyaxes="0.78 0.62 0 -0.30 0.38 0.87"/>
             <site name="goal_marker" type="sphere" pos="{goal_x} {goal_y} {goal_z}"
                   size="0.12" rgba="1.0 0.78 0.05 0.95"/>
-            {''.join(obstacle_xml)}
+            {"".join(obstacle_xml)}
           </worldbody>
         </mujoco>
         """
@@ -110,17 +110,43 @@ class MuJoCoPlant:
                 )
                 self.dynamic_mocap_ids[index] = int(self.model.body_mocapid[body_id])
 
-        quaternion = quat_from_euler(
-            x0_vals.get("roll", 0.0), x0_vals.get("pitch", 0.0), x0_vals.get("yaw", 0.0)
-        )
-        self.data.qpos[:3] = [x0_vals["x"], x0_vals["y"], x0_vals["z"]]
-        self.data.qpos[3:7] = quaternion
-        self.data.qvel[:] = 0.0
-        mujoco.mj_forward(self.model, self.data)
+        self.reset(x0_vals)
 
     def _update_dynamic_obstacles(self, time_s: float) -> None:
         for index, mocap_id in self.dynamic_mocap_ids.items():
             self.data.mocap_pos[mocap_id] = obstacle_pos_at(self.obstacles[index], time_s)
+
+    def reset(self, x0_vals) -> None:
+        """Reset the same model/data pair without reopening the native viewer."""
+        self.mujoco.mj_resetData(self.model, self.data)
+        quaternion = quat_from_euler(
+            x0_vals.get("roll", 0.0),
+            x0_vals.get("pitch", 0.0),
+            x0_vals.get("yaw", 0.0),
+        )
+        self.data.qpos[:3] = [x0_vals["x"], x0_vals["y"], x0_vals["z"]]
+        self.data.qpos[3:7] = quaternion
+        self.data.qvel[:] = 0.0
+        self._update_dynamic_obstacles(0.0)
+        self.mujoco.mj_forward(self.model, self.data)
+
+    def set_state_13(
+        self,
+        state_13: np.ndarray,
+        *,
+        obstacle_positions: np.ndarray | None = None,
+    ) -> None:
+        """Set a recorded state for deterministic viewer replay."""
+        state = np.asarray(state_13, dtype=float).reshape(13)
+        self.data.qpos[:3] = state[:3]
+        self.data.qvel[:3] = state[3:6]
+        self.data.qpos[3:7] = state[6:10]
+        self.data.qvel[3:6] = state[10:13]
+        if obstacle_positions is not None:
+            positions = np.asarray(obstacle_positions, dtype=float).reshape(-1, 3)
+            for index, mocap_id in self.dynamic_mocap_ids.items():
+                self.data.mocap_pos[mocap_id] = positions[index]
+        self.mujoco.mj_forward(self.model, self.data)
 
     def apply_control_and_step(self, control, n_substeps: int, time_s: float) -> None:
         """Apply ``[thrust_deviation, tau_x, tau_y, tau_z]`` and integrate."""
@@ -173,9 +199,7 @@ class MuJoCoPlant:
         for index in range(self.data.ncon):
             contact = self.data.contact[index]
             pair = {int(contact.geom1), int(contact.geom2)}
-            if pair.intersection(self.quad_geom_ids) and pair.intersection(
-                self.obstacle_geom_ids
-            ):
+            if pair.intersection(self.quad_geom_ids) and pair.intersection(self.obstacle_geom_ids):
                 return True
         return False
 

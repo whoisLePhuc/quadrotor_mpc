@@ -17,6 +17,16 @@ from typing import TYPE_CHECKING, Any, Mapping, Sequence
 import numpy as np
 import yaml
 
+from native_desktop_panel import DesktopPanelOptions, DesktopPanelProcess
+from native_telemetry import (
+    NativeRunRecorder,
+    RecordingOptions,
+    TelemetryBuffer,
+    step_to_sample,
+)
+from obstacle_motion import normalize_obstacle
+from runtime_control import CommandName, LocalCommandQueue, RuntimeCommand
+
 if TYPE_CHECKING:
     from mujoco_plant import MuJoCoPlant
     from run_coupled import CoupledRunContext, CoupledStep
@@ -54,6 +64,7 @@ class NativeViewerOptions:
     realtime_factor: float = 1.0
     show_trail: bool = True
     show_prediction: bool = True
+    show_obstacle_prediction: bool = True
     show_safety_envelopes: bool = True
     show_contacts: bool = False
     max_trail_points: int = 600
@@ -82,6 +93,7 @@ class NativeViewerOptions:
             ),
             show_trail=bool(raw.get("show_trail", True)),
             show_prediction=bool(raw.get("show_prediction", True)),
+            show_obstacle_prediction=bool(raw.get("show_obstacle_prediction", True)),
             show_safety_envelopes=bool(raw.get("show_safety_envelopes", True)),
             show_contacts=bool(raw.get("show_contacts", False)),
             max_trail_points=max_trail_points,
@@ -110,6 +122,8 @@ class NativeMuJoCoConfig:
     goal_tolerance_m: float
     stop_on_collision: bool
     viewer: NativeViewerOptions
+    panel: DesktopPanelOptions
+    recording: RecordingOptions
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> "NativeMuJoCoConfig":
@@ -121,32 +135,20 @@ class NativeMuJoCoConfig:
         bounds_raw = _mapping(controller_raw.get("bounds", {}), "controller.bounds")
         simulation_raw = _mapping(raw.get("simulation", {}), "simulation")
         viewer_raw = _mapping(raw.get("viewer", {}), "viewer")
+        panel_raw = _mapping(raw.get("panel", {}), "panel")
+        recording_raw = _mapping(raw.get("recording", {}), "recording")
 
         start = _xyz(start_raw, "start")
-        start.update(
-            {
-                axis: float(start_raw.get(axis, 0.0))
-                for axis in ("roll", "pitch", "yaw")
-            }
-        )
-        goal_euler = {
-            axis: float(euler_raw.get(axis, 0.0))
-            for axis in ("roll", "pitch", "yaw")
-        }
+        start.update({axis: float(start_raw.get(axis, 0.0)) for axis in ("roll", "pitch", "yaw")})
+        goal_euler = {axis: float(euler_raw.get(axis, 0.0)) for axis in ("roll", "pitch", "yaw")}
         try:
             bounds = {
                 "thrust": _positive(bounds_raw["thrust"], "controller.bounds.thrust"),
-                "torque_rp": _positive(
-                    bounds_raw["torque_rp"], "controller.bounds.torque_rp"
-                ),
-                "torque_yaw": _positive(
-                    bounds_raw["torque_yaw"], "controller.bounds.torque_yaw"
-                ),
+                "torque_rp": _positive(bounds_raw["torque_rp"], "controller.bounds.torque_rp"),
+                "torque_yaw": _positive(bounds_raw["torque_yaw"], "controller.bounds.torque_yaw"),
             }
         except KeyError as exc:
-            raise ValueError(
-                "controller.bounds requires thrust, torque_rp and torque_yaw"
-            ) from exc
+            raise ValueError("controller.bounds requires thrust, torque_rp and torque_yaw") from exc
 
         obstacles: list[dict[str, Any]] = []
         raw_obstacles = raw.get("obstacles", [])
@@ -154,27 +156,7 @@ class NativeMuJoCoConfig:
             raise ValueError("obstacles must be a list")
         for index, item in enumerate(raw_obstacles):
             obstacle = _mapping(item, f"obstacles[{index}]")
-            kind = str(obstacle.get("type", "static")).lower()
-            if kind not in {"static", "dynamic"}:
-                raise ValueError(
-                    f"obstacles[{index}].type must be 'static' or 'dynamic'"
-                )
-            parsed: dict[str, Any] = {
-                "type": kind,
-                "x": float(obstacle["x"]),
-                "z": float(obstacle["z"]),
-                "radius": _positive(obstacle["radius"], f"obstacles[{index}].radius"),
-            }
-            if kind == "static":
-                parsed["y"] = float(obstacle["y"])
-            else:
-                parsed["amp"] = _positive(
-                    obstacle["amp"], f"obstacles[{index}].amp", allow_zero=True
-                )
-                parsed["period"] = _positive(
-                    obstacle["period"], f"obstacles[{index}].period"
-                )
-            obstacles.append(parsed)
+            obstacles.append(normalize_obstacle(obstacle, index))
 
         horizon_steps = int(simulation_raw.get("horizon_steps", 20))
         max_solver_iterations = int(simulation_raw.get("max_solver_iterations", 60))
@@ -194,9 +176,7 @@ class NativeMuJoCoConfig:
                 allow_zero=True,
             ),
             duration_s=_positive(simulation_raw.get("duration_s", 10.0), "duration_s"),
-            mpc_timestep_s=_positive(
-                simulation_raw.get("mpc_timestep_s", 0.05), "mpc_timestep_s"
-            ),
+            mpc_timestep_s=_positive(simulation_raw.get("mpc_timestep_s", 0.05), "mpc_timestep_s"),
             mujoco_timestep_s=_positive(
                 simulation_raw.get("mujoco_timestep_s", 0.002), "mujoco_timestep_s"
             ),
@@ -208,7 +188,45 @@ class NativeMuJoCoConfig:
             ),
             stop_on_collision=bool(simulation_raw.get("stop_on_collision", False)),
             viewer=NativeViewerOptions.from_mapping(viewer_raw),
+            panel=DesktopPanelOptions.from_mapping(dict(panel_raw)),
+            recording=RecordingOptions.from_mapping(recording_raw),
         )
+
+    def to_mapping(self) -> dict[str, Any]:
+        """Return the effective configuration, including CLI-safe normalized obstacles."""
+        return {
+            "name": self.name,
+            "start": dict(self.start),
+            "goal": {
+                "position": dict(self.goal_position),
+                "euler": dict(self.goal_euler),
+            },
+            "controller": {
+                "bounds": dict(self.bounds),
+                "safety_margin": self.safety_margin,
+            },
+            "simulation": {
+                "duration_s": self.duration_s,
+                "mpc_timestep_s": self.mpc_timestep_s,
+                "mujoco_timestep_s": self.mujoco_timestep_s,
+                "horizon_steps": self.horizon_steps,
+                "max_solver_iterations": self.max_solver_iterations,
+                "stop_on_goal": self.stop_on_goal,
+                "goal_tolerance_m": self.goal_tolerance_m,
+                "stop_on_collision": self.stop_on_collision,
+            },
+            "viewer": {
+                field: getattr(self.viewer, field) for field in self.viewer.__dataclass_fields__
+            },
+            "panel": {
+                field: getattr(self.panel, field) for field in self.panel.__dataclass_fields__
+            },
+            "recording": {
+                field: getattr(self.recording, field)
+                for field in self.recording.__dataclass_fields__
+            },
+            "obstacles": [dict(obstacle) for obstacle in self.obstacles],
+        }
 
 
 def load_native_mujoco_config(path: str | Path) -> NativeMuJoCoConfig:
@@ -229,14 +247,25 @@ class NativeMuJoCoViewer:
     ``False`` when the desktop window has been closed.
     """
 
-    def __init__(self, options: NativeViewerOptions):
+    def __init__(
+        self,
+        options: NativeViewerOptions,
+        command_sink: Any | None = None,
+    ):
         self.options = options
+        self._command_sink = command_sink
         self._mujoco: Any | None = None
         self._session: Any | None = None
         self._viewer: Any | None = None
         self._wall_start = 0.0
+        self._idle_wall_time: float | None = None
         self._trail: deque[np.ndarray] = deque(maxlen=options.max_trail_points)
         self._context: CoupledRunContext | None = None
+        self._show_trail = options.show_trail
+        self._show_prediction = options.show_prediction
+        self._show_obstacle_prediction = options.show_obstacle_prediction
+        self._show_safety_envelopes = options.show_safety_envelopes
+        self._camera_mode = options.camera_mode
 
     def open(self, plant: "MuJoCoPlant", context: "CoupledRunContext") -> None:
         try:
@@ -250,13 +279,17 @@ class NativeMuJoCoViewer:
 
         self._mujoco = mujoco
         self._context = context
-        self._session = mujoco.viewer.launch_passive(plant.model, plant.data)
+        self._session = mujoco.viewer.launch_passive(
+            plant.model,
+            plant.data,
+            key_callback=self._key_callback,
+        )
         self._viewer = self._session.__enter__()
         goal = np.asarray(context.goal_position, dtype=float)
         start = np.asarray(context.start_position, dtype=float)
         with self._viewer.lock():
             self._viewer.cam.lookat[:] = (
-                start if self.options.camera_mode == "follow" else 0.5 * (start + goal)
+                start if self._camera_mode == "follow" else 0.5 * (start + goal)
             )
             self._viewer.cam.distance = self.options.distance
             self._viewer.cam.azimuth = self.options.azimuth
@@ -275,12 +308,61 @@ class NativeMuJoCoViewer:
         self._viewer = None
         self._session = None
 
+    def reset_visuals(self) -> None:
+        self._trail.clear()
+
+    def on_idle(self) -> None:
+        if self.is_running() and self._viewer is not None:
+            now = time.perf_counter()
+            if self._idle_wall_time is not None:
+                self._wall_start += now - self._idle_wall_time
+            self._idle_wall_time = now
+            self._viewer.sync()
+
+    def handle_command(self, command: RuntimeCommand) -> None:
+        if command.name == CommandName.TOGGLE_TRAIL:
+            self._show_trail = not self._show_trail
+        elif command.name == CommandName.TOGGLE_PREDICTION:
+            self._show_prediction = not self._show_prediction
+        elif command.name == CommandName.TOGGLE_SAFETY:
+            self._show_safety_envelopes = not self._show_safety_envelopes
+        elif command.name == CommandName.TOGGLE_CAMERA:
+            self._camera_mode = "fixed" if self._camera_mode == "follow" else "follow"
+            if (
+                self._viewer is not None
+                and self._context is not None
+                and self._camera_mode == "fixed"
+            ):
+                self._viewer.cam.lookat[:] = 0.5 * (
+                    self._context.start_position + self._context.goal_position
+                )
+
+    def _key_callback(self, keycode: int) -> None:
+        if self._command_sink is None:
+            return
+        mapping = {
+            32: CommandName.TOGGLE_PAUSE,
+            256: CommandName.STOP,
+            ord("N"): CommandName.STEP,
+            ord("R"): CommandName.RESET,
+            ord("S"): CommandName.SNAPSHOT,
+            ord("T"): CommandName.TOGGLE_TRAIL,
+            ord("P"): CommandName.TOGGLE_PREDICTION,
+            ord("C"): CommandName.TOGGLE_SAFETY,
+            ord("F"): CommandName.TOGGLE_CAMERA,
+        }
+        name = mapping.get(int(keycode))
+        if name is not None:
+            self._command_sink(RuntimeCommand(name=name, source="keyboard"))
+
     def on_step(self, step: "CoupledStep") -> bool:
         if not self.is_running():
             return False
         assert self._viewer is not None
         assert self._mujoco is not None
         assert self._context is not None
+
+        self._idle_wall_time = None
 
         position = np.asarray(step.state_13[:3], dtype=float)
         self._trail.append(position.copy())
@@ -292,7 +374,7 @@ class NativeMuJoCoViewer:
                 0.12,
                 (1.0, 0.78, 0.05, 0.90),
             )
-            if self.options.show_safety_envelopes:
+            if self._show_safety_envelopes:
                 for obstacle_position, radius in zip(
                     step.obstacle_positions, self._context.safety_radii
                 ):
@@ -301,14 +383,22 @@ class NativeMuJoCoViewer:
                         float(radius),
                         (1.0, 0.45, 0.05, 0.12),
                     )
-            if self.options.show_trail:
+            if self._show_obstacle_prediction:
+                for prediction in np.asarray(step.obstacle_predictions, dtype=float):
+                    self._add_polyline(
+                        list(prediction),
+                        (1.00, 0.40, 0.15, 0.55),
+                        radius=0.009,
+                        segment_limit=40,
+                    )
+            if self._show_trail:
                 self._add_polyline(
                     list(self._trail),
                     (0.20, 0.55, 1.00, 0.72),
                     radius=0.018,
                     segment_limit=self.options.max_trail_segments,
                 )
-            if self.options.show_prediction and step.predicted_positions is not None:
+            if self._show_prediction and step.predicted_positions is not None:
                 self._add_polyline(
                     list(np.asarray(step.predicted_positions, dtype=float)),
                     (0.15, 1.00, 0.35, 0.72),
@@ -317,7 +407,7 @@ class NativeMuJoCoViewer:
                 )
             if step.collided:
                 self._add_sphere(position, 0.46, (1.0, 0.05, 0.05, 0.24))
-            if self.options.camera_mode == "follow":
+            if self._camera_mode == "follow":
                 self._viewer.cam.lookat[:] = position
 
         self._viewer.sync()
@@ -402,3 +492,105 @@ class NativeMuJoCoViewer:
                 start,
                 end,
             )
+
+
+class InteractiveMuJoCoRuntime:
+    """Compose native 3-D viewing, commands, telemetry, panel and recording."""
+
+    def __init__(
+        self,
+        config: NativeMuJoCoConfig,
+        *,
+        base_dir: str | Path,
+        enable_panel: bool = True,
+        enable_recording: bool = True,
+    ):
+        self.config = config
+        self._commands = LocalCommandQueue()
+        self.viewer = NativeMuJoCoViewer(config.viewer, self._commands.put)
+        self.panel = (
+            DesktopPanelProcess(config.panel, config.name)
+            if enable_panel and config.panel.enabled
+            else None
+        )
+        recording_options = config.recording
+        if not enable_recording:
+            recording_options = RecordingOptions(
+                enabled=False,
+                output_dir=recording_options.output_dir,
+                max_buffer_samples=recording_options.max_buffer_samples,
+            )
+        self.telemetry = TelemetryBuffer(recording_options.max_buffer_samples)
+        self.recorder = NativeRunRecorder(
+            recording_options,
+            config.name,
+            config.to_mapping(),
+            base_dir=base_dir,
+        )
+        self._last_sample: dict[str, Any] | None = None
+        self._last_time_s = 0.0
+        self._panel_was_alive = False
+
+    def open(self, plant: "MuJoCoPlant", context: "CoupledRunContext") -> None:
+        if self.panel is not None:
+            self.panel.start()
+            self._panel_was_alive = True
+        self.viewer.open(plant, context)
+
+    def is_running(self) -> bool:
+        return self.viewer.is_running()
+
+    def poll_commands(self) -> list[RuntimeCommand]:
+        commands = self._commands.drain()
+        if self.panel is not None:
+            commands.extend(self.panel.drain_commands())
+            if (
+                self._panel_was_alive
+                and not self.panel.is_alive()
+                and self.config.panel.stop_when_closed
+                and not any(command.name == CommandName.STOP for command in commands)
+            ):
+                commands.append(RuntimeCommand(CommandName.STOP, source="panel_closed"))
+        for command in commands:
+            self.viewer.handle_command(command)
+            self.recorder.record_event(
+                command.name.value,
+                self._last_time_s,
+                source=command.source,
+                payload=command.payload,
+            )
+            if command.name == CommandName.SNAPSHOT:
+                self.recorder.write_snapshot(self._last_sample)
+        return commands
+
+    def on_step(self, step: "CoupledStep") -> bool:
+        sample = step_to_sample(step)
+        self._last_sample = sample
+        self._last_time_s = float(step.time_s)
+        self.telemetry.append(sample)
+        self.recorder.record_step(step, sample)
+        if self.panel is not None and self.panel.is_alive():
+            self.panel.publish(sample)
+        return self.viewer.on_step(step)
+
+    def on_idle(self, paused: bool) -> None:
+        self.viewer.on_idle()
+        if self._last_sample is not None and self.panel is not None and self.panel.is_alive():
+            sample = dict(self._last_sample)
+            sample["paused"] = bool(paused)
+            self.panel.publish(sample)
+
+    def on_reset(self) -> None:
+        self.viewer.reset_visuals()
+        self.telemetry.clear()
+        self.recorder.reset_episode()
+        self._last_sample = None
+        self._last_time_s = 0.0
+
+    def close(self) -> None:
+        self.viewer.close()
+        if self.panel is not None:
+            self.panel.close()
+
+    def finalize(self, result: Mapping[str, Any]) -> Path | None:
+        return self.recorder.finalize(result)

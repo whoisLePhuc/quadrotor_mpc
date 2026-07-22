@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "quadrotor-mpc-sim"
-version = "1.1.0"
+version = "1.2.0"
 description = "Reproducible deterministic and chance-constrained MPC research workbench"
 requires-python = ">=3.10"
 dependencies = [
@@ -17,13 +17,16 @@ dependencies = [
 
 [project.optional-dependencies]
 qp = ["cvxpy>=1.5", "clarabel>=0.9", "osqp>=0.6"]
-ui = ["casadi>=3.6", "do-mpc>=4.6", "streamlit>=1.35", "graphviz>=0.20"]
+ui = [
+    "casadi>=3.6", "do-mpc>=4.6", "streamlit>=1.35", "graphviz>=0.20",
+    "PySide6>=6.7", "pyqtgraph>=0.13.7",
+]
 mujoco = ["mujoco>=3.2"]
 dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.10"]
 full = [
     "cvxpy>=1.5", "clarabel>=0.9", "osqp>=0.6",
     "casadi>=3.6", "do-mpc>=4.6", "streamlit>=1.35", "graphviz>=0.20",
-    "mujoco>=3.2", "pytest>=8",
+    "mujoco>=3.2", "PySide6>=6.7", "pyqtgraph>=0.13.7", "pytest>=8",
 ]
 
 [tool.setuptools.packages.find]

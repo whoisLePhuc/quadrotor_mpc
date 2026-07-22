@@ -58,6 +58,20 @@ Open the optional NMPC/MuJoCo track in a native Linux desktop window:
 MUJOCO_GL=glfw python run_mujoco_native.py
 ```
 
+Run the native dynamic-obstacle scenario with the control/telemetry panel:
+
+```bash
+MUJOCO_GL=glfw python run_mujoco_native.py \
+  --config config/mujoco_native_dynamic.yaml
+```
+
+Replay a recorded run without solving the NMPC problem again:
+
+```bash
+MUJOCO_GL=glfw python run_mujoco_native.py \
+  --replay outputs/native/<timestamp>_<scenario>
+```
+
 This native track uses the sourced Bitcraze Crazyflie 2 model from Google DeepMind
 MuJoCo Menagerie, not the model under `4.Reference`. See
 [`docs/NATIVE_MUJOCO_VIEWER.md`](docs/NATIVE_MUJOCO_VIEWER.md).
@@ -185,6 +199,9 @@ python -m unittest discover -s tests -v
 ├── config/            controller and scenario YAML
 ├── docs/              architecture and research protocol
 ├── models/            sourced MuJoCo MJCF and mesh assets
+├── obstacle_motion.py shared static/dynamic obstacle predictor
+├── native_telemetry.py bounded telemetry, recording and replay loading
+├── native_desktop_panel.py separate Qt control/plot process
 ├── tests/             unit and integration tests
 ├── run_experiment.py  tracked experiment CLI
 ├── run_sweep.py       parameter-sweep CLI
