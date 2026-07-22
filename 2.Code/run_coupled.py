@@ -7,18 +7,80 @@ actually integrates that control -- a genuinely different rigid-body integrator
 than the one the MPC uses internally to predict, so this is a real model-mismatch
 robustness test, plus we get real contact-based collision detection.
 """
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Protocol
+
 import numpy as np
 from quad_mpc_core import (
     build_model, build_controller, make_mpc_tvp_fun, quat_from_euler, quat_to_euler,
     DRONE_RADIUS, obstacle_pos_at,
 )
 from mujoco_plant import MuJoCoPlant
+from vehicle import DEFAULT_QUADROTOR
+
+
+@dataclass(frozen=True, slots=True)
+class CoupledRunContext:
+    """Immutable scene information shared with an optional runtime observer."""
+
+    start_position: np.ndarray
+    goal_position: np.ndarray
+    obstacles: tuple[dict, ...]
+    safety_radii: np.ndarray
+    controller_timestep_s: float
+    total_steps: int
+
+
+@dataclass(frozen=True, slots=True)
+class CoupledStep:
+    """One completed MuJoCo control step exposed to a viewer or logger."""
+
+    step_index: int
+    time_s: float
+    state_13: np.ndarray
+    control: np.ndarray
+    obstacle_positions: np.ndarray
+    predicted_positions: np.ndarray | None
+    min_clearance_m: float
+    goal_distance_m: float
+    collided: bool
+
+
+class CoupledRuntime(Protocol):
+    """Lifecycle contract for optional real-time viewers."""
+
+    def open(self, plant: MuJoCoPlant, context: CoupledRunContext) -> None: ...
+
+    def is_running(self) -> bool: ...
+
+    def on_step(self, step: CoupledStep) -> bool: ...
+
+    def close(self) -> None: ...
+
+
+def _predicted_positions(mpc) -> np.ndarray | None:
+    """Best-effort extraction of the most recent do-mpc position horizon."""
+    axes: list[np.ndarray] = []
+    try:
+        for name in ("x", "y", "z"):
+            values = np.asarray(mpc.data.prediction(("_x", name)), dtype=float)
+            axes.append(values.reshape(-1))
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return None
+    length = min((len(axis) for axis in axes), default=0)
+    if length < 2:
+        return None
+    return np.column_stack([axis[-length:] for axis in axes])
 
 
 def run_coupled_simulation(x0_vals, goal_pos, goal_euler, bounds, obstacles, margin,
                             sim_seconds=12.0, mpc_dt=0.05, n_horizon=20, max_iter=60,
                             mj_dt=0.002, progress_cb=None, capture_frames=False, render_every=1,
-                            cached=None):
+                            cached=None, runtime: CoupledRuntime | None = None,
+                            stop_on_goal=False, goal_tolerance=0.25,
+                            stop_on_collision=False):
     """
     `cached`: optional (model, mpc, dyn_idx, goal_state) tuple from
     quad_mpc_core.build_cached_mpc(...) to reuse an already-built/compiled MPC
@@ -56,39 +118,94 @@ def run_coupled_simulation(x0_vals, goal_pos, goal_euler, bounds, obstacles, mar
 
     ts, poss, eulers, us, clearances, frames = [], [], [], [], [], []
     collided = False
+    termination_reason = "completed"
     x_curr = x0
     t = 0.0
-    for k in range(n_steps):
-        u0 = mpc.make_step(x_curr)                      # MPC "brain" (its own model)
-        plant.apply_control_and_step(u0.flatten(), n_substeps, t)  # MuJoCo "true" plant
-        x_curr = plant.get_state_13()
+    goal_array = np.array([goal_pos["x"], goal_pos["y"], goal_pos["z"]], dtype=float)
+    context = CoupledRunContext(
+        start_position=np.asarray(x0[:3, 0], dtype=float).copy(),
+        goal_position=goal_array,
+        obstacles=tuple(dict(item) for item in obstacles),
+        safety_radii=np.asarray(
+            [item["radius"] + margin + DRONE_RADIUS for item in obstacles], dtype=float
+        ),
+        controller_timestep_s=float(mpc_dt),
+        total_steps=n_steps,
+    )
 
-        ts.append(t)
-        poss.append(x_curr[0:3, 0].copy())
-        eulers.append(quat_to_euler(x_curr[6:10, 0]))
-        us.append(u0.flatten().copy())
+    try:
+        if runtime is not None:
+            runtime.open(plant, context)
+        for k in range(n_steps):
+            if runtime is not None and not runtime.is_running():
+                termination_reason = "viewer_closed"
+                break
 
-        min_clear = np.inf
-        for obs in obstacles:
-            cx, cy, cz = obstacle_pos_at(obs, t)
-            d = np.sqrt((x_curr[0,0]-cx)**2 + (x_curr[1,0]-cy)**2 + (x_curr[2,0]-cz)**2) - obs['radius'] - DRONE_RADIUS
-            min_clear = min(min_clear, d)
-        clearances.append(min_clear)
-        if plant.check_collision():
-            collided = True
+            u0 = mpc.make_step(x_curr)                      # MPC "brain" (its own model)
+            plant.apply_control_and_step(u0.flatten(), n_substeps, t)  # MuJoCo "true" plant
+            x_curr = plant.get_state_13()
 
-        if renderer is not None and k % render_every == 0:
-            frames.append(plant.render_frame(renderer, camera='fixed_view'))
+            ts.append(t)
+            position = x_curr[0:3, 0].copy()
+            poss.append(position)
+            eulers.append(quat_to_euler(x_curr[6:10, 0]))
+            control = u0.flatten().copy()
+            us.append(control)
 
-        t += mpc_dt
-        if progress_cb is not None:
-            progress_cb((k+1)/n_steps)
+            obstacle_positions = np.asarray(
+                [obstacle_pos_at(obs, t) for obs in obstacles], dtype=float
+            ).reshape(-1, 3)
+            min_clear = np.inf
+            for obs, obstacle_position in zip(obstacles, obstacle_positions):
+                d = np.linalg.norm(position - obstacle_position) - obs["radius"] - DRONE_RADIUS
+                min_clear = min(min_clear, float(d))
+            clearances.append(min_clear)
+            collided = collided or plant.check_collision()
+            goal_distance = float(np.linalg.norm(position - goal_array))
+
+            if renderer is not None and k % render_every == 0:
+                frames.append(plant.render_frame(renderer, camera="fixed_view"))
+
+            step_time = t + mpc_dt
+            if runtime is not None:
+                keep_running = runtime.on_step(
+                    CoupledStep(
+                        step_index=k + 1,
+                        time_s=step_time,
+                        state_13=x_curr[:, 0].copy(),
+                        control=control,
+                        obstacle_positions=obstacle_positions,
+                        predicted_positions=_predicted_positions(mpc),
+                        min_clearance_m=float(min_clear),
+                        goal_distance_m=goal_distance,
+                        collided=collided,
+                    )
+                )
+                if not keep_running:
+                    termination_reason = "viewer_closed"
+                    break
+
+            t = step_time
+            if progress_cb is not None:
+                progress_cb((k + 1) / n_steps)
+            if stop_on_collision and collided:
+                termination_reason = "collision"
+                break
+            if stop_on_goal and goal_distance <= float(goal_tolerance):
+                termination_reason = "goal_reached"
+                break
+    finally:
+        if runtime is not None:
+            runtime.close()
+        if renderer is not None:
+            renderer.close()
 
     return {
         't': np.array(ts), 'pos': np.array(poss), 'euler': np.array(eulers),
         'u': np.array(us), 'clearance': np.array(clearances),
         'dt': mpc_dt, 'collided': collided,
         'frames': frames, 'render_error': render_err,
+        'termination_reason': termination_reason,
     }
 
 
@@ -99,7 +216,11 @@ if __name__ == '__main__':
         x0_vals={'x': 0, 'y': 0, 'z': 1, 'roll': 0, 'pitch': 0, 'yaw': 0},
         goal_pos={'x': 3, 'y': 2, 'z': 2.5},
         goal_euler={'roll': 0, 'pitch': 0, 'yaw': np.deg2rad(45)},
-        bounds={'thrust': 6.0, 'torque_rp': 0.03, 'torque_yaw': 0.02},
+        bounds={
+            'thrust': DEFAULT_QUADROTOR.max_upward_thrust_deviation_n,
+            'torque_rp': DEFAULT_QUADROTOR.max_roll_pitch_torque_nm,
+            'torque_yaw': DEFAULT_QUADROTOR.max_yaw_torque_nm,
+        },
         obstacles=[{'type': 'static', 'x': 1.5, 'y': 1.0, 'z': 2.0, 'radius': 0.5}],
         margin=0.3, sim_seconds=8.0,
     )

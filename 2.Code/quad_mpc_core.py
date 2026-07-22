@@ -23,14 +23,18 @@ import numpy as np
 from casadi import vertcat, sqrt as ca_sqrt
 import do_mpc
 
+from vehicle import DEFAULT_QUADROTOR
+
 # ---------------------------------------------------------------------------
 # physical constants (same values used throughout this project's iterations)
 # ---------------------------------------------------------------------------
 G = 9.81
-M = 1.0
-IXX, IYY, IZZ = 0.012, 0.012, 0.020
-D_LIN, D_ANG, D_YAW = 0.3, 0.02, 0.006
-DRONE_RADIUS = 0.35
+M = DEFAULT_QUADROTOR.mass_kg
+IXX, IYY, IZZ = DEFAULT_QUADROTOR.inertia_kg_m2
+D_LIN = DEFAULT_QUADROTOR.linear_damping_per_s
+D_ANG = DEFAULT_QUADROTOR.angular_damping_nms
+D_YAW = DEFAULT_QUADROTOR.yaw_damping_nms
+DRONE_RADIUS = DEFAULT_QUADROTOR.collision_radius_m
 
 STATE_NAMES = ['x','y','z','vx','vy','vz','qw','qx','qy','qz','wx','wy','wz']
 INPUT_NAMES = ['Tdev','taux','tauy','tauz']
@@ -198,15 +202,22 @@ def build_controller(model, obstacles, dyn_idx, bounds, margin, n_horizon, dt,
     mpc.set_objective(mterm=mterm, lterm=lterm)
     mpc.set_rterm(Tdev=r_ctrl[0], taux=r_ctrl[1], tauy=r_ctrl[2], tauz=r_ctrl[3])
 
-    thrust_lim = min(bounds['thrust'], M*G)
-    mpc.bounds['lower', '_u', 'Tdev'] = -thrust_lim
-    mpc.bounds['upper', '_u', 'Tdev'] = thrust_lim
-    mpc.bounds['lower', '_u', 'taux'] = -bounds['torque_rp']
-    mpc.bounds['upper', '_u', 'taux'] = bounds['torque_rp']
-    mpc.bounds['lower', '_u', 'tauy'] = -bounds['torque_rp']
-    mpc.bounds['upper', '_u', 'tauy'] = bounds['torque_rp']
-    mpc.bounds['lower', '_u', 'tauz'] = -bounds['torque_yaw']
-    mpc.bounds['upper', '_u', 'tauz'] = bounds['torque_yaw']
+    thrust_lim_down = min(bounds['thrust'], M*G)
+    thrust_lim_up = min(
+        bounds['thrust'], DEFAULT_QUADROTOR.max_upward_thrust_deviation_n
+    )
+    mpc.bounds['lower', '_u', 'Tdev'] = -thrust_lim_down
+    mpc.bounds['upper', '_u', 'Tdev'] = thrust_lim_up
+    torque_rp_lim = min(
+        bounds['torque_rp'], DEFAULT_QUADROTOR.max_roll_pitch_torque_nm
+    )
+    torque_yaw_lim = min(bounds['torque_yaw'], DEFAULT_QUADROTOR.max_yaw_torque_nm)
+    mpc.bounds['lower', '_u', 'taux'] = -torque_rp_lim
+    mpc.bounds['upper', '_u', 'taux'] = torque_rp_lim
+    mpc.bounds['lower', '_u', 'tauy'] = -torque_rp_lim
+    mpc.bounds['upper', '_u', 'tauy'] = torque_rp_lim
+    mpc.bounds['lower', '_u', 'tauz'] = -torque_yaw_lim
+    mpc.bounds['upper', '_u', 'tauz'] = torque_yaw_lim
 
     for i, obs in enumerate(obstacles):
         if obs['type'] == 'static':
@@ -227,11 +238,18 @@ def _fill_tvp(template, k_or_none, goal_pos, qg, obstacles, dyn_idx, t_abs):
             template[key] = val
         else:
             template['_tvp', k_or_none, key] = val
-    setv('xg', goal_pos['x']); setv('yg', goal_pos['y']); setv('zg', goal_pos['z'])
-    setv('qwg', qg[0]); setv('qxg', qg[1]); setv('qyg', qg[2]); setv('qzg', qg[3])
+    setv('xg', goal_pos['x'])
+    setv('yg', goal_pos['y'])
+    setv('zg', goal_pos['z'])
+    setv('qwg', qg[0])
+    setv('qxg', qg[1])
+    setv('qyg', qg[2])
+    setv('qzg', qg[3])
     for i in dyn_idx:
         px, py, pz = obstacle_pos_at(obstacles[i], t_abs)
-        setv(f'obsx_{i}', px); setv(f'obsy_{i}', py); setv(f'obsz_{i}', pz)
+        setv(f'obsx_{i}', px)
+        setv(f'obsy_{i}', py)
+        setv(f'obsz_{i}', pz)
 
 
 def make_mpc_tvp_fun(template, goal_state, obstacles, dyn_idx, n_horizon, dt):

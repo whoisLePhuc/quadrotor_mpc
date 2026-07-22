@@ -6,15 +6,27 @@ require binary or OpenGL dependencies.
 
 from __future__ import annotations
 
-import math
+from pathlib import Path
 
 import numpy as np
 
-from quad_mpc_core import DRONE_RADIUS, G, IXX, IYY, IZZ, M, obstacle_pos_at, quat_from_euler
+from quad_mpc_core import G, M, obstacle_pos_at, quat_from_euler
+from vehicle import DEFAULT_QUADROTOR
+
+
+def _menagerie_assets() -> dict[str, bytes]:
+    """Return the vendored Crazyflie MJCF and OBJ files as a MuJoCo VFS."""
+    model_root = Path(__file__).resolve().parent / "models" / "bitcraze_crazyflie_2"
+    paths = [model_root / "cf2.xml", *sorted((model_root / "assets").glob("*.obj"))]
+    return {path.relative_to(model_root).as_posix(): path.read_bytes() for path in paths}
 
 
 class MuJoCoPlant:
-    """Rigid-body plant driven by total thrust and body torque commands."""
+    """Crazyflie 2 rigid body driven by total thrust and body torques.
+
+    The airframe, collision meshes, mass and inertia come from Google DeepMind's
+    MuJoCo Menagerie model. Scenario objects are added by a separate scene layer.
+    """
 
     def __init__(self, x0_vals, goal_pos, obstacles, mj_dt: float = 0.002):
         try:
@@ -45,33 +57,47 @@ class MuJoCoPlant:
                     '</body>'
                 )
 
+        goal_x, goal_y, goal_z = (float(goal_pos[axis]) for axis in ("x", "y", "z"))
         xml = f"""
-        <mujoco model="quadrotor_nmpc_plant">
-          <option timestep="{float(mj_dt)}" gravity="0 0 -{G}" integrator="RK4"/>
-          <visual><global offwidth="960" offheight="720"/></visual>
+        <mujoco model="crazyflie_2_nmpc_plant">
+          <include file="cf2.xml"/>
+          <asset>
+            <texture name="workbench_sky" type="skybox" builtin="gradient"
+                     rgb1="0.10 0.14 0.22" rgb2="0.02 0.03 0.06" width="512" height="3072"/>
+            <texture name="workbench_floor_grid" type="2d" builtin="checker"
+                     rgb1="0.16 0.19 0.24" rgb2="0.23 0.27 0.34"
+                     width="512" height="512"/>
+            <material name="workbench_floor_grid" texture="workbench_floor_grid" texrepeat="20 20"
+                      reflectance="0.12"/>
+          </asset>
+          <visual>
+            <global offwidth="960" offheight="720"/>
+            <headlight ambient="0.45 0.45 0.45" diffuse="0.75 0.75 0.75"
+                       specular="0.20 0.20 0.20"/>
+            <map znear="0.01"/>
+            <rgba haze="0.15 0.20 0.30 1"/>
+          </visual>
           <worldbody>
-            <light pos="0 -3 7" dir="0 0 -1"/>
-            <geom name="ground" type="plane" size="20 20 0.1" rgba="0.20 0.24 0.30 1"/>
+            <light pos="3 -4 8" dir="-0.2 0.3 -1" directional="true"/>
+            <geom name="ground" type="plane" size="20 20 0.1" material="workbench_floor_grid"/>
             <camera name="fixed_view" pos="8 -10 7" xyaxes="0.78 0.62 0 -0.30 0.38 0.87"/>
-            <body name="quadrotor" pos="0 0 1">
-              <freejoint name="quad_free"/>
-              <inertial pos="0 0 0" mass="{M}" diaginertia="{IXX} {IYY} {IZZ}"/>
-              <geom name="quad_collision" type="sphere" size="{DRONE_RADIUS}" mass="0"
-                    rgba="0.08 0.45 0.95 0.75" contype="1" conaffinity="1"/>
-              <geom type="box" size="0.32 0.035 0.025" mass="0" rgba="0.1 0.2 0.3 1"/>
-              <geom type="box" size="0.035 0.32 0.025" mass="0" rgba="0.1 0.2 0.3 1"/>
-            </body>
+            <site name="goal_marker" type="sphere" pos="{goal_x} {goal_y} {goal_z}"
+                  size="0.12" rgba="1.0 0.78 0.05 0.95"/>
             {''.join(obstacle_xml)}
           </worldbody>
         </mujoco>
         """
-        self.model = mujoco.MjModel.from_xml_string(xml)
+        self.model = mujoco.MjModel.from_xml_string(xml, assets=_menagerie_assets())
         self.data = mujoco.MjData(self.model)
         self.model.opt.timestep = float(mj_dt)
-        self.quad_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "quadrotor")
-        self.quad_geom_id = mujoco.mj_name2id(
-            self.model, mujoco.mjtObj.mjOBJ_GEOM, "quad_collision"
-        )
+        self.model.opt.gravity[:] = [0.0, 0.0, -G]
+        self.quad_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "cf2")
+        self.quad_geom_ids = {
+            geom_id
+            for geom_id in range(self.model.ngeom)
+            if int(self.model.geom_bodyid[geom_id]) == self.quad_id
+            and int(self.model.geom_contype[geom_id]) != 0
+        }
         self.obstacle_geom_ids = {
             mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, f"obstacle_geom_{index}")
             for index in range(len(self.obstacles))
@@ -99,11 +125,35 @@ class MuJoCoPlant:
     def apply_control_and_step(self, control, n_substeps: int, time_s: float) -> None:
         """Apply ``[thrust_deviation, tau_x, tau_y, tau_z]`` and integrate."""
         thrust_deviation, tau_x, tau_y, tau_z = np.asarray(control, dtype=float)
+        total_thrust = float(
+            np.clip(M * G + thrust_deviation, 0.0, DEFAULT_QUADROTOR.max_total_thrust_n)
+        )
+        tau_x = float(
+            np.clip(
+                tau_x,
+                -DEFAULT_QUADROTOR.max_roll_pitch_torque_nm,
+                DEFAULT_QUADROTOR.max_roll_pitch_torque_nm,
+            )
+        )
+        tau_y = float(
+            np.clip(
+                tau_y,
+                -DEFAULT_QUADROTOR.max_roll_pitch_torque_nm,
+                DEFAULT_QUADROTOR.max_roll_pitch_torque_nm,
+            )
+        )
+        tau_z = float(
+            np.clip(
+                tau_z,
+                -DEFAULT_QUADROTOR.max_yaw_torque_nm,
+                DEFAULT_QUADROTOR.max_yaw_torque_nm,
+            )
+        )
         for substep in range(int(n_substeps)):
             t = time_s + substep * float(self.model.opt.timestep)
             self._update_dynamic_obstacles(t)
             rotation = self.data.xmat[self.quad_id].reshape(3, 3)
-            body_thrust = np.array([0.0, 0.0, M * G + thrust_deviation])
+            body_thrust = np.array([0.0, 0.0, total_thrust])
             body_torque = np.array([tau_x, tau_y, tau_z])
             self.data.xfrc_applied[self.quad_id, :3] = rotation @ body_thrust
             self.data.xfrc_applied[self.quad_id, 3:6] = rotation @ body_torque
@@ -123,7 +173,9 @@ class MuJoCoPlant:
         for index in range(self.data.ncon):
             contact = self.data.contact[index]
             pair = {int(contact.geom1), int(contact.geom2)}
-            if self.quad_geom_id in pair and pair.intersection(self.obstacle_geom_ids):
+            if pair.intersection(self.quad_geom_ids) and pair.intersection(
+                self.obstacle_geom_ids
+            ):
                 return True
         return False
 

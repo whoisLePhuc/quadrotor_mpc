@@ -1,0 +1,67 @@
+name: nmpc-mujoco-native-static
+
+start:
+  x: 0.0
+  y: 0.0
+  z: 1.0
+  roll: 0.0
+  pitch: 0.0
+  yaw: 0.0
+
+goal:
+  position:
+    x: 3.0
+    y: 2.0
+    z: 2.5
+  euler:
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.7853981633974483
+
+controller:
+  bounds:
+    # Crazyflie 2 hover thrust is 0.26487 N. The Menagerie model caps total
+    # thrust at 0.35 N, leaving about 0.085 N upward deviation.
+    thrust: 0.085
+    torque_rp: 0.002
+    torque_yaw: 0.0004
+  safety_margin: 0.30
+
+simulation:
+  duration_s: 10.0
+  mpc_timestep_s: 0.05
+  mujoco_timestep_s: 0.002
+  horizon_steps: 20
+  max_solver_iterations: 60
+  stop_on_goal: true
+  goal_tolerance_m: 0.25
+  stop_on_collision: false
+
+viewer:
+  camera_mode: follow
+  distance: 7.0
+  azimuth: 60.0
+  elevation: -30.0
+  realtime_factor: 1.0
+  show_trail: true
+  show_prediction: true
+  show_safety_envelopes: true
+  show_contacts: false
+  max_trail_points: 600
+  max_trail_segments: 240
+  status_every_steps: 10
+
+obstacles:
+  - type: static
+    x: 1.5
+    y: 1.0
+    z: 2.0
+    radius: 0.50
+
+  # Dynamic obstacles follow y(t) = amp * sin(2*pi*t/period).
+  # - type: dynamic
+  #   x: 2.0
+  #   z: 1.6
+  #   radius: 0.35
+  #   amp: 1.0
+  #   period: 5.0

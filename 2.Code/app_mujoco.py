@@ -20,6 +20,7 @@ import streamlit as st
 
 from run_coupled import run_coupled_simulation
 from quad_mpc_core import build_cached_mpc
+from vehicle import DEFAULT_QUADROTOR
 from viz import build_figure, build_timeseries_figure
 
 st.set_page_config(page_title="Quadrotor MPC + MuJoCo", layout="wide", page_icon="🚁")
@@ -82,9 +83,15 @@ with st.sidebar:
 
     st.header("Ràng buộc actuator")
     constraints_on = st.checkbox("Bật ràng buộc actuator", value=True)
-    thrust_max = st.slider("Thrust deviation max (N)", 1.0, 15.0, 6.0, 0.5)
-    torque_rp_max = st.slider("Torque roll/pitch max (N·m)", 0.005, 0.100, 0.030, 0.005)
-    torque_yaw_max = st.slider("Torque yaw max (N·m)", 0.005, 0.060, 0.020, 0.005)
+    thrust_max = st.slider("Thrust deviation max (N)", 0.005, 0.085, 0.080, 0.005)
+    torque_rp_max = st.slider(
+        "Torque roll/pitch max (N·m)", 0.0001, 0.0020, 0.0015, 0.0001,
+        format="%.4f",
+    )
+    torque_yaw_max = st.slider(
+        "Torque yaw max (N·m)", 0.00002, 0.00040, 0.00020, 0.00002,
+        format="%.5f",
+    )
 
     st.header("Chướng ngại vật tĩnh")
     obsA_on = st.checkbox("Bật chướng ngại vật tĩnh", value=True)
@@ -153,7 +160,11 @@ if run_clicked:
     if constraints_on:
         bounds = {'thrust': thrust_max, 'torque_rp': torque_rp_max, 'torque_yaw': torque_yaw_max}
     else:
-        bounds = {'thrust': 40.0, 'torque_rp': 2.0, 'torque_yaw': 1.0}
+        bounds = {
+            'thrust': DEFAULT_QUADROTOR.max_upward_thrust_deviation_n,
+            'torque_rp': DEFAULT_QUADROTOR.max_roll_pitch_torque_nm,
+            'torque_yaw': DEFAULT_QUADROTOR.max_yaw_torque_nm,
+        }
 
     x0_vals = {'x': x0, 'y': y0, 'z': z0,
                'roll': np.deg2rad(roll0), 'pitch': np.deg2rad(pitch0), 'yaw': np.deg2rad(yaw0)}

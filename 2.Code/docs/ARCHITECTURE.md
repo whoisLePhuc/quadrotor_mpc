@@ -27,6 +27,11 @@ Core ownership:
 | Experiments | `experiments/` | run identity, manifest, paired statistics and sweeps |
 | Reporting | `reporting/` | interactive Plotly figures and HTML |
 | UI | `dashboard/` | Learn, Run, Compare and Explore workflows |
+| Native MuJoCo | `mujoco_plant.py`, `mujoco_native.py` | sourced Crazyflie plant and passive desktop viewer |
 
 Dependencies point inward: UI and reporting consume experiment/runtime data; the mathematics layer
 does not depend on the dashboard.
+
+The native viewer is connected through the `CoupledRuntime` lifecycle protocol.
+It never owns the controller or advances physics, so closing/rendering the window
+cannot create a second simulation path. `4.Reference` is not a production dependency.

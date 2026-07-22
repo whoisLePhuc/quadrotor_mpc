@@ -52,6 +52,16 @@ streamlit run dashboard/Home.py
 # or: python start_dashboard.py
 ```
 
+Open the optional NMPC/MuJoCo track in a native Linux desktop window:
+
+```bash
+MUJOCO_GL=glfw python run_mujoco_native.py
+```
+
+This native track uses the sourced Bitcraze Crazyflie 2 model from Google DeepMind
+MuJoCo Menagerie, not the model under `4.Reference`. See
+[`docs/NATIVE_MUJOCO_VIEWER.md`](docs/NATIVE_MUJOCO_VIEWER.md).
+
 The older lightweight command remains available:
 
 ```bash
@@ -121,7 +131,8 @@ u = [roll_cmd, pitch_cmd, vertical_velocity_cmd, yaw_rate_cmd]
 
 - `scipy`: nonlinear rollout with soft chance constraints; suitable for demos, CI and offline sweeps.
 - `cvxpy`: sequential-convex QP path that is closer to the reference formulation.
-- optional `do-mpc/IPOPT + MuJoCo`: 13-state quaternion model-mismatch experiment.
+- optional `do-mpc/IPOPT + MuJoCo`: 13-state quaternion model-mismatch experiment using
+  the vendored MuJoCo Menagerie Crazyflie 2 rigid body.
 
 Keeping the 9-state controller model and 13-state plant separate is intentional. It prevents a
 controller from being validated only against the exact same equations it predicts.
@@ -160,6 +171,7 @@ python -m unittest discover -s tests -v
 - [`docs/EXPERIMENT_PROTOCOL.md`](docs/EXPERIMENT_PROTOCOL.md)
 - [`docs/THEORY_CODE_MAPPING.md`](docs/THEORY_CODE_MAPPING.md)
 - [`docs/VALIDATION.md`](docs/VALIDATION.md)
+- [`docs/NATIVE_MUJOCO_VIEWER.md`](docs/NATIVE_MUJOCO_VIEWER.md)
 
 ## Directory map
 
@@ -172,10 +184,11 @@ python -m unittest discover -s tests -v
 ├── dashboard/         Streamlit multi-page workbench
 ├── config/            controller and scenario YAML
 ├── docs/              architecture and research protocol
-├── models/            MuJoCo XML
+├── models/            sourced MuJoCo MJCF and mesh assets
 ├── tests/             unit and integration tests
 ├── run_experiment.py  tracked experiment CLI
 ├── run_sweep.py       parameter-sweep CLI
 ├── start_dashboard.py dashboard launcher for the active Python environment
+├── run_mujoco_native.py native desktop MuJoCo launcher
 └── run_simulation.py  compact backward-compatible CLI
 ```
