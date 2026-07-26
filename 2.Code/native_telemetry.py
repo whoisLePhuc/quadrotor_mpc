@@ -24,7 +24,7 @@ class RecordingOptions:
     max_buffer_samples: int = 5000
 
     @classmethod
-    def from_mapping(cls, raw: Mapping[str, Any]) -> "RecordingOptions":
+    def from_mapping(cls, raw: Mapping[str, Any]) -> RecordingOptions:
         maximum = int(raw.get("max_buffer_samples", 5000))
         if maximum < 10:
             raise ValueError("recording.max_buffer_samples must be >= 10")

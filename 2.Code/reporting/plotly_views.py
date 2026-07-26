@@ -7,7 +7,6 @@ import numpy as np
 from simulation.config import ScenarioConfig
 from simulation.runner import SimulationResult
 
-
 PALETTE = {"deterministic": "#ff9f43", "ccmpc": "#2e86de", "nmpc": "#20bf6b"}
 
 

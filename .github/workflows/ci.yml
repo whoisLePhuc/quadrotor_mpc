@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+    env:
+      MPLCONFIGDIR: ${{ github.workspace }}/.cache/matplotlib
+      QT_QPA_PLATFORM: offscreen
+      MUJOCO_GL: egl
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install Linux graphics runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            libegl1 libgl1 libopengl0 libxkbcommon-x11-0 libxcb-cursor0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.22"
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+
+      - name: Create locked environment
+        working-directory: 2.Code
+        run: uv sync --all-extras --locked
+
+      - name: Lint
+        working-directory: 2.Code
+        run: uv run ruff check .
+
+      - name: Test
+        working-directory: 2.Code
+        run: uv run pytest
+
+      - name: Validate release contracts
+        working-directory: 2.Code
+        run: uv run python scripts/release_check.py
+
+      - name: Validate native configurations
+        working-directory: 2.Code
+        run: |
+          uv run quadrotor-mpc-native --config config/mujoco_native.yaml --validate-config
+          uv run quadrotor-mpc-native --config config/mujoco_native_dynamic.yaml --validate-config
+          uv run quadrotor-mpc-native --config config/mujoco_native_estimation.yaml --validate-config
+          uv run quadrotor-mpc-native --config config/mujoco_native_ccmpc.yaml --validate-config
+          uv run quadrotor-mpc-monte-carlo \
+            --config config/native_monte_carlo.yaml --validate-config
+
+      - name: Smoke-test Qt safety panel
+        if: matrix.python-version == '3.12'
+        working-directory: 2.Code
+        run: uv run python scripts/smoke_native_panel.py
+
+      - name: Build distribution
+        if: matrix.python-version == '3.12'
+        working-directory: 2.Code
+        run: uv run python -m build
+
+      - name: Verify wheel outside source checkout
+        if: matrix.python-version == '3.12'
+        working-directory: 2.Code
+        run: |
+          python -m venv /tmp/quadrotor-wheel-test
+          /tmp/quadrotor-wheel-test/bin/python -m pip install dist/*.whl
+          cd /tmp
+          /tmp/quadrotor-wheel-test/bin/quadrotor-mpc-native --validate-config
+          /tmp/quadrotor-wheel-test/bin/quadrotor-mpc-monte-carlo --validate-config

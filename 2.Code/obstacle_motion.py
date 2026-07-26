@@ -12,7 +12,6 @@ from typing import Any
 
 import numpy as np
 
-
 SUPPORTED_MOTIONS = {"sinusoidal", "constant_velocity", "waypoints"}
 
 

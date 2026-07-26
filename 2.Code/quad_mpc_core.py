@@ -248,7 +248,7 @@ def build_controller(
     mpc.bounds["lower", "_u", "tauz"] = -torque_yaw_lim
     mpc.bounds["upper", "_u", "tauz"] = torque_yaw_lim
 
-    for i, obs in enumerate(obstacles):
+    for i, _obs in enumerate(obstacles):
         cx, cy, cz = (
             model.tvp[f"obsx_{i}"],
             model.tvp[f"obsy_{i}"],

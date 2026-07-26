@@ -10,22 +10,21 @@ from __future__ import annotations
 
 import math
 import pathlib
-import warnings
 
 import cvxpy as opt
 import numpy as np
 import numpy.typing as npt
 import yaml
 
+from resource_paths import resource_root
+
 from .dynamics import QuadrotorDynamics
-from .utils import (
-    chance_constraint_rhs,
-    erfinv,
-    yaw_from_velocity,
-    Omega_half,
-)
 from .obstacle import ObstacleManager
 from .uncertainty import UncertaintyPropagator
+from .utils import (
+    Omega_half,
+    chance_constraint_rhs,
+)
 
 
 class CCMPC:
@@ -51,7 +50,7 @@ class CCMPC:
         if isinstance(config, (str, pathlib.Path)):
             path = pathlib.Path(config)
             if not path.is_absolute():
-                path = pathlib.Path(__file__).parent.parent / config
+                path = resource_root() / config
             with open(path) as f:
                 config_data = yaml.safe_load(f)
         else:

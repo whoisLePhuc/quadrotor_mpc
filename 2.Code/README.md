@@ -3,6 +3,10 @@
 A reproducible simulation, comparison and reporting environment for deterministic MPC,
 chance-constrained MPC and an optional quaternion NMPC/MuJoCo track.
 
+Version `2.0.1` is a release-stabilized research workbench. The verified native
+campaign is `VALIDATED_WITH_LIMITATIONS`: positive slack, fallback and solver
+timing currently block a probabilistic-safety or real-time claim.
+
 The workbench is organized around three workflows:
 
 - **Learn**: inspect equations, predicted horizons, covariance and constraint residuals.
@@ -11,19 +15,26 @@ The workbench is organized around three workflows:
 
 ## Installation
 
-Python 3.10 or newer is required; Python 3.11 is recommended.
+Python 3.10 or newer is required. The locked environment is the preferred path:
+
+```bash
+uv sync --all-extras --locked
+```
+
+For a standard editable installation:
 
 ```bash
 python -m venv .venv
 # Windows PowerShell: .\.venv\Scripts\Activate.ps1
 # Linux/macOS: source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+python -m pip install -e ".[full,dev]"
 ```
 
-For the Streamlit dashboard and optional NMPC/MuJoCo track:
+The legacy split requirement files remain available for source-checkout use:
 
 ```bash
+python -m pip install -r requirements.txt
 python -m pip install -r requirements-ui.txt
 ```
 
@@ -32,7 +43,7 @@ python -m pip install -r requirements-ui.txt
 Run one tracked experiment:
 
 ```bash
-python run_experiment.py \
+quadrotor-mpc-run \
   --config config/scenarios/static_obstacle.yaml \
   --compare
 ```
@@ -40,7 +51,7 @@ python run_experiment.py \
 Run a 10-seed paired Monte Carlo experiment:
 
 ```bash
-python run_experiment.py \
+quadrotor-mpc-run \
   --config config/scenarios/moving_obstacle.yaml \
   --compare --trials 10 --seed 100
 ```
@@ -48,20 +59,19 @@ python run_experiment.py \
 Open the workbench:
 
 ```bash
-streamlit run dashboard/Home.py
-# or: python start_dashboard.py
+quadrotor-mpc-dashboard
 ```
 
 Open the optional NMPC/MuJoCo track in a native Linux desktop window:
 
 ```bash
-MUJOCO_GL=glfw python run_mujoco_native.py
+MUJOCO_GL=glfw quadrotor-mpc-native
 ```
 
 Run the native dynamic-obstacle scenario with the control/telemetry panel:
 
 ```bash
-MUJOCO_GL=glfw python run_mujoco_native.py \
+MUJOCO_GL=glfw quadrotor-mpc-native \
   --config config/mujoco_native_dynamic.yaml
 ```
 
@@ -69,7 +79,7 @@ Run the same native track through noisy sensors, a 12D quaternion error-state
 EKF and 6D obstacle trackers:
 
 ```bash
-MUJOCO_GL=glfw python run_mujoco_native.py \
+MUJOCO_GL=glfw quadrotor-mpc-native \
   --config config/mujoco_native_estimation.yaml
 ```
 
@@ -77,7 +87,7 @@ Run the native spherical CC-MPC with uniform joint-risk allocation, safe
 fallback and the Stage 7 desktop safety console:
 
 ```bash
-MUJOCO_GL=glfw python run_mujoco_native.py \
+MUJOCO_GL=glfw quadrotor-mpc-native \
   --config config/mujoco_native_ccmpc.yaml
 ```
 
@@ -88,7 +98,7 @@ receding-horizon union bound, not an episode-wide guarantee.
 Run the Stage 8 paired native Monte Carlo protocol:
 
 ```bash
-python run_native_monte_carlo.py \
+quadrotor-mpc-monte-carlo \
   --config config/native_monte_carlo.yaml \
   --workers 3
 ```
@@ -98,6 +108,10 @@ joint-uniform controllers with the same 50 seeds at `0.25 Sigma`, `Sigma` and
 `4 Sigma`. It writes an append-only checkpoint plus raw CSV, confidence
 intervals, paired deltas, claim gates, a Markdown report and a PNG summary.
 Interrupted runs can be continued with `--resume <run-directory>`.
+Release evidence is accepted from a clean Git source or a fingerprinted,
+non-editable installed distribution. A dirty-source smoke campaign requires the
+explicit `--allow-dirty-source` flag and is recorded as non-release-eligible
+with an exact source snapshot hash.
 
 The interactive session remains open after goal, collision stop, or configured
 duration. Use **Run again** in the panel (or `Enter` in the MuJoCo window) to
@@ -111,7 +125,7 @@ fallback are always labeled `NOT GUARANTEED`. See
 Replay a recorded run without solving the NMPC problem again:
 
 ```bash
-MUJOCO_GL=glfw python run_mujoco_native.py \
+MUJOCO_GL=glfw quadrotor-mpc-native \
   --replay outputs/native/<timestamp>_<scenario>
 ```
 
@@ -122,7 +136,7 @@ MuJoCo Menagerie, not the model under `4.Reference`. See
 The older lightweight command remains available:
 
 ```bash
-python run_simulation.py --config config/scenarios/point_to_point.yaml
+quadrotor-mpc-sim --config config/scenarios/point_to_point.yaml
 ```
 
 ## Dashboard
@@ -166,7 +180,7 @@ Predicted horizons are stored separately in compressed NumPy format.
 Study the risk-performance tradeoff:
 
 ```bash
-python run_sweep.py \
+quadrotor-mpc-sweep \
   --config config/scenarios/static_obstacle.yaml \
   --parameter delta \
   --values 0.01 0.03 0.05 0.10 0.20 \
@@ -237,6 +251,7 @@ python -m unittest discover -s tests -v
 - [`docs/SAFE_SLACK_FALLBACK.md`](docs/SAFE_SLACK_FALLBACK.md)
 - [`docs/DESKTOP_SAFETY_INTERFACE.md`](docs/DESKTOP_SAFETY_INTERFACE.md)
 - [`docs/NATIVE_MONTE_CARLO_VALIDATION.md`](docs/NATIVE_MONTE_CARLO_VALIDATION.md)
+- [`docs/RELEASE_2_0_1.md`](docs/RELEASE_2_0_1.md)
 
 ## Directory map
 

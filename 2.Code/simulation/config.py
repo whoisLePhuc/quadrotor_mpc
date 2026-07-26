@@ -46,7 +46,7 @@ class ObstacleConfig:
     vel_uncertainty: float = 0.10
 
     @classmethod
-    def from_mapping(cls, value: dict[str, Any]) -> "ObstacleConfig":
+    def from_mapping(cls, value: dict[str, Any]) -> ObstacleConfig:
         return cls(
             position=_vector(value["position"], 3, "obstacle.position"),
             size=_vector(value["size"], 3, "obstacle.size"),
@@ -82,7 +82,7 @@ class ScenarioConfig:
     model_mismatch: ModelMismatchConfig = field(default_factory=ModelMismatchConfig)
 
     @classmethod
-    def from_mapping(cls, value: dict[str, Any], name: str = "scenario") -> "ScenarioConfig":
+    def from_mapping(cls, value: dict[str, Any], name: str = "scenario") -> ScenarioConfig:
         noise = NoiseConfig(**value.get("noise", {}))
         mismatch = ModelMismatchConfig(**value.get("model_mismatch", {}))
         return cls(

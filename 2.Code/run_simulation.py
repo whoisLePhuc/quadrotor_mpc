@@ -5,18 +5,13 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 
 import numpy as np
 
+from resource_paths import resolve_input_path, resolve_output_path
 from simulation.config import load_scenario
 from simulation.runner import SimulationResult, SimulationRunner
 from simulation.visualizer import save_report
-
-
-def _resolve(base: Path, value: str) -> Path:
-    path = Path(value)
-    return path if path.is_absolute() else base / path
 
 
 def _print_metrics(result: SimulationResult) -> None:
@@ -65,10 +60,9 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.trials < 1:
         raise SystemExit("--trials must be >= 1")
-    base = Path(__file__).resolve().parent
-    scenario_path = _resolve(base, args.config)
-    controller_path = _resolve(base, args.controller_config)
-    output = _resolve(base, args.output_dir)
+    scenario_path = resolve_input_path(args.config)
+    controller_path = resolve_input_path(args.controller_config)
+    output = resolve_output_path(args.output_dir)
     output.mkdir(parents=True, exist_ok=True)
     scenario = load_scenario(scenario_path)
     modes = ["deterministic", "ccmpc"] if args.compare else [args.mode]

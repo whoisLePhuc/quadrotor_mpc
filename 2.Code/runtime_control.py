@@ -28,7 +28,7 @@ class RuntimeCommand:
     payload: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_message(cls, message: Any, *, source: str = "panel") -> "RuntimeCommand":
+    def from_message(cls, message: Any, *, source: str = "panel") -> RuntimeCommand:
         if isinstance(message, RuntimeCommand):
             return message
         if isinstance(message, str):

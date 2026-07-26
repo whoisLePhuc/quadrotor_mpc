@@ -6,17 +6,16 @@ require binary or OpenGL dependencies.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import numpy as np
 
 from quad_mpc_core import G, M, obstacle_pos_at, quat_from_euler
+from resource_paths import resource_root
 from vehicle import DEFAULT_QUADROTOR
 
 
 def _menagerie_assets() -> dict[str, bytes]:
     """Return the vendored Crazyflie MJCF and OBJ files as a MuJoCo VFS."""
-    model_root = Path(__file__).resolve().parent / "models" / "bitcraze_crazyflie_2"
+    model_root = resource_root() / "models" / "bitcraze_crazyflie_2"
     paths = [model_root / "cf2.xml", *sorted((model_root / "assets").glob("*.obj"))]
     return {path.relative_to(model_root).as_posix(): path.read_bytes() for path in paths}
 

@@ -17,6 +17,7 @@ from mujoco_native import (
     load_native_mujoco_config,
 )
 from native_telemetry import load_native_recording
+from resource_paths import resolve_input_path
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -59,28 +60,19 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _resolve_input_path(value: str, base: Path) -> Path:
-    path = Path(value).expanduser()
-    if path.is_absolute():
-        return path
-    from_cwd = (Path.cwd() / path).resolve()
-    return from_cwd if from_cwd.exists() else (base / path).resolve()
-
-
 def main(argv: list[str] | None = None) -> int:
     warnings.filterwarnings("ignore", message="The ONNX feature is not available.*")
     warnings.filterwarnings("ignore", message="The opcua feature is not available.*")
     warnings.filterwarnings("ignore", message="The approximateMPC feature requires PyTorch.*")
     args = build_parser().parse_args(argv)
-    base = Path(__file__).resolve().parent
     recording = None
     if args.replay:
-        replay_path = _resolve_input_path(args.replay, base)
+        replay_path = resolve_input_path(args.replay)
         recording = load_native_recording(replay_path)
         config = NativeMuJoCoConfig.from_mapping(recording["scenario"])
         config_label = replay_path / "scenario.yaml"
     else:
-        config_path = _resolve_input_path(args.config, base)
+        config_path = resolve_input_path(args.config)
         config = load_native_mujoco_config(config_path)
         config_label = config_path
 
@@ -129,7 +121,7 @@ def main(argv: list[str] | None = None) -> int:
 
     runtime = InteractiveMuJoCoRuntime(
         config,
-        base_dir=base,
+        base_dir=Path.cwd(),
         enable_panel=panel_enabled,
         enable_recording=not args.no_record and recording is None,
     )

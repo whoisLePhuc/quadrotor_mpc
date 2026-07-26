@@ -150,6 +150,10 @@ class SafetyFallbackConfigurationTests(unittest.TestCase):
         self.assertTrue(config.safety_fallback.enabled)
         self.assertTrue(config.safety_fallback.reject_on_deadline_miss)
         self.assertAlmostEqual(
+            config.safety_fallback.solve_deadline_s,
+            config.mpc_timestep_s,
+        )
+        self.assertAlmostEqual(
             config.safety_fallback.maximum_acceptable_slack_m,
             0.08,
         )
@@ -170,6 +174,15 @@ class SafetyFallbackConfigurationTests(unittest.TestCase):
                 guarantee_slack_tolerance_m=0.1,
                 maximum_acceptable_slack_m=0.05,
             )
+
+    def test_rejection_deadline_cannot_exceed_controller_period(self):
+        config = load_native_mujoco_config(
+            CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml"
+        )
+        mapping = config.to_mapping()
+        mapping["controller"]["safety_fallback"]["solve_deadline_s"] = 0.051
+        with self.assertRaisesRegex(ValueError, "must not exceed"):
+            type(config).from_mapping(mapping)
 
 
 class SafetySupervisorTests(unittest.TestCase):

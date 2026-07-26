@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +18,7 @@ from ccmpc.obstacle import EllipsoidalObstacle, ObstacleManager
 from ccmpc.risk import collision_clearance
 
 from .config import ScenarioConfig
-from .controllers import ControlResult, Controller, _deep_update, load_controller
+from .controllers import Controller, ControlResult, _deep_update, load_controller
 from .estimators import ExtendedKalmanEstimator
 from .metrics import SimulationMetrics, compute_metrics
 

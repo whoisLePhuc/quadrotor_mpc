@@ -199,7 +199,7 @@ class QuadrotorDynamics:
         }
 
     @classmethod
-    def from_config(cls, config: str | dict) -> "QuadrotorDynamics":
+    def from_config(cls, config: str | dict) -> QuadrotorDynamics:
         """Create from YAML config path or dict."""
         if isinstance(config, str):
             with open(config) as f:
@@ -279,7 +279,6 @@ class QuadrotorDynamics:
         """
         A_cont = self.jacobian_state(x_bar, u_bar)
         B_cont = self.jacobian_control(x_bar, u_bar)
-        f_xu = self.continuous(x_bar, u_bar)
 
         # First-order A (adequate for state dynamics over dt=0.06)
         A_k = np.eye(9) + dt * A_cont

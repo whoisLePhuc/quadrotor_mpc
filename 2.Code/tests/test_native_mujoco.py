@@ -10,7 +10,6 @@ import numpy as np
 from mujoco_native import NativeMuJoCoConfig, load_native_mujoco_config
 from vehicle import CRAZYFLIE_2
 
-
 CODE_ROOT = Path(__file__).resolve().parents[1]
 
 

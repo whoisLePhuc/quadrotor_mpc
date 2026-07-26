@@ -93,7 +93,7 @@ class CovariancePropagationOptions:
     feedback_control_weights: tuple[float, ...] = DEFAULT_FEEDBACK_CONTROL_WEIGHTS
 
     @classmethod
-    def from_mapping(cls, raw: Mapping[str, Any]) -> "CovariancePropagationOptions":
+    def from_mapping(cls, raw: Mapping[str, Any]) -> CovariancePropagationOptions:
         mode = str(raw.get("mode", "open_loop")).lower()
         if mode not in {"open_loop", "feedback_lqr"}:
             raise ValueError(

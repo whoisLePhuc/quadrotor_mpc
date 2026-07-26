@@ -10,9 +10,10 @@ from __future__ import annotations
 import math
 import time
 from collections import deque
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Mapping, Sequence
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import yaml
@@ -77,7 +78,7 @@ class NativeViewerOptions:
     status_every_steps: int = 10
 
     @classmethod
-    def from_mapping(cls, raw: Mapping[str, Any]) -> "NativeViewerOptions":
+    def from_mapping(cls, raw: Mapping[str, Any]) -> NativeViewerOptions:
         camera_mode = str(raw.get("camera_mode", "follow")).lower()
         if camera_mode not in {"follow", "fixed"}:
             raise ValueError("viewer.camera_mode must be 'follow' or 'fixed'")
@@ -135,7 +136,7 @@ class NativeMuJoCoConfig:
     recording: RecordingOptions
 
     @classmethod
-    def from_mapping(cls, raw: Mapping[str, Any]) -> "NativeMuJoCoConfig":
+    def from_mapping(cls, raw: Mapping[str, Any]) -> NativeMuJoCoConfig:
         start_raw = _mapping(raw.get("start", {}), "start")
         goal_raw = _mapping(raw.get("goal", {}), "goal")
         position_raw = _mapping(goal_raw.get("position", {}), "goal.position")
@@ -192,6 +193,27 @@ class NativeMuJoCoConfig:
                 "enabled controller.chance_constraints requires "
                 "controller.covariance_propagation.enabled: true"
             )
+        duration_s = _positive(simulation_raw.get("duration_s", 10.0), "duration_s")
+        mpc_timestep_s = _positive(
+            simulation_raw.get("mpc_timestep_s", 0.05),
+            "mpc_timestep_s",
+        )
+        mujoco_timestep_s = _positive(
+            simulation_raw.get("mujoco_timestep_s", 0.002),
+            "mujoco_timestep_s",
+        )
+        safety_fallback_options = SafetyFallbackOptions.from_mapping(
+            safety_fallback_raw
+        )
+        if (
+            safety_fallback_options.enabled
+            and safety_fallback_options.reject_on_deadline_miss
+            and safety_fallback_options.solve_deadline_s > mpc_timestep_s + 1e-12
+        ):
+            raise ValueError(
+                "controller.safety_fallback.solve_deadline_s must not exceed "
+                "simulation.mpc_timestep_s when late solutions are rejected"
+            )
 
         return cls(
             name=str(raw.get("name", "nmpc-mujoco-native")),
@@ -205,11 +227,9 @@ class NativeMuJoCoConfig:
                 "controller.safety_margin",
                 allow_zero=True,
             ),
-            duration_s=_positive(simulation_raw.get("duration_s", 10.0), "duration_s"),
-            mpc_timestep_s=_positive(simulation_raw.get("mpc_timestep_s", 0.05), "mpc_timestep_s"),
-            mujoco_timestep_s=_positive(
-                simulation_raw.get("mujoco_timestep_s", 0.002), "mujoco_timestep_s"
-            ),
+            duration_s=duration_s,
+            mpc_timestep_s=mpc_timestep_s,
+            mujoco_timestep_s=mujoco_timestep_s,
             horizon_steps=horizon_steps,
             max_solver_iterations=max_solver_iterations,
             stop_on_goal=bool(simulation_raw.get("stop_on_goal", True)),
@@ -220,9 +240,7 @@ class NativeMuJoCoConfig:
             estimation=EstimationOptions.from_mapping(estimation_raw),
             covariance_propagation=covariance_options,
             chance_constraints=chance_options,
-            safety_fallback=SafetyFallbackOptions.from_mapping(
-                safety_fallback_raw
-            ),
+            safety_fallback=safety_fallback_options,
             viewer=NativeViewerOptions.from_mapping(viewer_raw),
             panel=DesktopPanelOptions.from_mapping(dict(panel_raw)),
             recording=RecordingOptions.from_mapping(recording_raw),
@@ -337,7 +355,7 @@ class NativeMuJoCoViewer:
         self._show_safety_envelopes = options.show_safety_envelopes
         self._camera_mode = options.camera_mode
 
-    def open(self, plant: "MuJoCoPlant", context: "CoupledRunContext") -> None:
+    def open(self, plant: MuJoCoPlant, context: CoupledRunContext) -> None:
         try:
             import mujoco
             import mujoco.viewer
@@ -426,7 +444,7 @@ class NativeMuJoCoViewer:
         if name is not None:
             self._command_sink(RuntimeCommand(name=name, source="keyboard"))
 
-    def on_step(self, step: "CoupledStep") -> bool:
+    def on_step(self, step: CoupledStep) -> bool:
         if not self.is_running():
             return False
         assert self._viewer is not None
@@ -642,7 +660,7 @@ class InteractiveMuJoCoRuntime:
         self._completion_reason: str | None = None
         self._last_fallback_level = 0
 
-    def open(self, plant: "MuJoCoPlant", context: "CoupledRunContext") -> None:
+    def open(self, plant: MuJoCoPlant, context: CoupledRunContext) -> None:
         if self.panel is not None:
             self.panel.start()
             self._panel_was_alive = True
@@ -674,7 +692,7 @@ class InteractiveMuJoCoRuntime:
                 self.recorder.write_snapshot(self._last_sample)
         return commands
 
-    def on_step(self, step: "CoupledStep") -> bool:
+    def on_step(self, step: CoupledStep) -> bool:
         sample = step_to_sample(step)
         fallback_level = int(sample.get("fallback_level", 0))
         if fallback_level != self._last_fallback_level:

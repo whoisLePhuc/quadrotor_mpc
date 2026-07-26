@@ -19,10 +19,10 @@ import numpy as np
 import numpy.typing as npt
 
 from .utils import (
-    Omega_matrix,
     Omega_half,
-    yaw_to_rotation,
+    Omega_matrix,
     box_to_ellipsoid_axes,
+    yaw_to_rotation,
 )
 
 
@@ -200,7 +200,7 @@ class ObstacleManager:
         )
 
     @classmethod
-    def from_config(cls, config: str | dict) -> "ObstacleManager":
+    def from_config(cls, config: str | dict) -> ObstacleManager:
         """Create obstacles from YAML simulation config."""
         if isinstance(config, str):
             import yaml as _yaml
@@ -242,7 +242,7 @@ class ObstacleManager:
         dt: float,
         p_mav_ref: npt.NDArray[np.float64] | None = None,
         max_obs: int = 2,
-    ) -> list[list["HorizonObstacleData"]]:
+    ) -> list[list[HorizonObstacleData]]:
         """Predict obstacle states over the MPC horizon.
 
         For each obstacle, returns a list of HorizonObstacleData (one per step).

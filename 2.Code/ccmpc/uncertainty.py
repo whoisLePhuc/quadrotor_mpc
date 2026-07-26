@@ -51,7 +51,7 @@ class UncertaintyPropagator:
         )
 
     @classmethod
-    def from_config(cls, config: str | dict) -> "UncertaintyPropagator":
+    def from_config(cls, config: str | dict) -> UncertaintyPropagator:
         """Create from YAML config path or dict."""
         if isinstance(config, str):
             import yaml
@@ -70,7 +70,7 @@ class UncertaintyPropagator:
         )
 
     @staticmethod
-    def vio_drift_from_config(config: str | dict) -> "VIODriftModel":
+    def vio_drift_from_config(config: str | dict) -> VIODriftModel:
         """Create VIODriftModel from config."""
         if isinstance(config, str):
             import yaml

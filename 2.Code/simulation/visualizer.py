@@ -14,7 +14,6 @@ from matplotlib.patches import Ellipse
 from .config import ScenarioConfig
 from .runner import SimulationResult
 
-
 COLORS = {"ccmpc": "#2166ac", "deterministic": "#ef8a62", "nmpc": "#1b9e77"}
 COMMAND_LABELS = (r"$\phi_c$", r"$\theta_c$", r"$v_{z,c}$", r"$\dot\psi_c$")
 

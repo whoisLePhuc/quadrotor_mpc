@@ -1,6 +1,6 @@
 name: native-ccmpc-monte-carlo
 base_config: mujoco_native_ccmpc.yaml
-output_dir: ../outputs/native_monte_carlo
+output_dir: outputs/native_monte_carlo
 
 # Paired ordering: every controller receives the same seed at each uncertainty
 # level. Fifty trials match the reference experimental protocol and exceed the
@@ -34,4 +34,3 @@ validation:
   require_zero_fallback: true
   require_zero_budget_failures: true
   timing_percentile: 0.99
-

@@ -211,14 +211,22 @@ def load_native_monte_carlo_protocol(
     if not isinstance(raw_modes, Sequence) or isinstance(raw_modes, (str, bytes)):
         raise TypeError("modes must be a list")
 
-    def resolve(value: Any) -> Path:
+    def resolve_input(value: Any) -> Path:
         candidate = Path(str(value)).expanduser()
         return candidate.resolve() if candidate.is_absolute() else (source.parent / candidate).resolve()
 
+    def resolve_output(value: Any) -> Path:
+        candidate = Path(str(value)).expanduser()
+        return candidate.resolve() if candidate.is_absolute() else (Path.cwd() / candidate).resolve()
+
     return NativeMonteCarloProtocol(
         name=str(root.get("name", "native-monte-carlo")),
-        base_config_path=resolve(root.get("base_config", "mujoco_native_ccmpc.yaml")),
-        output_dir=resolve(root.get("output_dir", "../outputs/native_monte_carlo")),
+        base_config_path=resolve_input(
+            root.get("base_config", "mujoco_native_ccmpc.yaml")
+        ),
+        output_dir=resolve_output(
+            root.get("output_dir", "outputs/native_monte_carlo")
+        ),
         modes=tuple(str(mode).lower() for mode in raw_modes),
         noise_levels=levels,
         trials=int(root.get("trials", 50)),
@@ -1012,10 +1020,10 @@ def aggregate_native_trials(
     return output
 
 
-def _safe_git_commit(root: Path) -> str | None:
+def _git_command(root: Path, *arguments: str) -> subprocess.CompletedProcess[str] | None:
     try:
-        process = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
+        return subprocess.run(
+            ["git", *arguments],
             cwd=root,
             capture_output=True,
             text=True,
@@ -1024,7 +1032,223 @@ def _safe_git_commit(root: Path) -> str | None:
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    return process.stdout.strip() if process.returncode == 0 else None
+
+
+def _hash_validation_source(repository_root: Path) -> tuple[str, int]:
+    process = _git_command(
+        repository_root,
+        "ls-files",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "-z",
+    )
+    if process is None or process.returncode != 0:
+        return "", 0
+    selected: list[Path] = []
+    for raw_path in process.stdout.split("\0"):
+        if not raw_path:
+            continue
+        relative = Path(raw_path)
+        if relative.parts[:2] == ("2.Code", "validation"):
+            continue
+        if relative.parts[:2] == ("2.Code", "outputs"):
+            continue
+        if (
+            relative == Path("README.md")
+            or relative == Path("LICENSE")
+            or relative.parts[:2] == (".github", "workflows")
+            or (
+                relative.parts
+                and relative.parts[0] == "2.Code"
+                and relative.suffix
+                in {".py", ".toml", ".yaml", ".yml", ".txt", ".lock", ".xml", ".obj"}
+            )
+        ):
+            selected.append(relative)
+
+    digest = hashlib.sha256()
+    count = 0
+    for relative in sorted(selected, key=lambda item: item.as_posix()):
+        source = repository_root / relative
+        if not source.is_file():
+            continue
+        encoded_path = relative.as_posix().encode()
+        digest.update(len(encoded_path).to_bytes(8, "big"))
+        digest.update(encoded_path)
+        payload = source.read_bytes()
+        digest.update(len(payload).to_bytes(8, "big"))
+        digest.update(payload)
+        count += 1
+    return digest.hexdigest(), count
+
+
+def _hash_loose_validation_source(code_root: Path) -> tuple[str, int]:
+    """Hash a source archive that has no Git identity without trusting it."""
+    repository_root = code_root.parent if (code_root.parent / "README.md").is_file() else code_root
+    selected: list[Path] = []
+    suffixes = {".py", ".toml", ".yaml", ".yml", ".txt", ".lock", ".xml", ".obj"}
+    excluded_parts = {
+        "__pycache__",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".mypy_cache",
+        ".venv",
+        "build",
+        "dist",
+        "outputs",
+        "validation",
+    }
+    for source in repository_root.rglob("*"):
+        if not source.is_file():
+            continue
+        relative = source.relative_to(repository_root)
+        if excluded_parts.intersection(relative.parts):
+            continue
+        if any(part.endswith(".egg-info") for part in relative.parts):
+            continue
+        if (
+            relative in {Path("README.md"), Path("LICENSE")}
+            or relative.parts[:2] == (".github", "workflows")
+            or source.suffix in suffixes
+        ):
+            selected.append(relative)
+
+    digest = hashlib.sha256()
+    count = 0
+    for relative in sorted(selected, key=lambda item: item.as_posix()):
+        encoded_path = relative.as_posix().encode()
+        digest.update(len(encoded_path).to_bytes(8, "big"))
+        digest.update(encoded_path)
+        payload = (repository_root / relative).read_bytes()
+        digest.update(len(payload).to_bytes(8, "big"))
+        digest.update(payload)
+        count += 1
+    return digest.hexdigest(), count
+
+
+def _installed_distribution_provenance() -> dict[str, Any]:
+    """Fingerprint an installed wheel and reject unverifiable/editable installs."""
+    try:
+        distribution = metadata.distribution("quadrotor-mpc-sim")
+    except metadata.PackageNotFoundError:
+        return {
+            "status": "UNVERIFIED_DISTRIBUTION",
+            "git_commit": None,
+            "git_branch": None,
+            "git_clean": None,
+            "source_snapshot_sha256": None,
+            "source_file_count": 0,
+            "distribution_version": None,
+        }
+
+    editable = False
+    direct_url = distribution.read_text("direct_url.json")
+    if direct_url:
+        try:
+            editable = bool(json.loads(direct_url).get("dir_info", {}).get("editable"))
+        except json.JSONDecodeError:
+            editable = True
+
+    selected: list[tuple[str, Path]] = []
+    active_module = Path(__file__).resolve()
+    module_belongs_to_distribution = False
+    for package_path in distribution.files or ():
+        logical_path = Path(str(package_path))
+        if "__pycache__" in logical_path.parts or logical_path.suffix == ".pyc":
+            continue
+        if ".dist-info" in logical_path.as_posix():
+            continue
+        installed_path = Path(distribution.locate_file(package_path))
+        if installed_path.is_file():
+            selected.append((logical_path.as_posix(), installed_path))
+            module_belongs_to_distribution = bool(
+                module_belongs_to_distribution
+                or installed_path.resolve() == active_module
+            )
+
+    if not module_belongs_to_distribution:
+        snapshot_hash, file_count = _hash_loose_validation_source(active_module.parent)
+        return {
+            "status": "UNVERIFIED_SOURCE_TREE",
+            "git_commit": None,
+            "git_branch": None,
+            "git_clean": None,
+            "source_snapshot_sha256": snapshot_hash or None,
+            "source_file_count": file_count,
+            "distribution_version": None,
+        }
+
+    digest = hashlib.sha256()
+    count = 0
+    for logical_name, installed_path in sorted(selected):
+        encoded_path = logical_name.encode()
+        digest.update(len(encoded_path).to_bytes(8, "big"))
+        digest.update(encoded_path)
+        payload = installed_path.read_bytes()
+        digest.update(len(payload).to_bytes(8, "big"))
+        digest.update(payload)
+        count += 1
+
+    verified = bool(count)
+    if editable:
+        status = "EDITABLE_DISTRIBUTION"
+    elif verified:
+        status = "INSTALLED_DISTRIBUTION"
+    else:
+        status = "UNVERIFIED_DISTRIBUTION"
+    return {
+        "status": status,
+        "git_commit": None,
+        "git_branch": None,
+        "git_clean": None,
+        "source_snapshot_sha256": digest.hexdigest() if verified else None,
+        "source_file_count": count,
+        "distribution_version": distribution.version,
+    }
+
+
+def source_provenance(start: str | Path | None = None) -> dict[str, Any]:
+    """Describe the exact validation source and whether it is a clean commit."""
+    search_root = Path.cwd() if start is None else Path(start)
+    top_level = _git_command(search_root, "rev-parse", "--show-toplevel")
+    if top_level is None or top_level.returncode != 0:
+        return _installed_distribution_provenance()
+
+    repository_root = Path(top_level.stdout.strip()).resolve()
+    commit_process = _git_command(repository_root, "rev-parse", "HEAD")
+    branch_process = _git_command(repository_root, "branch", "--show-current")
+    status_process = _git_command(
+        repository_root,
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+    )
+    commit = (
+        commit_process.stdout.strip()
+        if commit_process is not None and commit_process.returncode == 0
+        else None
+    )
+    branch = (
+        branch_process.stdout.strip()
+        if branch_process is not None and branch_process.returncode == 0
+        else None
+    )
+    clean = bool(
+        status_process is not None
+        and status_process.returncode == 0
+        and not status_process.stdout.strip()
+    )
+    snapshot_hash, file_count = _hash_validation_source(repository_root)
+    return {
+        "status": "CLEAN_GIT_COMMIT" if clean else "DIRTY_GIT_SNAPSHOT",
+        "git_commit": commit,
+        "git_branch": branch or None,
+        "git_clean": clean,
+        "source_snapshot_sha256": snapshot_hash or None,
+        "source_file_count": file_count,
+        "distribution_version": None,
+    }
 
 
 def _versions() -> dict[str, str]:
@@ -1055,9 +1279,23 @@ def create_validation_directory(
     *,
     command: Sequence[str] | None = None,
     run_id: str | None = None,
+    allow_dirty_source: bool = False,
 ) -> Path:
     """Create a self-describing run directory before expensive trials begin."""
     timestamp = datetime.now(timezone.utc)
+    provenance = source_provenance()
+    non_release_sources = {
+        "DIRTY_GIT_SNAPSHOT",
+        "EDITABLE_DISTRIBUTION",
+        "UNVERIFIED_DISTRIBUTION",
+        "UNVERIFIED_SOURCE_TREE",
+    }
+    if provenance["status"] in non_release_sources and not allow_dirty_source:
+        raise RuntimeError(
+            "release validation requires a clean Git source or a fingerprinted "
+            "non-editable distribution; commit/install the intended changes or pass "
+            "allow_dirty_source=True for a non-release smoke campaign"
+        )
     if run_id is None:
         run_id = timestamp.strftime("%Y%m%dT%H%M%SZ") + f"-{protocol.name}"
     directory = protocol.output_dir / run_id
@@ -1074,15 +1312,15 @@ def create_validation_directory(
         yaml.safe_dump(base_config.to_mapping(), sort_keys=False),
         encoding="utf-8",
     )
-    root = Path(__file__).resolve().parents[1]
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         "stage": 8,
         "run_id": directory.name,
         "created_at_utc": timestamp.isoformat(),
         "status": "RUNNING",
         "protocol_fingerprint": protocol_fingerprint(protocol, base_config),
-        "git_commit": _safe_git_commit(root),
+        "git_commit": provenance["git_commit"],
+        "source": provenance,
         "command": list(command if command is not None else sys.argv),
         "environment": {
             "python": platform.python_version(),
@@ -1300,6 +1538,10 @@ def _save_markdown_report(
             f"- Required sample size: **{aggregate['overall']['sample_size']}**",
             f"- Real-time gate: **{aggregate['overall']['real_time']}**",
             f"- Probabilistic claim: **{aggregate['overall']['probabilistic_claim']}**",
+            (
+                "- Release provenance: "
+                f"**{aggregate['overall'].get('release_provenance', 'NOT_RECORDED')}**"
+            ),
             "",
             aggregate["overall"]["interpretation"],
             "",
@@ -1389,22 +1631,35 @@ def finalize_validation_artifacts(
         controller_period_ms=base_config.mpc_timestep_s * 1000.0,
     )
     aggregate_path = target / "aggregate.json"
+    report_path = target / "report.md"
+    plot_path = target / "report.png"
+
+    manifest_path = target / "manifest.yaml"
+    manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    source = _mapping(manifest.get("source", {}), "manifest.source")
+    provenance_ok = source.get("status") in {
+        "CLEAN_GIT_COMMIT",
+        "INSTALLED_DISTRIBUTION",
+    }
+    aggregate["overall"]["release_provenance"] = (
+        "PASS" if provenance_ok else "FAIL_DIRTY_SOURCE"
+    )
+    aggregate["overall"]["release_eligible"] = bool(
+        provenance_ok
+        and aggregate["overall"]["execution_integrity"] == "PASS"
+        and aggregate["overall"]["sample_size"] == "PASS"
+    )
     aggregate_path.write_text(
         json.dumps(aggregate, indent=2, allow_nan=False),
         encoding="utf-8",
     )
-    report_path = target / "report.md"
     _save_markdown_report(aggregate, protocol, report_path)
-    plot_path = target / "report.png"
     _save_plot(
         ordered,
         aggregate,
         plot_path,
         controller_period_ms=base_config.mpc_timestep_s * 1000.0,
     )
-
-    manifest_path = target / "manifest.yaml"
-    manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
     manifest.update(
         {
             "status": "COMPLETED",

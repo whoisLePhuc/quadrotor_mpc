@@ -49,7 +49,7 @@ controller:
     enabled: true
     # End-to-end controller deadline. A late NMPC result is rejected rather
     # than applied after its control interval has expired.
-    solve_deadline_s: 0.10
+    solve_deadline_s: 0.05
     reject_on_deadline_miss: true
     # Positive slack is never guarantee-eligible. The larger acceptance limit
     # permits an explicitly degraded solution before fallback is required.

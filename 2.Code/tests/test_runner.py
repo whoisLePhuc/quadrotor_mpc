@@ -8,7 +8,6 @@ import numpy as np
 from simulation.config import load_scenario
 from simulation.runner import SimulationRunner
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 

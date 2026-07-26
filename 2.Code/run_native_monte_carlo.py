@@ -23,6 +23,7 @@ from native_monte_carlo import (
     protocol_fingerprint,
     run_native_trial_batch,
 )
+from resource_paths import resolve_input_path
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -63,6 +64,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--validate-config",
         action="store_true",
         help="validate protocol and base native config, then exit",
+    )
+    parser.add_argument(
+        "--allow-dirty-source",
+        action="store_true",
+        help="allow a non-release smoke campaign from an uncommitted source snapshot",
     )
     return parser
 
@@ -107,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.batch_size < 1:
         raise SystemExit("--batch-size must be >= 1")
     protocol = _with_overrides(
-        load_native_monte_carlo_protocol(args.config),
+        load_native_monte_carlo_protocol(resolve_input_path(args.config)),
         args,
     )
     base_config = load_native_mujoco_config(protocol.base_config_path)
@@ -129,6 +135,16 @@ def main(argv: list[str] | None = None) -> int:
         current = protocol_fingerprint(protocol, base_config)
         if manifest.get("protocol_fingerprint") != current:
             raise SystemExit("resume rejected: protocol fingerprint does not match")
+        from native_monte_carlo import source_provenance
+
+        recorded_source = manifest.get("source", {})
+        current_source = source_provenance()
+        if (
+            recorded_source.get("source_snapshot_sha256")
+            and recorded_source.get("source_snapshot_sha256")
+            != current_source.get("source_snapshot_sha256")
+        ):
+            raise SystemExit("resume rejected: validation source snapshot does not match")
         trials = load_trial_checkpoint(directory)
         print(f"resume:         {directory} ({len(trials)}/{expected} complete)")
     else:
@@ -136,6 +152,7 @@ def main(argv: list[str] | None = None) -> int:
             protocol,
             base_config,
             command=[sys.executable, *sys.argv],
+            allow_dirty_source=args.allow_dirty_source,
         )
         trials = []
         print(f"output:         {directory}")

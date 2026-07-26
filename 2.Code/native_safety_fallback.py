@@ -44,7 +44,7 @@ class SafetyFallbackOptions:
     """Validated Stage 6 acceptance and fallback policy."""
 
     enabled: bool = False
-    solve_deadline_s: float = 0.10
+    solve_deadline_s: float = 0.05
     reject_on_deadline_miss: bool = True
     guarantee_slack_tolerance_m: float = 1e-6
     maximum_acceptable_slack_m: float = 0.08
@@ -129,7 +129,7 @@ class SafetyFallbackOptions:
     def from_mapping(cls, raw: Mapping[str, Any]) -> SafetyFallbackOptions:
         return cls(
             enabled=bool(raw.get("enabled", False)),
-            solve_deadline_s=raw.get("solve_deadline_s", 0.10),
+            solve_deadline_s=raw.get("solve_deadline_s", 0.05),
             reject_on_deadline_miss=bool(
                 raw.get("reject_on_deadline_miss", True)
             ),

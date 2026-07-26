@@ -26,7 +26,7 @@ def _ccmpc_context() -> PanelRuntimeContext:
         chance_constraints_enabled=True,
         covariance_propagation_enabled=True,
         supervisor_enabled=True,
-        solve_deadline_ms=100.0,
+        solve_deadline_ms=50.0,
         guarantee_slack_tolerance_m=1e-6,
         maximum_acceptable_slack_m=0.08,
         maximum_solver_residual=1e-3,
@@ -82,7 +82,7 @@ class PanelRuntimeContextTests(unittest.TestCase):
         self.assertTrue(context.covariance_propagation_enabled)
         self.assertTrue(context.supervisor_enabled)
         self.assertAlmostEqual(context.mpc_period_ms, 50.0)
-        self.assertAlmostEqual(context.solve_deadline_ms, 100.0)
+        self.assertAlmostEqual(context.solve_deadline_ms, 50.0)
         self.assertEqual(context.configured_risk_semantics, "joint")
         self.assertEqual(context.configured_risk_allocation, "uniform")
         self.assertIn("CC-MPC", context.mode_label)

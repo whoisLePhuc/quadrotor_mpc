@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 
@@ -19,6 +20,7 @@ from native_monte_carlo import (
     finalize_validation_artifacts,
     load_native_monte_carlo_protocol,
     load_trial_checkpoint,
+    source_provenance,
     summarize_native_trial,
     wilson_interval,
 )
@@ -249,6 +251,82 @@ class NativeMonteCarloMetricTests(unittest.TestCase):
 
 
 class NativeMonteCarloArtifactTests(unittest.TestCase):
+    def test_release_campaign_refuses_dirty_source(self):
+        base = load_native_mujoco_config(
+            ROOT / "config" / "mujoco_native_ccmpc.yaml"
+        )
+        configured = protocol(trials=1)
+        dirty = {
+            "status": "DIRTY_GIT_SNAPSHOT",
+            "git_commit": "abc123",
+            "git_branch": "feature",
+            "git_clean": False,
+            "source_snapshot_sha256": "f" * 64,
+            "source_file_count": 12,
+            "distribution_version": None,
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            configured = NativeMonteCarloProtocol(
+                **{
+                    **{
+                        field: getattr(configured, field)
+                        for field in configured.__dataclass_fields__
+                    },
+                    "output_dir": Path(temporary),
+                }
+            )
+            with (
+                patch("native_monte_carlo.source_provenance", return_value=dirty),
+                self.assertRaisesRegex(RuntimeError, "clean Git source"),
+            ):
+                create_validation_directory(configured, base, run_id="dirty")
+
+    def test_source_provenance_has_release_fields(self):
+        provenance = source_provenance(ROOT)
+        self.assertIn(
+            provenance["status"],
+            {
+                "CLEAN_GIT_COMMIT",
+                "DIRTY_GIT_SNAPSHOT",
+                "INSTALLED_DISTRIBUTION",
+                "EDITABLE_DISTRIBUTION",
+                "UNVERIFIED_DISTRIBUTION",
+                "UNVERIFIED_SOURCE_TREE",
+            },
+        )
+        self.assertIn("source_snapshot_sha256", provenance)
+        self.assertIn("git_clean", provenance)
+
+    def test_release_campaign_refuses_editable_distribution(self):
+        base = load_native_mujoco_config(
+            ROOT / "config" / "mujoco_native_ccmpc.yaml"
+        )
+        configured = protocol(trials=1)
+        editable = {
+            "status": "EDITABLE_DISTRIBUTION",
+            "git_commit": None,
+            "git_branch": None,
+            "git_clean": None,
+            "source_snapshot_sha256": "a" * 64,
+            "source_file_count": 12,
+            "distribution_version": "2.0.1",
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            configured = NativeMonteCarloProtocol(
+                **{
+                    **{
+                        field: getattr(configured, field)
+                        for field in configured.__dataclass_fields__
+                    },
+                    "output_dir": Path(temporary),
+                }
+            )
+            with (
+                patch("native_monte_carlo.source_provenance", return_value=editable),
+                self.assertRaisesRegex(RuntimeError, "non-editable distribution"),
+            ):
+                create_validation_directory(configured, base, run_id="editable")
+
     def test_checkpoint_round_trip_and_complete_bundle(self):
         base = load_native_mujoco_config(
             ROOT / "config" / "mujoco_native_ccmpc.yaml"
@@ -265,12 +343,23 @@ class NativeMonteCarloArtifactTests(unittest.TestCase):
                     "output_dir": Path(temporary),
                 }
             )
-            directory = create_validation_directory(
-                configured,
-                base,
-                command=["unit-test"],
-                run_id="unit-native-mc",
-            )
+            dirty = {
+                "status": "DIRTY_GIT_SNAPSHOT",
+                "git_commit": "abc123",
+                "git_branch": "feature",
+                "git_clean": False,
+                "source_snapshot_sha256": "e" * 64,
+                "source_file_count": 12,
+                "distribution_version": None,
+            }
+            with patch("native_monte_carlo.source_provenance", return_value=dirty):
+                directory = create_validation_directory(
+                    configured,
+                    base,
+                    command=["unit-test"],
+                    run_id="unit-native-mc",
+                    allow_dirty_source=True,
+                )
             append_trial_checkpoint(directory, items[0])
             self.assertEqual(load_trial_checkpoint(directory), items[:1])
             artifacts = finalize_validation_artifacts(
@@ -284,6 +373,15 @@ class NativeMonteCarloArtifactTests(unittest.TestCase):
                 artifacts["aggregate"].read_text(encoding="utf-8")
             )
             self.assertEqual(aggregate["overall"]["sample_size"], "INSUFFICIENT")
+            self.assertEqual(
+                aggregate["overall"]["release_provenance"],
+                "FAIL_DIRTY_SOURCE",
+            )
+            manifest = __import__("yaml").safe_load(
+                (directory / "manifest.yaml").read_text(encoding="utf-8")
+            )
+            self.assertEqual(manifest["schema_version"], 2)
+            self.assertEqual(manifest["source"]["status"], "DIRTY_GIT_SNAPSHOT")
             self.assertTrue(artifacts["plot"].exists())
             self.assertTrue(artifacts["report"].exists())
 

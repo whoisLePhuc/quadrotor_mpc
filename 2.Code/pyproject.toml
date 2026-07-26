@@ -1,37 +1,111 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "quadrotor-mpc-sim"
-version = "2.0.0"
+version = "2.0.1"
 description = "Reproducible deterministic and chance-constrained MPC research workbench"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = [
-    "numpy>=1.26,<3",
-    "scipy>=1.11",
-    "PyYAML>=6",
-    "matplotlib>=3.8",
-    "plotly>=5.20",
+    "numpy>=1.26,<3.0",
+    "scipy>=1.11,<2.0",
+    "PyYAML>=6.0,<7.0",
+    "matplotlib>=3.8,<4.0",
+    "plotly>=5.20,<7.0",
+    "cvxpy>=1.5,<2.0",
+    "clarabel>=0.9,<1.0",
+    "osqp>=0.6,<2.0",
 ]
 
 [project.optional-dependencies]
-qp = ["cvxpy>=1.5", "clarabel>=0.9", "osqp>=0.6"]
+qp = ["cvxpy>=1.5,<2.0", "clarabel>=0.9,<1.0", "osqp>=0.6,<2.0"]
 ui = [
-    "casadi>=3.6", "do-mpc>=4.6", "streamlit>=1.35", "graphviz>=0.20",
-    "PySide6>=6.7", "pyqtgraph>=0.13.7",
+    "casadi>=3.6,<4.0", "do-mpc>=4.6,<6.0", "streamlit>=1.35,<2.0",
+    "graphviz>=0.20,<1.0", "PySide6>=6.7,<7.0", "pyqtgraph>=0.13.7,<1.0",
 ]
-mujoco = ["mujoco>=3.2"]
-dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.10"]
+mujoco = ["mujoco>=3.2,<4.0"]
+dev = ["pytest>=8,<10", "ruff==0.16.0", "mypy>=1.10,<2.0", "build>=1.2,<2.0"]
 full = [
-    "cvxpy>=1.5", "clarabel>=0.9", "osqp>=0.6",
-    "casadi>=3.6", "do-mpc>=4.6", "streamlit>=1.35", "graphviz>=0.20",
-    "mujoco>=3.2", "PySide6>=6.7", "pyqtgraph>=0.13.7", "pytest>=8",
+    "cvxpy>=1.5,<2.0", "clarabel>=0.9,<1.0", "osqp>=0.6,<2.0",
+    "casadi>=3.6,<4.0", "do-mpc>=4.6,<6.0", "streamlit>=1.35,<2.0",
+    "graphviz>=0.20,<1.0", "mujoco>=3.2,<4.0", "PySide6>=6.7,<7.0",
+    "pyqtgraph>=0.13.7,<1.0",
+]
+
+[project.scripts]
+quadrotor-mpc-run = "run_experiment:main"
+quadrotor-mpc-sim = "run_simulation:main"
+quadrotor-mpc-sweep = "run_sweep:main"
+quadrotor-mpc-native = "run_mujoco_native:main"
+quadrotor-mpc-monte-carlo = "run_native_monte_carlo:main"
+quadrotor-mpc-dashboard = "start_dashboard:main"
+
+[tool.setuptools]
+include-package-data = true
+py-modules = [
+    "app",
+    "app_mujoco",
+    "belief_from_truth",
+    "chance_constrained_nmpc_controller",
+    "controller_interface",
+    "deterministic_nmpc_controller",
+    "mujoco_native",
+    "mujoco_plant",
+    "native_chance_constraints",
+    "native_covariance",
+    "native_desktop_panel",
+    "native_estimation",
+    "native_monte_carlo",
+    "native_replay",
+    "native_risk_budget",
+    "native_safety_fallback",
+    "native_telemetry",
+    "native_ui_model",
+    "obstacle_motion",
+    "quad_mpc_core",
+    "resource_paths",
+    "run_coupled",
+    "run_experiment",
+    "run_mujoco_native",
+    "run_native_monte_carlo",
+    "run_simulation",
+    "run_sweep",
+    "runtime_control",
+    "start_dashboard",
+    "vehicle",
+    "viz",
 ]
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["ccmpc*", "simulation*", "experiments*", "reporting*", "dashboard*"]
+
+[tool.setuptools.data-files]
+"share/quadrotor-mpc-sim/config" = [
+    "config/controller.yaml",
+    "config/mujoco_native.yaml",
+    "config/mujoco_native_ccmpc.yaml",
+    "config/mujoco_native_dynamic.yaml",
+    "config/mujoco_native_estimation.yaml",
+    "config/native_monte_carlo.yaml",
+]
+"share/quadrotor-mpc-sim/config/scenarios" = ["config/scenarios/*.yaml"]
+"share/quadrotor-mpc-sim/models/bitcraze_crazyflie_2" = [
+    "models/bitcraze_crazyflie_2/CHANGELOG.md",
+    "models/bitcraze_crazyflie_2/LICENSE",
+    "models/bitcraze_crazyflie_2/README.md",
+    "models/bitcraze_crazyflie_2/README_WORKBENCH.md",
+    "models/bitcraze_crazyflie_2/cf2.png",
+    "models/bitcraze_crazyflie_2/cf2.xml",
+    "models/bitcraze_crazyflie_2/scene.xml",
+]
+"share/quadrotor-mpc-sim/models/bitcraze_crazyflie_2/assets" = [
+    "models/bitcraze_crazyflie_2/assets/*.obj",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -40,3 +114,12 @@ addopts = "-q"
 [tool.ruff]
 target-version = "py310"
 line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "UP"]
+ignore = ["B905"]
+
+[tool.ruff.lint.per-file-ignores]
+"dashboard/Home.py" = ["N999"]
+"dashboard/common.py" = ["E402"]
+"dashboard/pages/*.py" = ["N999"]

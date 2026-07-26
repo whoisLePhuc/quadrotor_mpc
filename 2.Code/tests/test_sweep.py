@@ -6,7 +6,6 @@ from pathlib import Path
 from experiments.sweep import run_parameter_sweep
 from simulation.config import load_scenario
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 

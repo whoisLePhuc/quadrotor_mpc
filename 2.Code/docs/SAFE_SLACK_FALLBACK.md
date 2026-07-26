@@ -122,7 +122,7 @@ without running NMPC.
 controller:
   safety_fallback:
     enabled: true
-    solve_deadline_s: 0.10
+    solve_deadline_s: 0.05
     reject_on_deadline_miss: true
     guarantee_slack_tolerance_m: 1.0e-6
     maximum_acceptable_slack_m: 0.08

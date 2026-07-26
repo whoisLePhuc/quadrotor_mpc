@@ -4,16 +4,11 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 
 from experiments.manager import save_experiment
+from resource_paths import resolve_input_path, resolve_output_path
 from simulation.config import load_scenario
 from simulation.runner import SimulationResult, SimulationRunner
-
-
-def _resolve(base: Path, value: str) -> Path:
-    path = Path(value)
-    return path if path.is_absolute() else base / path
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -48,10 +43,9 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("--trials must be >= 1")
     if args.delta is not None and not 0.0 < args.delta <= 0.5:
         raise SystemExit("--delta must be in (0, 0.5]")
-    base = Path(__file__).resolve().parent
-    scenario_path = _resolve(base, args.config)
-    controller_path = _resolve(base, args.controller_config)
-    output_root = _resolve(base, args.output_root)
+    scenario_path = resolve_input_path(args.config)
+    controller_path = resolve_input_path(args.controller_config)
+    output_root = resolve_output_path(args.output_root)
     scenario = load_scenario(scenario_path)
     modes = ["deterministic", "ccmpc"] if args.compare else [args.mode]
     first_seed = scenario.seed if args.seed is None else args.seed

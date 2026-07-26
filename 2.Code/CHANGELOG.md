@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.0.1 — Release stabilization
+
+- Corrected README commands, scope and claims to match measured repository
+  behavior and the `VALIDATED_WITH_LIMITATIONS` result.
+- Aligned the safety-supervisor acceptance deadline with the 50 ms controller
+  period and added cross-field configuration validation.
+- Added locked dependency resolution and GitHub Actions gates for lint, tests,
+  native configs, Qt lifecycle, build and installed-wheel execution.
+- Completed wheel packaging for native modules, console commands, configs and
+  the sourced Crazyflie assets.
+- Added root/package MIT licenses and a release acceptance checklist.
+- Added clean-source enforcement, deterministic source fingerprints and
+  source-matching resume checks to native Monte Carlo evidence.
+
 ## 2.0.0 — Native Monte Carlo validation
 
 - Added a paired native MuJoCo benchmark for deterministic-estimated,

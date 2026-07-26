@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import streamlit as st
 
-from dashboard.common import aggregate_frame, load_named_scenario, metrics_frame, run_many, scenario_files
+from dashboard.common import (
+    aggregate_frame,
+    load_named_scenario,
+    metrics_frame,
+    run_many,
+    scenario_files,
+)
 from reporting.plotly_views import comparison_metrics, trajectory_3d
 
 st.set_page_config(page_title="Compare Controllers", page_icon="⚖️", layout="wide")

@@ -18,8 +18,8 @@ back to the always-available Plotly 3D animation automatically.
 import numpy as np
 import streamlit as st
 
-from run_coupled import run_coupled_simulation
 from quad_mpc_core import build_cached_mpc
+from run_coupled import run_coupled_simulation
 from vehicle import DEFAULT_QUADROTOR
 from viz import build_figure, build_timeseries_figure
 

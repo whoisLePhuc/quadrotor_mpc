@@ -15,8 +15,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from experiments.sweep import SweepOutcome, run_parameter_sweep
+from resource_paths import resolve_input_path, resolve_output_path
 from simulation.config import load_scenario
-
 
 PARAMETERS = (
     "measurement_pos", "process_vel", "drag_scale",
@@ -99,12 +99,11 @@ def _plot(aggregate: list[dict], parameter: str, path: Path) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    root = Path(__file__).resolve().parent
-    scenario = load_scenario(root / args.config)
+    scenario = load_scenario(resolve_input_path(args.config))
     modes = ["deterministic", "ccmpc"] if args.mode == "both" else [args.mode]
     outcomes = run_parameter_sweep(
         scenario,
-        root / args.controller_config,
+        resolve_input_path(args.controller_config),
         args.parameter,
         args.values,
         modes,
@@ -115,7 +114,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     rows = _rows(outcomes)
     aggregate = _aggregate(rows)
-    output = root / args.output_dir / f"{scenario.name}-{args.parameter}"
+    output = resolve_output_path(args.output_dir) / f"{scenario.name}-{args.parameter}"
     output.mkdir(parents=True, exist_ok=True)
     with (output / "sweep.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(rows[0]))

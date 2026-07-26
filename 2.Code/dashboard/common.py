@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -12,12 +12,18 @@ if str(ROOT) not in sys.path:
 
 import pandas as pd
 
+from resource_paths import resource_root
 from simulation.config import ScenarioConfig, load_scenario
 from simulation.runner import SimulationResult, SimulationRunner
 
+DATA_ROOT = resource_root()
+
 
 def scenario_files() -> dict[str, Path]:
-    return {path.stem: path for path in sorted((ROOT / "config/scenarios").glob("*.yaml"))}
+    return {
+        path.stem: path
+        for path in sorted((DATA_ROOT / "config/scenarios").glob("*.yaml"))
+    }
 
 
 def load_named_scenario(name: str) -> ScenarioConfig:
@@ -46,7 +52,7 @@ def run_many(
         for mode in modes:
             results.append(SimulationRunner(
                 scenario,
-                ROOT / "config/controller.yaml",
+                DATA_ROOT / "config/controller.yaml",
                 mode=mode,
                 backend=backend,
                 seed=seed + trial,

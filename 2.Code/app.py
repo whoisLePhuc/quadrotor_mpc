@@ -8,7 +8,7 @@ Requires: streamlit, casadi, do-mpc, plotly, numpy  (see requirements.txt)
 import numpy as np
 import streamlit as st
 
-from quad_mpc_core import run_simulation, build_cached_mpc
+from quad_mpc_core import build_cached_mpc, run_simulation
 from vehicle import DEFAULT_QUADROTOR
 from viz import build_figure, build_timeseries_figure
 

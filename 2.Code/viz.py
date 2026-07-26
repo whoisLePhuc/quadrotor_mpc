@@ -89,8 +89,8 @@ def build_figure(result, start, goal, obstacles):
 
 def build_timeseries_figure(result, goal):
     """Build position, attitude, control and clearance time-series panels."""
-    from plotly.subplots import make_subplots
     import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
 
     times = np.asarray(result["t"])
     positions = np.asarray(result["pos"])

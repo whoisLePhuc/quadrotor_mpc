@@ -64,6 +64,15 @@ after every completed worker batch in parallel mode. The manifest begins in
 `RUNNING` state and changes to `COMPLETED` only after all aggregate artifacts
 are written.
 
+Manifest schema 2 also records the Git commit/branch, clean state and a
+deterministic SHA-256 over validation-relevant source and configuration files.
+A release campaign accepts either a clean Git worktree or a fingerprinted,
+non-editable installed distribution. Dirty worktrees, editable installs and
+unverified loose source trees/distributions are refused. Git and archive
+fingerprints include the native MJCF/OBJ collision model as well as source and
+configuration. `--allow-dirty-source` is reserved for smoke campaigns and
+produces `FAIL_DIRTY_SOURCE` release provenance.
+
 ## Running and resuming
 
 ```bash
@@ -87,7 +96,8 @@ python run_native_monte_carlo.py \
   --resume outputs/native_monte_carlo/<run-id>
 ```
 
-Resume is rejected when the protocol fingerprint differs.
+Resume is rejected when the protocol fingerprint or validation-source snapshot
+differs.
 
 ## Claim semantics
 
@@ -129,3 +139,9 @@ collisions still gives a Wilson 95% upper bound of `0.113513`. The default
 bound below the `0.10` empirical gate. Positive slack, fallback and the failed
 50 ms timing gate independently block a probability claim in the verified
 campaign.
+
+The committed 30-seed artifact is retained as historical Stage 8 evidence, but
+its manifest names the pre-Phase-8 commit `9f4a1b3`. It is therefore not
+release-provenance-complete. Version 2.0.1 prevents recurrence by enforcing a
+clean source and snapshot-matched resume; the release-scale 50-seed campaign
+must be run after the stabilization source is committed.

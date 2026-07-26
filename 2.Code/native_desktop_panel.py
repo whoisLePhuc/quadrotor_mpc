@@ -83,6 +83,10 @@ class DesktopPanelProcess:
     def is_alive(self) -> bool:
         return self._process.is_alive()
 
+    @property
+    def exitcode(self) -> int | None:
+        return self._process.exitcode
+
     def drain_commands(self) -> list[RuntimeCommand]:
         commands: list[RuntimeCommand] = []
         while True:

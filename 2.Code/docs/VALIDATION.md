@@ -202,7 +202,9 @@ When optional UI dependencies are available, additionally launch
 `config/mujoco_native_ccmpc.yaml` and verify that the Qt panel remains
 responsive while MuJoCo runs, closing either window stops cleanly, prediction
 color follows assurance state, and the deadline trace matches the configured
-100 ms acceptance limit.
+50 ms acceptance limit. The Stage 7 paired-regression numbers below are
+historical measurements from the former 100 ms policy; v2.0.1 intentionally
+changes the command-acceptance deadline to match the control period.
 
 Paired control-path regression against Stage 6 commit `5256c82` in the same
 Python/dependency environment:
@@ -280,3 +282,21 @@ trials, the Wilson 95% upper bound is `0.113513`, above the empirical gate
 `0.10`. Every chance-controller cell also contained positive slack and
 fallback. Median per-trial solver p99 ranged from `87.523 ms` to `95.470 ms`
 for the chance controllers, so the 50 ms real-time gate failed.
+
+## Phase 9 release-stabilization checks
+
+Version 2.0.1 adds release gates around the completed research workbench:
+
+- the configured rejection deadline must not exceed the controller period;
+- README commands and claims are checked against the repository;
+- all runtime configs, tests and lint run in GitHub Actions;
+- the Qt panel lifecycle and an installed wheel are smoke-tested;
+- dependency resolution is frozen by `uv.lock`;
+- native Monte Carlo release evidence refuses an uncommitted Git tree and
+  records a deterministic validation-source SHA-256;
+- an explicitly allowed dirty-source campaign is reproducible but marked
+  non-release-eligible.
+
+The 30-seed Stage 8 artifact remains unchanged for auditability. Its legacy
+commit provenance is documented in `validation/README.md`; it must not be
+presented as the clean 50-seed v2.0.1 release campaign.
