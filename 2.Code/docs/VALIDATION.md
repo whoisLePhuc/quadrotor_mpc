@@ -131,3 +131,47 @@ For the joint run, every one of 200 solves allocated 63 constraints, the
 maximum absolute budget-sum error was \(5.55\times10^{-17}\), and no collision,
 NaN state or NaN control occurred. The positive slack prevents a probabilistic
 safety guarantee despite correct risk accounting.
+
+## Stage 6 safe slack and fallback checks
+
+Verify the supervisor independently of the optimizer using fault injection:
+
+- backend `success=false` rejects the primary solution;
+- solver exceptions do not terminate the plant loop;
+- command-bound, risk-budget, nonlinear residual, slack-limit and deadline
+  gates each produce a specific rejection reason;
+- the command source escalates through
+  `HOLD_LAST_ACCEPTED -> POSITION_HOLD_PD -> EMERGENCY_HOVER`;
+- every fallback command remains inside configured actuator bounds;
+- Reset and Run again clear the last command, fallback reference and rejection
+  count;
+- telemetry/recording/replay preserve primary and fallback status;
+- positive slack above the numerical guarantee tolerance is never labeled
+  guarantee-eligible.
+
+Verified 10-second Stage 6 run, estimator seed 7, joint uniform budget 0.10 and
+100 ms configured solve deadline:
+
+| Metric | Result |
+|---|---:|
+| Completed ticks | 200 / 200 |
+| Primary solver success | 200 / 200 |
+| Primary commands applied | 200 |
+| Nominal deadline rejects / fallback | 0 / 0 |
+| Minimum clearance | 0.410519826 m |
+| Maximum slack | 0.075120640 m |
+| Guarantee-eligible ticks | 114 |
+| Positive-slack, not-guaranteed ticks | 86 |
+| Maximum primal / dual solver residual | 9.12e-7 / 6.92e-7 |
+| Mean / p95 / p99 solve time | 60.63 / 73.62 / 81.60 ms |
+| Maximum solve time | 88.42 ms |
+| Collision / NaN | no / no |
+
+The supervisor-disabled Stage 5 regression remains exactly:
+final error 0.104444105 m, minimum clearance 0.410519817 m, 114
+`SOLVED_SAFE` and 86 `SOLVED_WITH_SLACK`.
+
+The current native NMPC does **not** pass a strict 50 ms real-time gate on the
+validation host because p99 solve time is 81.60 ms. Stage 6 validates the
+deadline-miss response; it does not claim that the solver is fast enough for a
+20 Hz deployment.

@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.8.0 — Safe slack acceptance and fallback
+
+- Added a backend-independent safety supervisor that accepts or rejects primary
+  NMPC solutions before they reach the plant.
+- Added gates for backend success, joint-risk status, actuator bounds,
+  nonlinear residual/slack consistency, degraded-slack limit and solve
+  deadline.
+- Added deterministic escalation through last accepted command, bounded
+  position-hold PD and rate-damped emergency hover.
+- Converted solver exceptions into normalized fallback solutions instead of
+  terminating the closed-loop runtime.
+- Added guarantee-eligibility versus degraded-positive-slack semantics.
+- Extended controller results, telemetry, event recording, replay and desktop
+  status with accept/reject and fallback evidence.
+- Preserved Reset and Run again reproducibility by clearing supervisor state.
+
 ## 1.7.0 — Native joint risk-budget management
 
 - Added explicit `individual` and `joint` chance-constraint risk semantics.

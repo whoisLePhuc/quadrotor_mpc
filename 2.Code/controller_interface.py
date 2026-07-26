@@ -208,6 +208,20 @@ class ControlSolution:
     risk_budget_remaining: float | None = None
     risk_constraint_count: int = 0
     risk_budget_status: str = ""
+    primary_solver_status: str = ""
+    primary_solver_success: bool = True
+    primary_solver_iterations: int = 0
+    primary_solver_primal_residual: float = 0.0
+    primary_solver_dual_residual: float = 0.0
+    command_source: str = "PRIMARY_NMPC"
+    solution_accepted: bool = True
+    fallback_active: bool = False
+    fallback_level: int = 0
+    fallback_reason: str = ""
+    consecutive_rejections: int = 0
+    solve_time_ms: float = 0.0
+    deadline_missed: bool = False
+    safety_assurance_status: str = ""
 
     def __post_init__(self) -> None:
         command = _readonly_array(self.command, (CONTROL_SIZE,), "ControlSolution.command")
@@ -331,6 +345,82 @@ class ControlSolution:
             self,
             "risk_budget_status",
             str(self.risk_budget_status),
+        )
+        object.__setattr__(
+            self,
+            "primary_solver_status",
+            str(self.primary_solver_status),
+        )
+        object.__setattr__(
+            self,
+            "primary_solver_success",
+            bool(self.primary_solver_success),
+        )
+        primary_solver_iterations = int(self.primary_solver_iterations)
+        if primary_solver_iterations < 0:
+            raise ValueError(
+                "ControlSolution.primary_solver_iterations must be >= 0"
+            )
+        object.__setattr__(
+            self,
+            "primary_solver_iterations",
+            primary_solver_iterations,
+        )
+        for label in (
+            "primary_solver_primal_residual",
+            "primary_solver_dual_residual",
+        ):
+            residual = float(getattr(self, label))
+            if not np.isfinite(residual) or residual < 0.0:
+                raise ValueError(
+                    f"ControlSolution.{label} must be finite and >= 0"
+                )
+            object.__setattr__(self, label, residual)
+        object.__setattr__(self, "command_source", str(self.command_source))
+        object.__setattr__(
+            self,
+            "solution_accepted",
+            bool(self.solution_accepted),
+        )
+        object.__setattr__(
+            self,
+            "fallback_active",
+            bool(self.fallback_active),
+        )
+        fallback_level = int(self.fallback_level)
+        if fallback_level < 0:
+            raise ValueError("ControlSolution.fallback_level must be >= 0")
+        object.__setattr__(self, "fallback_level", fallback_level)
+        object.__setattr__(
+            self,
+            "fallback_reason",
+            str(self.fallback_reason),
+        )
+        consecutive_rejections = int(self.consecutive_rejections)
+        if consecutive_rejections < 0:
+            raise ValueError(
+                "ControlSolution.consecutive_rejections must be >= 0"
+            )
+        object.__setattr__(
+            self,
+            "consecutive_rejections",
+            consecutive_rejections,
+        )
+        solve_time_ms = float(self.solve_time_ms)
+        if not np.isfinite(solve_time_ms) or solve_time_ms < 0.0:
+            raise ValueError(
+                "ControlSolution.solve_time_ms must be finite and >= 0"
+            )
+        object.__setattr__(self, "solve_time_ms", solve_time_ms)
+        object.__setattr__(
+            self,
+            "deadline_missed",
+            bool(self.deadline_missed),
+        )
+        object.__setattr__(
+            self,
+            "safety_assurance_status",
+            str(self.safety_assurance_status),
         )
 
     @property

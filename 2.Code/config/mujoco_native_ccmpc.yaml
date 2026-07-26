@@ -45,6 +45,29 @@ controller:
     slack_tolerance_m: 1.0e-6
     minimum_direction_norm_m: 1.0e-8
     distance_smoothing_m2: 1.0e-6
+  safety_fallback:
+    enabled: true
+    # End-to-end controller deadline. A late NMPC result is rejected rather
+    # than applied after its control interval has expired.
+    solve_deadline_s: 0.10
+    reject_on_deadline_miss: true
+    # Positive slack is never guarantee-eligible. The larger acceptance limit
+    # permits an explicitly degraded solution before fallback is required.
+    guarantee_slack_tolerance_m: 1.0e-6
+    maximum_acceptable_slack_m: 0.08
+    constraint_tolerance_m: 1.0e-6
+    maximum_solver_residual: 1.0e-3
+    command_bound_tolerance: 1.0e-6
+    hold_last_command_steps: 1
+    emergency_after_consecutive_rejections: 20
+    position_kp_xy: 2.0
+    position_kd_xy: 1.8
+    vertical_kp: 4.0
+    vertical_kd: 2.4
+    attitude_kp: 0.004
+    attitude_kd: 0.0008
+    emergency_rate_damping: 0.0006
+    maximum_tilt_rad: 0.30
 
 simulation:
   duration_s: 10.0

@@ -7,7 +7,8 @@ the Stage 4 individual mode for regression and adds a uniform joint allocation
 over every horizon-step/obstacle chance constraint used by one NMPC solve.
 
 Stage 5 does not implement adaptive/geometry-aware allocation, iterative risk
-allocation, solver fallback or an episode-wide probability guarantee.
+allocation or an episode-wide probability guarantee. Stage 6 adds a separate
+post-solve safety supervisor without changing this allocator.
 
 ## Semantics
 

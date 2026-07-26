@@ -38,6 +38,7 @@ Core ownership:
 | Native chance tightening | `native_chance_constraints.py` | collision-normal projection and spherical safety radii |
 | Native risk budget | `native_risk_budget.py` | individual/joint semantics and uniform allocation |
 | Native CC-NMPC | `chance_constrained_nmpc_controller.py` | spherical chance constraints with external risk allocation |
+| Native safety supervisor | `native_safety_fallback.py` | acceptance gates, deadline policy and bounded fallback hierarchy |
 | Exact baseline source | `belief_from_truth.py` | zero-covariance truth adapter used only for regression |
 
 Dependencies point inward: UI and reporting consume experiment/runtime data; the mathematics layer
@@ -73,7 +74,10 @@ trajectory in the 12D local-error chart and returns vehicle and obstacle
 covariance horizons. Stage 4 can project these arrays onto collision normals and
 tighten time-varying spherical safety radii. Stage 5 allocates either legacy
 individual risk or a uniform joint budget over the complete constraint grid.
-Disabling chance constraints keeps the deterministic radius unchanged.
+Stage 6 wraps the controller output with solver, residual, slack, bound and
+deadline gates before choosing primary NMPC or a bounded fallback command.
+Disabling chance constraints and the supervisor keeps the deterministic path
+unchanged.
 
 All obstacle centers are TVPs in the native NMPC model. Geometry and obstacle
 count define the compiled NLP; estimated mean trajectories can change at every

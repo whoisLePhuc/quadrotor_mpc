@@ -299,6 +299,30 @@ class DeterministicNMPCController:
             self.mpc.make_step(belief.mean_state_13.reshape(-1, 1)),
             dtype=float,
         ).reshape(4)
+        solver_stats = getattr(self.mpc, "solver_stats", {})
+        primary_solver_success = bool(solver_stats.get("success", True))
+        primary_solver_status = str(
+            solver_stats.get(
+                "return_status",
+                "SUCCESS" if primary_solver_success else "FAILED",
+            )
+        )
+        solver_iterations = max(0, int(solver_stats.get("iter_count", 0)))
+        iteration_history = solver_stats.get("iterations", {})
+
+        def final_residual(name: str) -> float:
+            values = iteration_history.get(name, ())
+            if not values:
+                return 0.0
+            value = float(values[-1])
+            return (
+                value
+                if np.isfinite(value) and value >= 0.0
+                else np.finfo(float).max
+            )
+
+        primal_residual = final_residual("inf_pr")
+        dual_residual = final_residual("inf_du")
         nominal_states = _extract_nominal_states(self.mpc, belief.mean_state_13)
         horizon_length = nominal_states.shape[0]
         nominal_controls = _extract_nominal_controls(
@@ -401,4 +425,9 @@ class DeterministicNMPCController:
             risk_budget_remaining=used_risk_metadata.remaining_epsilon,
             risk_constraint_count=used_risk_metadata.active_constraint_count,
             risk_budget_status=used_risk_metadata.budget_status,
+            primary_solver_status=primary_solver_status,
+            primary_solver_success=primary_solver_success,
+            primary_solver_iterations=solver_iterations,
+            primary_solver_primal_residual=primal_residual,
+            primary_solver_dual_residual=dual_residual,
         )

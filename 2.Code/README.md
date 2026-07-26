@@ -214,6 +214,7 @@ python -m unittest discover -s tests -v
 - [`docs/HORIZON_COVARIANCE_PROPAGATION.md`](docs/HORIZON_COVARIANCE_PROPAGATION.md)
 - [`docs/SPHERICAL_CHANCE_CONSTRAINTS.md`](docs/SPHERICAL_CHANCE_CONSTRAINTS.md)
 - [`docs/RISK_BUDGET_MANAGEMENT.md`](docs/RISK_BUDGET_MANAGEMENT.md)
+- [`docs/SAFE_SLACK_FALLBACK.md`](docs/SAFE_SLACK_FALLBACK.md)
 
 ## Directory map
 
@@ -235,6 +236,7 @@ python -m unittest discover -s tests -v
 ├── native_chance_constraints.py spherical tightening and residual evaluation
 ├── native_risk_budget.py       individual/joint semantics and uniform allocation
 ├── chance_constrained_nmpc_controller.py explicit native CC-NMPC controller
+├── native_safety_fallback.py acceptance gates and bounded fallback hierarchy
 ├── obstacle_motion.py shared static/dynamic obstacle predictor
 ├── native_telemetry.py bounded telemetry, recording and replay loading
 ├── native_desktop_panel.py separate Qt control/plot process

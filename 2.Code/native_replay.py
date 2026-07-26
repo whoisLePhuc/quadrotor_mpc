@@ -188,6 +188,43 @@ def replay_native_recording(config: Any, recording: dict[str, Any], runtime: Any
                         else None
                     ),
                     solver_status=str(row.get("solver_status", "")),
+                    primary_solver_status=str(
+                        row.get("primary_solver_status", "")
+                    ),
+                    primary_solver_success=bool(
+                        int(row.get("primary_solver_success", 1) or 0)
+                    ),
+                    primary_solver_iterations=int(
+                        row.get("primary_solver_iterations", 0) or 0
+                    ),
+                    primary_solver_primal_residual=float(
+                        row.get("primary_solver_primal_residual", 0.0) or 0.0
+                    ),
+                    primary_solver_dual_residual=float(
+                        row.get("primary_solver_dual_residual", 0.0) or 0.0
+                    ),
+                    command_source=str(
+                        row.get("command_source", "PRIMARY_NMPC")
+                    ),
+                    solution_accepted=bool(
+                        int(row.get("solution_accepted", 1) or 0)
+                    ),
+                    fallback_active=bool(
+                        int(row.get("fallback_active", 0) or 0)
+                    ),
+                    fallback_level=int(
+                        row.get("fallback_level", 0) or 0
+                    ),
+                    fallback_reason=str(row.get("fallback_reason", "")),
+                    consecutive_rejections=int(
+                        row.get("consecutive_rejections", 0) or 0
+                    ),
+                    deadline_missed=bool(
+                        int(row.get("deadline_missed", 0) or 0)
+                    ),
+                    safety_assurance_status=str(
+                        row.get("safety_assurance_status", "")
+                    ),
                     projected_uncertainties=(
                         recording["projected_uncertainty_horizons"][index]
                         if len(recording.get("projected_uncertainty_horizons", []))

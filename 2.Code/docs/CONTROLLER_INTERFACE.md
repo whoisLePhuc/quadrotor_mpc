@@ -57,6 +57,13 @@ inputs are normalized at construction.
 | `risk_budget_remaining` | unallocated joint budget, otherwise `None` | scalar |
 | `risk_constraint_count` | number of allocated scalar constraints | integer |
 | `risk_budget_status` | allocation audit status | string |
+| `primary_solver_status`, `primary_solver_success` | raw backend outcome retained across fallback | scalar |
+| `primary_solver_iterations`, `primary_solver_*_residual` | final backend convergence evidence | scalar |
+| `command_source`, `solution_accepted` | applied command owner and gate decision | scalar |
+| `fallback_active`, `fallback_level`, `fallback_reason` | fallback classification | scalar |
+| `consecutive_rejections` | current rejection streak | integer |
+| `solve_time_ms`, `deadline_missed` | end-to-end controller timing evidence | scalar |
+| `safety_assurance_status` | guarantee-eligibility/degraded label | string |
 
 When Stage 3 is disabled, the deterministic adapter returns zero predicted
 covariance and zero risk allocation. When propagation is enabled, the same
@@ -112,3 +119,8 @@ supplies tightened radii as TVPs and reports residual/slack. See
 Stage 5 delegates epsilon allocation to `native_risk_budget.py`. Uniform joint
 allocation changes the per-cell quantile without changing the controller
 boundary. See `RISK_BUDGET_MANAGEMENT.md`.
+
+Stage 6 decorates this same interface with `SafeFallbackController`. It retains
+the rejected primary horizon for diagnostics but replaces `command` with the
+selected bounded fallback. Solver exceptions are represented by a finite,
+shape-valid diagnostic solution. See `SAFE_SLACK_FALLBACK.md`.

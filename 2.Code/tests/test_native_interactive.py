@@ -163,6 +163,19 @@ class NativeRecordingTests(unittest.TestCase):
             risk_budget_remaining=0.0,
             risk_constraint_count=3,
             risk_budget_status="BUDGET_OK",
+            primary_solver_status="Maximum_Iterations_Exceeded",
+            primary_solver_success=False,
+            primary_solver_iterations=60,
+            primary_solver_primal_residual=0.002,
+            primary_solver_dual_residual=0.003,
+            command_source="POSITION_HOLD_PD",
+            solution_accepted=False,
+            fallback_active=True,
+            fallback_level=2,
+            fallback_reason="PRIMARY_SOLVER_FAILED",
+            consecutive_rejections=2,
+            deadline_missed=False,
+            safety_assurance_status="NOT_GUARANTEED_FALLBACK_ACTIVE",
         )
         sample = step_to_sample(step)
         with tempfile.TemporaryDirectory() as directory:
@@ -215,8 +228,30 @@ class NativeRecordingTests(unittest.TestCase):
             self.assertAlmostEqual(sample["risk_budget_allocated"], 0.10)
             self.assertEqual(sample["risk_constraint_count"], 3)
             self.assertEqual(sample["risk_budget_status"], "BUDGET_OK")
+            self.assertEqual(
+                sample["primary_solver_status"],
+                "Maximum_Iterations_Exceeded",
+            )
+            self.assertFalse(sample["primary_solver_success"])
+            self.assertEqual(sample["primary_solver_iterations"], 60)
+            self.assertAlmostEqual(
+                sample["primary_solver_primal_residual"],
+                0.002,
+            )
+            self.assertEqual(sample["command_source"], "POSITION_HOLD_PD")
+            self.assertFalse(sample["solution_accepted"])
+            self.assertTrue(sample["fallback_active"])
+            self.assertEqual(sample["fallback_level"], 2)
+            self.assertEqual(
+                sample["fallback_reason"],
+                "PRIMARY_SOLVER_FAILED",
+            )
             self.assertEqual(loaded["rows"][0]["risk_semantics"], "joint")
             self.assertEqual(loaded["rows"][0]["risk_budget_status"], "BUDGET_OK")
+            self.assertEqual(
+                loaded["rows"][0]["command_source"],
+                "POSITION_HOLD_PD",
+            )
             self.assertIsNotNone(sample["horizon_terminal_position_sigma"])
             self.assertTrue((run_dir / "snapshot-001.json").is_file())
 

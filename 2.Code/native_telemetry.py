@@ -133,6 +133,37 @@ def step_to_sample(step: Any) -> dict[str, Any]:
         ),
         "obstacle_measurement_positions": (serialized_obstacle_measurements),
         "solver_status": str(getattr(step, "solver_status", "")),
+        "primary_solver_status": str(
+            getattr(step, "primary_solver_status", "")
+        ),
+        "primary_solver_success": bool(
+            getattr(step, "primary_solver_success", True)
+        ),
+        "primary_solver_iterations": int(
+            getattr(step, "primary_solver_iterations", 0)
+        ),
+        "primary_solver_primal_residual": float(
+            getattr(step, "primary_solver_primal_residual", 0.0)
+        ),
+        "primary_solver_dual_residual": float(
+            getattr(step, "primary_solver_dual_residual", 0.0)
+        ),
+        "command_source": str(
+            getattr(step, "command_source", "PRIMARY_NMPC")
+        ),
+        "solution_accepted": bool(
+            getattr(step, "solution_accepted", True)
+        ),
+        "fallback_active": bool(getattr(step, "fallback_active", False)),
+        "fallback_level": int(getattr(step, "fallback_level", 0)),
+        "fallback_reason": str(getattr(step, "fallback_reason", "")),
+        "consecutive_rejections": int(
+            getattr(step, "consecutive_rejections", 0)
+        ),
+        "deadline_missed": bool(getattr(step, "deadline_missed", False)),
+        "safety_assurance_status": str(
+            getattr(step, "safety_assurance_status", "")
+        ),
         "risk_semantics": str(getattr(step, "risk_semantics", "")),
         "risk_allocation_method": str(
             getattr(step, "risk_allocation_method", "")
@@ -433,6 +464,51 @@ class NativeRunRecorder:
                     default=None,
                 )
             ),
+            "fallback_activations": sum(
+                1
+                for sample in self.samples
+                if sample.get("fallback_active", False)
+            ),
+            "deadline_misses": sum(
+                1
+                for sample in self.samples
+                if sample.get("deadline_missed", False)
+            ),
+            "rejected_primary_solutions": sum(
+                1
+                for sample in self.samples
+                if not sample.get("solution_accepted", True)
+            ),
+            "guarantee_eligible_samples": sum(
+                1
+                for sample in self.samples
+                if sample.get("safety_assurance_status")
+                == "GUARANTEE_ELIGIBLE"
+            ),
+            "maximum_primary_solver_primal_residual": max(
+                (
+                    float(
+                        sample.get(
+                            "primary_solver_primal_residual",
+                            0.0,
+                        )
+                    )
+                    for sample in self.samples
+                ),
+                default=None,
+            ),
+            "maximum_primary_solver_dual_residual": max(
+                (
+                    float(
+                        sample.get(
+                            "primary_solver_dual_residual",
+                            0.0,
+                        )
+                    )
+                    for sample in self.samples
+                ),
+                default=None,
+            ),
         }
         (self.run_dir / "summary.yaml").write_text(
             yaml.safe_dump(summary, sort_keys=False), encoding="utf-8"
@@ -465,6 +541,19 @@ class NativeRunRecorder:
             "min_clearance_m",
             "solver_time_ms",
             "solver_status",
+            "primary_solver_status",
+            "primary_solver_success",
+            "primary_solver_iterations",
+            "primary_solver_primal_residual",
+            "primary_solver_dual_residual",
+            "command_source",
+            "solution_accepted",
+            "fallback_active",
+            "fallback_level",
+            "fallback_reason",
+            "consecutive_rejections",
+            "deadline_missed",
+            "safety_assurance_status",
             "risk_semantics",
             "risk_allocation_method",
             "risk_budget_total",
@@ -512,6 +601,48 @@ class NativeRunRecorder:
                         "min_clearance_m": sample["min_clearance_m"],
                         "solver_time_ms": sample["solver_time_ms"],
                         "solver_status": sample.get("solver_status", ""),
+                        "primary_solver_status": sample.get(
+                            "primary_solver_status",
+                            "",
+                        ),
+                        "primary_solver_success": int(
+                            sample.get("primary_solver_success", True)
+                        ),
+                        "primary_solver_iterations": sample.get(
+                            "primary_solver_iterations",
+                            0,
+                        ),
+                        "primary_solver_primal_residual": sample.get(
+                            "primary_solver_primal_residual",
+                            0.0,
+                        ),
+                        "primary_solver_dual_residual": sample.get(
+                            "primary_solver_dual_residual",
+                            0.0,
+                        ),
+                        "command_source": sample.get(
+                            "command_source",
+                            "PRIMARY_NMPC",
+                        ),
+                        "solution_accepted": int(
+                            sample.get("solution_accepted", True)
+                        ),
+                        "fallback_active": int(
+                            sample.get("fallback_active", False)
+                        ),
+                        "fallback_level": sample.get("fallback_level", 0),
+                        "fallback_reason": sample.get("fallback_reason", ""),
+                        "consecutive_rejections": sample.get(
+                            "consecutive_rejections",
+                            0,
+                        ),
+                        "deadline_missed": int(
+                            sample.get("deadline_missed", False)
+                        ),
+                        "safety_assurance_status": sample.get(
+                            "safety_assurance_status",
+                            "",
+                        ),
                         "risk_semantics": sample.get("risk_semantics", ""),
                         "risk_allocation_method": sample.get(
                             "risk_allocation_method",

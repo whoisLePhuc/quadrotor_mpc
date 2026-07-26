@@ -160,6 +160,7 @@ def main(argv: list[str] | None = None) -> int:
             estimation_options=config.estimation,
             covariance_options=config.covariance_propagation,
             chance_options=config.chance_constraints,
+            safety_fallback_options=config.safety_fallback,
         )
     recording_path = runtime.finalize(result) if recording is None else None
 

@@ -21,6 +21,7 @@ from native_chance_constraints import ChanceConstraintOptions
 from native_covariance import CovariancePropagationOptions
 from native_desktop_panel import DesktopPanelOptions, DesktopPanelProcess
 from native_estimation import EstimationOptions
+from native_safety_fallback import SafetyFallbackOptions
 from native_telemetry import (
     NativeRunRecorder,
     RecordingOptions,
@@ -127,6 +128,7 @@ class NativeMuJoCoConfig:
     estimation: EstimationOptions
     covariance_propagation: CovariancePropagationOptions
     chance_constraints: ChanceConstraintOptions
+    safety_fallback: SafetyFallbackOptions
     viewer: NativeViewerOptions
     panel: DesktopPanelOptions
     recording: RecordingOptions
@@ -151,6 +153,10 @@ class NativeMuJoCoConfig:
         chance_raw = _mapping(
             controller_raw.get("chance_constraints", {}),
             "controller.chance_constraints",
+        )
+        safety_fallback_raw = _mapping(
+            controller_raw.get("safety_fallback", {}),
+            "controller.safety_fallback",
         )
 
         start = _xyz(start_raw, "start")
@@ -213,6 +219,9 @@ class NativeMuJoCoConfig:
             estimation=EstimationOptions.from_mapping(estimation_raw),
             covariance_propagation=covariance_options,
             chance_constraints=chance_options,
+            safety_fallback=SafetyFallbackOptions.from_mapping(
+                safety_fallback_raw
+            ),
             viewer=NativeViewerOptions.from_mapping(viewer_raw),
             panel=DesktopPanelOptions.from_mapping(dict(panel_raw)),
             recording=RecordingOptions.from_mapping(recording_raw),
@@ -232,6 +241,7 @@ class NativeMuJoCoConfig:
                 "safety_margin": self.safety_margin,
                 "covariance_propagation": self.covariance_propagation.to_mapping(),
                 "chance_constraints": self.chance_constraints.to_mapping(),
+                "safety_fallback": self.safety_fallback.to_mapping(),
             },
             "simulation": {
                 "duration_s": self.duration_s,
@@ -465,7 +475,8 @@ class NativeMuJoCoViewer:
                 f"pos=({position[0]:6.2f},{position[1]:6.2f},{position[2]:6.2f})  "
                 f"goal={step.goal_distance_m:5.2f}m  "
                 f"clearance={step.min_clearance_m:6.3f}m  "
-                f"contact={'yes' if step.collided else 'no'}"
+                f"contact={'yes' if step.collided else 'no'}  "
+                f"command={getattr(step, 'command_source', 'PRIMARY_NMPC')}"
             )
         self._pace(step.time_s)
         return self.is_running()
@@ -579,6 +590,7 @@ class InteractiveMuJoCoRuntime:
         self._last_time_s = 0.0
         self._panel_was_alive = False
         self._completion_reason: str | None = None
+        self._last_fallback_level = 0
 
     def open(self, plant: "MuJoCoPlant", context: "CoupledRunContext") -> None:
         if self.panel is not None:
@@ -614,6 +626,30 @@ class InteractiveMuJoCoRuntime:
 
     def on_step(self, step: "CoupledStep") -> bool:
         sample = step_to_sample(step)
+        fallback_level = int(sample.get("fallback_level", 0))
+        if fallback_level != self._last_fallback_level:
+            if fallback_level > 0:
+                self.recorder.record_event(
+                    "fallback_entered",
+                    float(step.time_s),
+                    source="safety_supervisor",
+                    payload={
+                        "level": fallback_level,
+                        "command_source": sample.get("command_source", ""),
+                        "reason": sample.get("fallback_reason", ""),
+                        "consecutive_rejections": sample.get(
+                            "consecutive_rejections",
+                            0,
+                        ),
+                    },
+                )
+            else:
+                self.recorder.record_event(
+                    "fallback_recovered",
+                    float(step.time_s),
+                    source="safety_supervisor",
+                )
+            self._last_fallback_level = fallback_level
         self._last_sample = sample
         self._last_time_s = float(step.time_s)
         self.telemetry.append(sample)
@@ -646,6 +682,7 @@ class InteractiveMuJoCoRuntime:
         self._last_sample = None
         self._last_time_s = 0.0
         self._completion_reason = None
+        self._last_fallback_level = 0
         if self.panel is not None and self.panel.is_alive():
             self.panel.reset()
 

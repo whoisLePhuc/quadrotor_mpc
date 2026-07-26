@@ -22,6 +22,10 @@ from mujoco_plant import MuJoCoPlant
 from native_chance_constraints import ChanceConstraintOptions
 from native_covariance import CovariancePropagationOptions
 from native_estimation import EstimationOptions, NativeBeliefEstimator
+from native_safety_fallback import (
+    SafeFallbackController,
+    SafetyFallbackOptions,
+)
 from obstacle_motion import predict_obstacle_positions
 from quad_mpc_core import (
     DRONE_RADIUS,
@@ -85,6 +89,19 @@ class CoupledStep:
     risk_budget_remaining: float | None = None
     risk_constraint_count: int = 0
     risk_budget_status: str = ""
+    primary_solver_status: str = ""
+    primary_solver_success: bool = True
+    primary_solver_iterations: int = 0
+    primary_solver_primal_residual: float = 0.0
+    primary_solver_dual_residual: float = 0.0
+    command_source: str = "PRIMARY_NMPC"
+    solution_accepted: bool = True
+    fallback_active: bool = False
+    fallback_level: int = 0
+    fallback_reason: str = ""
+    consecutive_rejections: int = 0
+    deadline_missed: bool = False
+    safety_assurance_status: str = ""
 
 
 class CoupledRuntime(Protocol):
@@ -131,6 +148,7 @@ def run_coupled_simulation(
     estimation_options: EstimationOptions | None = None,
     covariance_options: CovariancePropagationOptions | None = None,
     chance_options: ChanceConstraintOptions | None = None,
+    safety_fallback_options: SafetyFallbackOptions | None = None,
 ):
     """
     `cached`: optional (model, mpc, dyn_idx, goal_state) tuple from
@@ -172,6 +190,20 @@ def run_coupled_simulation(
     elif int(active_controller.horizon_steps) != int(n_horizon):
         raise ValueError(
             "injected controller horizon_steps must match run_coupled_simulation n_horizon"
+        )
+    effective_fallback_options = (
+        SafetyFallbackOptions()
+        if safety_fallback_options is None
+        else safety_fallback_options
+    )
+    if effective_fallback_options.enabled and not isinstance(
+        active_controller,
+        SafeFallbackController,
+    ):
+        active_controller = SafeFallbackController(
+            active_controller,
+            options=effective_fallback_options,
+            bounds=bounds,
         )
 
     plant = MuJoCoPlant(x0_vals, goal_pos, obstacles, mj_dt=mj_dt)
@@ -249,6 +281,20 @@ def run_coupled_simulation(
     risk_budget_remaining_history: list[float] = []
     risk_constraint_count_history: list[int] = []
     risk_budget_status_history: list[str] = []
+    primary_solver_status_history: list[str] = []
+    primary_solver_success_history: list[bool] = []
+    primary_solver_iteration_history: list[int] = []
+    primary_solver_primal_residual_history: list[float] = []
+    primary_solver_dual_residual_history: list[float] = []
+    command_source_history: list[str] = []
+    solution_accepted_history: list[bool] = []
+    fallback_active_history: list[bool] = []
+    fallback_level_history: list[int] = []
+    fallback_reason_history: list[str] = []
+    consecutive_rejection_history: list[int] = []
+    deadline_missed_history: list[bool] = []
+    safety_assurance_status_history: list[str] = []
+    solver_time_history: list[float] = []
     vehicle_measurement_history, obstacle_measurement_history = [], []
     vehicle_measurements, obstacle_measurements = [], []
     collided = False
@@ -356,6 +402,20 @@ def run_coupled_simulation(
                 risk_budget_remaining_history.clear()
                 risk_constraint_count_history.clear()
                 risk_budget_status_history.clear()
+                primary_solver_status_history.clear()
+                primary_solver_success_history.clear()
+                primary_solver_iteration_history.clear()
+                primary_solver_primal_residual_history.clear()
+                primary_solver_dual_residual_history.clear()
+                command_source_history.clear()
+                solution_accepted_history.clear()
+                fallback_active_history.clear()
+                fallback_level_history.clear()
+                fallback_reason_history.clear()
+                consecutive_rejection_history.clear()
+                deadline_missed_history.clear()
+                safety_assurance_status_history.clear()
+                solver_time_history.clear()
                 vehicle_measurement_history.clear()
                 obstacle_measurement_history.clear()
                 vehicle_measurements.clear()
@@ -432,7 +492,38 @@ def run_coupled_simulation(
             )
             risk_constraint_count_history.append(solution.risk_constraint_count)
             risk_budget_status_history.append(solution.risk_budget_status)
-            solver_time_ms = (time.perf_counter() - solver_start) * 1000.0
+            primary_solver_status_history.append(solution.primary_solver_status)
+            primary_solver_success_history.append(solution.primary_solver_success)
+            primary_solver_iteration_history.append(
+                solution.primary_solver_iterations
+            )
+            primary_solver_primal_residual_history.append(
+                solution.primary_solver_primal_residual
+            )
+            primary_solver_dual_residual_history.append(
+                solution.primary_solver_dual_residual
+            )
+            command_source_history.append(solution.command_source)
+            solution_accepted_history.append(solution.solution_accepted)
+            fallback_active_history.append(solution.fallback_active)
+            fallback_level_history.append(solution.fallback_level)
+            fallback_reason_history.append(solution.fallback_reason)
+            consecutive_rejection_history.append(
+                solution.consecutive_rejections
+            )
+            deadline_missed_history.append(solution.deadline_missed)
+            safety_assurance_status_history.append(
+                solution.safety_assurance_status
+            )
+            measured_solver_time_ms = (
+                time.perf_counter() - solver_start
+            ) * 1000.0
+            solver_time_ms = (
+                solution.solve_time_ms
+                if solution.solve_time_ms > 0.0
+                else measured_solver_time_ms
+            )
+            solver_time_history.append(solver_time_ms)
             plant.apply_control_and_step(u0, n_substeps, t)  # MuJoCo "true" plant
             x_curr = plant.get_state_13()
 
@@ -556,6 +647,29 @@ def run_coupled_simulation(
                         risk_budget_remaining=solution.risk_budget_remaining,
                         risk_constraint_count=solution.risk_constraint_count,
                         risk_budget_status=solution.risk_budget_status,
+                        primary_solver_status=solution.primary_solver_status,
+                        primary_solver_success=solution.primary_solver_success,
+                        primary_solver_iterations=(
+                            solution.primary_solver_iterations
+                        ),
+                        primary_solver_primal_residual=(
+                            solution.primary_solver_primal_residual
+                        ),
+                        primary_solver_dual_residual=(
+                            solution.primary_solver_dual_residual
+                        ),
+                        command_source=solution.command_source,
+                        solution_accepted=solution.solution_accepted,
+                        fallback_active=solution.fallback_active,
+                        fallback_level=solution.fallback_level,
+                        fallback_reason=solution.fallback_reason,
+                        consecutive_rejections=(
+                            solution.consecutive_rejections
+                        ),
+                        deadline_missed=solution.deadline_missed,
+                        safety_assurance_status=(
+                            solution.safety_assurance_status
+                        ),
                     )
                 )
                 if not keep_running:
@@ -646,6 +760,44 @@ def run_coupled_simulation(
             dtype=int,
         ),
         "risk_budget_status": np.asarray(risk_budget_status_history, dtype=str),
+        "primary_solver_status": np.asarray(
+            primary_solver_status_history,
+            dtype=str,
+        ),
+        "primary_solver_success": np.asarray(
+            primary_solver_success_history,
+            dtype=bool,
+        ),
+        "primary_solver_iterations": np.asarray(
+            primary_solver_iteration_history,
+            dtype=int,
+        ),
+        "primary_solver_primal_residual": np.asarray(
+            primary_solver_primal_residual_history,
+            dtype=float,
+        ),
+        "primary_solver_dual_residual": np.asarray(
+            primary_solver_dual_residual_history,
+            dtype=float,
+        ),
+        "command_source": np.asarray(command_source_history, dtype=str),
+        "solution_accepted": np.asarray(
+            solution_accepted_history,
+            dtype=bool,
+        ),
+        "fallback_active": np.asarray(fallback_active_history, dtype=bool),
+        "fallback_level": np.asarray(fallback_level_history, dtype=int),
+        "fallback_reason": np.asarray(fallback_reason_history, dtype=str),
+        "consecutive_rejections": np.asarray(
+            consecutive_rejection_history,
+            dtype=int,
+        ),
+        "deadline_missed": np.asarray(deadline_missed_history, dtype=bool),
+        "safety_assurance_status": np.asarray(
+            safety_assurance_status_history,
+            dtype=str,
+        ),
+        "solver_time_ms": np.asarray(solver_time_history, dtype=float),
         "vehicle_measurement_available": np.asarray(vehicle_measurement_history, dtype=bool),
         "obstacle_measurement_available": np.asarray(obstacle_measurement_history, dtype=bool),
         "vehicle_measurement_state": np.asarray(vehicle_measurements, dtype=float),

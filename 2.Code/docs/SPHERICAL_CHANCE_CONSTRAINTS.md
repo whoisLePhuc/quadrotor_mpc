@@ -8,8 +8,9 @@ outside the do-mpc nonlinear program, and the deterministic controller remains
 available with the same plant, estimator and seed.
 
 Stage 5 adds individual-versus-joint semantics and uniform horizon allocation.
-See `RISK_BUDGET_MANAGEMENT.md`. Fallback policy and emergency handling remain
-separate milestones.
+See `RISK_BUDGET_MANAGEMENT.md`. Stage 6 applies solver, slack and timing gates
+plus a bounded fallback hierarchy after this optimization; see
+`SAFE_SLACK_FALLBACK.md`.
 
 ## Constraint
 

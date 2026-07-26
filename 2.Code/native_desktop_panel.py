@@ -253,6 +253,14 @@ def _panel_main(
                     f"solve={latest['solver_time_ms']:.1f}ms &nbsp; "
                     f"solver={latest.get('solver_status', '')}"
                     + (
+                        f" &nbsp; <b style='color:#f05a67'>"
+                        f"fallback=L{latest.get('fallback_level', 0)}"
+                        f"/{latest.get('command_source', '')}"
+                        f" ({latest.get('fallback_reason', '')})</b>"
+                        if latest.get("fallback_active")
+                        else ""
+                    )
+                    + (
                         f" &nbsp; chance-res={latest['minimum_chance_residual_m']:.3f}m"
                         f" &nbsp; slack={latest['maximum_slack_m']:.3f}m"
                         if latest.get("minimum_chance_residual_m") is not None
