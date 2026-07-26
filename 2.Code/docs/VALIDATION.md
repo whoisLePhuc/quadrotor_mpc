@@ -26,6 +26,9 @@ Validation is layered:
 12. Native risk-budget management: legacy individual semantics, uniform joint
     allocation, exact sum audit, per-cell quantiles, configuration round-trip,
     telemetry/recording persistence and joint-versus-individual paired regression.
+13. Native safety-console integration: deterministic/CC-MPC policy projection,
+    guarantee/slack/fallback/deadline labeling, risk-budget failure visibility,
+    transition deduplication, reset semantics and configuration round-trip.
 
 For a native release, run both `config/mujoco_native.yaml` and
 `config/mujoco_native_dynamic.yaml`. Check that the reported current obstacle
@@ -175,3 +178,41 @@ The current native NMPC does **not** pass a strict 50 ms real-time gate on the
 validation host because p99 solve time is 81.60 ms. Stage 6 validates the
 deadline-miss response; it does not claim that the solver is fast enough for a
 20 Hz deployment.
+
+## Stage 7 desktop safety-console checks
+
+Verify the presentation model independently of Qt:
+
+- deterministic mode reports `DETERMINISTIC`, `DISABLED` risk/slack and
+  `MONITOR ONLY`, never a chance guarantee;
+- an accepted zero-slack joint-risk solution reports `PRIMARY NMPC`,
+  `GUARANTEE ELIGIBLE`, `BUDGET_OK`, `HARD-SAFE` and `ON TIME`;
+- positive slack reports `DEGRADED` and `NOT GUARANTEED`;
+- fallback, deadline miss and risk-budget failure use high-visibility warning
+  or danger states;
+- repeated telemetry in the same state does not duplicate transition alerts;
+- Reset and Run again clear history, alerts and prior transition state;
+- replay projects the recorded sample fields through the same view model;
+- all four native YAML configurations round-trip with bounded alert history.
+
+When optional UI dependencies are available, additionally launch
+`config/mujoco_native_ccmpc.yaml` and verify that the Qt panel remains
+responsive while MuJoCo runs, closing either window stops cleanly, prediction
+color follows assurance state, and the deadline trace matches the configured
+100 ms acceptance limit.
+
+Paired control-path regression against Stage 6 commit `5256c82` in the same
+Python/dependency environment:
+
+| Configuration | Stage 6 | Stage 7 | Difference |
+|---|---:|---:|---:|
+| Deterministic final error | 0.000101204527 m | 0.000101204527 m | 0 |
+| Deterministic clearance | 0.299927809264 m | 0.299927809264 m | 0 |
+| CC-MPC final error | 0.104444105413 m | 0.104444105413 m | 0 |
+| CC-MPC clearance | 0.410519825565 m | 0.410519825565 m | 0 |
+| CC-MPC maximum slack | 0.075120639653 m | 0.075120639653 m | 0 |
+
+Both CC-MPC runs produced 114 guarantee-eligible ticks, 86 positive-slack
+ticks, zero fallback activations, no collision and no NaN. This paired check
+isolates Stage 7 from solver-library version drift and confirms the presentation
+integration does not change an applied command.

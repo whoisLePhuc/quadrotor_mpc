@@ -28,7 +28,7 @@ Core ownership:
 | Reporting | `reporting/` | interactive Plotly figures and HTML |
 | UI | `dashboard/` | Learn, Run, Compare and Explore workflows |
 | Native MuJoCo | `mujoco_plant.py`, `mujoco_native.py` | sourced Crazyflie plant and passive desktop viewer |
-| Native interaction | `runtime_control.py`, `native_desktop_panel.py` | command queue and separate Qt telemetry process |
+| Native interaction | `runtime_control.py`, `native_ui_model.py`, `native_desktop_panel.py` | command queue, pure safety presentation model and separate Qt process |
 | Native evidence | `native_telemetry.py`, `native_replay.py` | bounded data, recording bundle and solver-free replay |
 | Obstacle motion | `obstacle_motion.py` | one predictor shared by controller, plant, metrics and viewer |
 | Controller contract | `controller_interface.py` | belief, goal and normalized solution types |
@@ -53,6 +53,11 @@ event-loop requirements. Only plain command and telemetry dictionaries cross the
 process boundary. The simulation process remains the sole owner of do-mpc and
 MuJoCo state.
 
+The Qt process also receives a read-only `PanelRuntimeContext` derived from the
+validated effective configuration. It uses policy thresholds only to label
+already-recorded telemetry; it cannot accept/reject a solution or send an
+applied control command directly.
+
 ## Native controller boundary
 
 `run_coupled.py` no longer calls `mpc.make_step` or reads do-mpc prediction data.
@@ -76,6 +81,8 @@ tighten time-varying spherical safety radii. Stage 5 allocates either legacy
 individual risk or a uniform joint budget over the complete constraint grid.
 Stage 6 wraps the controller output with solver, residual, slack, bound and
 deadline gates before choosing primary NMPC or a bounded fallback command.
+Stage 7 projects the resulting telemetry through an immutable presentation
+model before Qt renders status cards, bounded plots and transition alerts.
 Disabling chance constraints and the supervisor keeps the deterministic path
 unchanged.
 

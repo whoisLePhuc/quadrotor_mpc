@@ -28,6 +28,7 @@ from native_telemetry import (
     TelemetryBuffer,
     step_to_sample,
 )
+from native_ui_model import PanelRuntimeContext
 from obstacle_motion import normalize_obstacle
 from runtime_control import CommandName, LocalCommandQueue, RuntimeCommand
 
@@ -267,6 +268,36 @@ class NativeMuJoCoConfig:
             "obstacles": [dict(obstacle) for obstacle in self.obstacles],
         }
 
+    def panel_runtime_context(self) -> PanelRuntimeContext:
+        """Return the policy metadata used by the Stage 7 safety console."""
+        risk_budget = self.chance_constraints.risk_budget
+        return PanelRuntimeContext(
+            scenario_name=self.name,
+            mpc_period_ms=1000.0 * self.mpc_timestep_s,
+            estimation_enabled=self.estimation.enabled,
+            chance_constraints_enabled=self.chance_constraints.enabled,
+            covariance_propagation_enabled=self.covariance_propagation.enabled,
+            supervisor_enabled=self.safety_fallback.enabled,
+            solve_deadline_ms=1000.0 * self.safety_fallback.solve_deadline_s,
+            guarantee_slack_tolerance_m=(
+                self.safety_fallback.guarantee_slack_tolerance_m
+            ),
+            maximum_acceptable_slack_m=(
+                self.safety_fallback.maximum_acceptable_slack_m
+            ),
+            maximum_solver_residual=self.safety_fallback.maximum_solver_residual,
+            configured_risk_semantics=(
+                risk_budget.semantics
+                if self.chance_constraints.enabled
+                else "disabled"
+            ),
+            configured_risk_allocation=(
+                risk_budget.allocation
+                if self.chance_constraints.enabled
+                else "none"
+            ),
+        )
+
 
 def load_native_mujoco_config(path: str | Path) -> NativeMuJoCoConfig:
     """Load and validate a native viewer YAML configuration."""
@@ -405,6 +436,16 @@ class NativeMuJoCoViewer:
         self._idle_wall_time = None
 
         position = np.asarray(step.state_13[:3], dtype=float)
+        fallback_active = bool(getattr(step, "fallback_active", False))
+        assurance_status = str(getattr(step, "safety_assurance_status", ""))
+        if fallback_active:
+            prediction_color = (1.00, 0.18, 0.22, 0.82)
+        elif assurance_status == "NOT_GUARANTEED_POSITIVE_SLACK":
+            prediction_color = (1.00, 0.72, 0.10, 0.80)
+        elif assurance_status == "GUARANTEE_ELIGIBLE":
+            prediction_color = (0.15, 1.00, 0.35, 0.78)
+        else:
+            prediction_color = (0.20, 0.65, 1.00, 0.72)
         self._trail.append(position.copy())
         with self._viewer.lock():
             scene = self._viewer.user_scn
@@ -459,10 +500,14 @@ class NativeMuJoCoViewer:
             if self._show_prediction and step.predicted_positions is not None:
                 self._add_polyline(
                     list(np.asarray(step.predicted_positions, dtype=float)),
-                    (0.15, 1.00, 0.35, 0.72),
+                    prediction_color,
                     radius=0.012,
                     segment_limit=80,
                 )
+            if fallback_active:
+                self._add_sphere(position, 0.28, (1.0, 0.10, 0.12, 0.18))
+            elif assurance_status == "NOT_GUARANTEED_POSITIVE_SLACK":
+                self._add_sphere(position, 0.24, (1.0, 0.72, 0.05, 0.12))
             if step.collided:
                 self._add_sphere(position, 0.46, (1.0, 0.05, 0.05, 0.24))
             if self._camera_mode == "follow":
@@ -476,7 +521,8 @@ class NativeMuJoCoViewer:
                 f"goal={step.goal_distance_m:5.2f}m  "
                 f"clearance={step.min_clearance_m:6.3f}m  "
                 f"contact={'yes' if step.collided else 'no'}  "
-                f"command={getattr(step, 'command_source', 'PRIMARY_NMPC')}"
+                f"command={getattr(step, 'command_source', 'PRIMARY_NMPC')}  "
+                f"assurance={assurance_status or 'n/a'}"
             )
         self._pace(step.time_s)
         return self.is_running()
@@ -568,7 +614,11 @@ class InteractiveMuJoCoRuntime:
         self._commands = LocalCommandQueue()
         self.viewer = NativeMuJoCoViewer(config.viewer, self._commands.put)
         self.panel = (
-            DesktopPanelProcess(config.panel, config.name)
+            DesktopPanelProcess(
+                config.panel,
+                config.name,
+                config.panel_runtime_context(),
+            )
             if enable_panel and config.panel.enabled
             else None
         )

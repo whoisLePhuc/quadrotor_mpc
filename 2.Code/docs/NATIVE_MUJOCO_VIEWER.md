@@ -115,9 +115,17 @@ are processed only by `run_coupled.py`; neither UI is allowed to advance physics
 | `C` | Safety shells | Toggle obstacle safety envelopes |
 | `F` | Follow camera | Toggle follow/fixed camera |
 
-The panel plots position, goal error, clearance, control input and measured NMPC
-solve time. Its history is bounded and updates at a lower rate than MuJoCo, so it
-does not retain an unbounded session or redraw at the 500 Hz physics rate.
+The panel is a safety console rather than a single dense status line. It shows
+separate cards for episode state, applied controller, guarantee eligibility,
+joint-risk budget, slack state and solver deadline. Bounded plots include
+position, clearance/chance residual/slack, propagated uncertainty/tightened
+radius, control, solve time/deadline, and risk/acceptance/fallback state.
+
+Positive slack and fallback are always displayed as `NOT GUARANTEED`.
+Transition alerts are deduplicated and bounded by `panel.maximum_alerts`.
+The panel updates at a lower rate than MuJoCo, so it does not retain an
+unbounded session or redraw at the 500 Hz physics rate. See
+[`DESKTOP_SAFETY_INTERFACE.md`](DESKTOP_SAFETY_INTERFACE.md).
 After `COMPLETED`, press **Run again** to repeat the same scenario without
 restarting Python. **Reset** preserves the current pause/run mode, while
 **Run again** always resumes.
@@ -231,7 +239,8 @@ control interface remains a combined body wrench. It does not yet model:
 - battery voltage sag;
 - sensor latency and bias in the optional 13-state track.
 
-FOV and covariance are intentionally not drawn in this viewer because the
-13-state NMPC pipeline does not currently produce those quantities. They belong
-to the separate 9-state CC-MPC research baseline and must not be fabricated as
-viewer-only graphics.
+The native CC-MPC pipeline now exposes 12D vehicle and 6D obstacle covariance
+horizons. The viewer visualizes their effect through tightened spherical
+safety shells and assurance-aware path/vehicle colors; exact uncertainty values
+remain in the telemetry panel and recording. FOV geometry is not implemented
+and must not be fabricated as a viewer-only graphic.

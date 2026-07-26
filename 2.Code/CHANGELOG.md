@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.9.0 — Native safety-console integration
+
+- Added a pure, headless-testable telemetry-to-view projection so Qt never
+  reinterprets chance, guarantee, risk or fallback semantics.
+- Replaced the single dense status line with six independent operational cards
+  for episode, applied control, assurance, risk, slack and solver timing.
+- Added bounded plots for chance residual/slack, propagated uncertainty,
+  tightened radius, joint-risk use, solution acceptance and fallback level.
+- Added a visible solve-deadline reference and deduplicated operational
+  transition log.
+- Added assurance-aware MuJoCo prediction colors and degraded/fallback vehicle
+  halos.
+- Preserved reset/replay behavior and deterministic profiles without
+  fabricating probabilistic status.
+
 ## 1.8.0 — Safe slack acceptance and fallback
 
 - Added a backend-independent safety supervisor that accepts or rejects primary

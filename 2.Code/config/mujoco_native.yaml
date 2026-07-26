@@ -75,6 +75,7 @@ panel:
   update_hz: 15.0
   history_seconds: 30.0
   stop_when_closed: true
+  maximum_alerts: 12
 
 recording:
   enabled: true

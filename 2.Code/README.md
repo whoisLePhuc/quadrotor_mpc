@@ -73,7 +73,8 @@ MUJOCO_GL=glfw python run_mujoco_native.py \
   --config config/mujoco_native_estimation.yaml
 ```
 
-Run the Stage 5 native spherical CC-MPC with uniform joint-risk allocation:
+Run the native spherical CC-MPC with uniform joint-risk allocation, safe
+fallback and the Stage 7 desktop safety console:
 
 ```bash
 MUJOCO_GL=glfw python run_mujoco_native.py \
@@ -87,6 +88,11 @@ receding-horizon union bound, not an episode-wide guarantee.
 The interactive session remains open after goal, collision stop, or configured
 duration. Use **Run again** in the panel (or `Enter` in the MuJoCo window) to
 restart the same scenario, and **Stop**/`Esc` or window close to exit.
+
+The safety console separates episode, applied controller, guarantee
+eligibility, risk budget, slack and deadline status. Positive slack and
+fallback are always labeled `NOT GUARANTEED`. See
+[`docs/DESKTOP_SAFETY_INTERFACE.md`](docs/DESKTOP_SAFETY_INTERFACE.md).
 
 Replay a recorded run without solving the NMPC problem again:
 
@@ -215,6 +221,7 @@ python -m unittest discover -s tests -v
 - [`docs/SPHERICAL_CHANCE_CONSTRAINTS.md`](docs/SPHERICAL_CHANCE_CONSTRAINTS.md)
 - [`docs/RISK_BUDGET_MANAGEMENT.md`](docs/RISK_BUDGET_MANAGEMENT.md)
 - [`docs/SAFE_SLACK_FALLBACK.md`](docs/SAFE_SLACK_FALLBACK.md)
+- [`docs/DESKTOP_SAFETY_INTERFACE.md`](docs/DESKTOP_SAFETY_INTERFACE.md)
 
 ## Directory map
 
@@ -237,6 +244,7 @@ python -m unittest discover -s tests -v
 ├── native_risk_budget.py       individual/joint semantics and uniform allocation
 ├── chance_constrained_nmpc_controller.py explicit native CC-NMPC controller
 ├── native_safety_fallback.py acceptance gates and bounded fallback hierarchy
+├── native_ui_model.py pure telemetry-to-safety-console presentation model
 ├── obstacle_motion.py shared static/dynamic obstacle predictor
 ├── native_telemetry.py bounded telemetry, recording and replay loading
 ├── native_desktop_panel.py separate Qt control/plot process
