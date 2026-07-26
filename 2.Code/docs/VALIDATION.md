@@ -29,6 +29,9 @@ Validation is layered:
 13. Native safety-console integration: deterministic/CC-MPC policy projection,
     guarantee/slack/fallback/deadline labeling, risk-budget failure visibility,
     transition deduplication, reset semantics and configuration round-trip.
+14. Native Monte Carlo validation: paired seeds, covariance-level scaling,
+    Wilson intervals, paired deltas, resumable artifacts and explicit
+    probability-claim/timing gates.
 
 For a native release, run both `config/mujoco_native.yaml` and
 `config/mujoco_native_dynamic.yaml`. Check that the reported current obstacle
@@ -216,3 +219,64 @@ Both CC-MPC runs produced 114 guarantee-eligible ticks, 86 positive-slack
 ticks, zero fallback activations, no collision and no NaN. This paired check
 isolates Stage 7 from solver-library version drift and confirms the presentation
 integration does not change an applied command.
+
+## Stage 8 native Monte Carlo checks
+
+Run:
+
+```bash
+python run_native_monte_carlo.py \
+  --config config/native_monte_carlo.yaml \
+  --workers 3
+```
+
+Verify:
+
+- the raw table contains exactly
+  `trials * modes * noise_levels` unique `(noise, mode, seed)` rows;
+- deterministic, individual and joint controllers use identical seed sets at
+  every uncertainty level;
+- covariance scale `s` multiplies configured standard deviations by `sqrt(s)`;
+- deterministic mode disables chance tightening while retaining the same
+  estimator, plant, obstacles and safety-supervisor policy;
+- every Bernoulli episode metric reports its event count, rate and Wilson
+  confidence interval;
+- risk-budget failures, slack and fallback remain separate metrics;
+- `GUARANTEE_ELIGIBLE` requires every completed tick to be eligible;
+- any positive slack or fallback blocks the finite-sample chance claim;
+- no per-horizon joint budget is reinterpreted as episode collision
+  probability;
+- p99 timing is checked against the 50 ms controller period;
+- interrupted runs resume only after a protocol-fingerprint match;
+- manifest, protocol/config snapshots, checkpoint, CSV, aggregate JSON,
+  Markdown and PNG are all present.
+
+The default 50-seed, three-level protocol is a descriptive finite-sample
+validation. Even a result labeled `EMPIRICALLY_SUPPORTED_NOT_PROVEN` is not a
+formal proof of Gaussian calibration or an episode-wide collision guarantee.
+
+Verified Stage 8 campaign, seeds 1000–1029:
+
+| Covariance | Controller | Success | Collision | Mean min clearance | Mean max slack | Fallback episodes |
+|---|---|---:|---:|---:|---:|---:|
+| `0.25 Sigma` | deterministic | 30/30 | 0/30 | 0.305261 m | 0 | 0/30 |
+| `0.25 Sigma` | individual | 30/30 | 0/30 | 0.326352 m | 0.062461 m | 16/30 |
+| `0.25 Sigma` | joint | 30/30 | 0/30 | 0.343861 m | 0.056917 m | 14/30 |
+| `Sigma` | deterministic | 30/30 | 0/30 | 0.313791 m | 0 | 2/30 |
+| `Sigma` | individual | 30/30 | 0/30 | 0.356432 m | 0.061792 m | 19/30 |
+| `Sigma` | joint | 30/30 | 0/30 | 0.414314 m | 0.070586 m | 17/30 |
+| `4 Sigma` | deterministic | 30/30 | 0/30 | 0.323614 m | 0 | 4/30 |
+| `4 Sigma` | individual | 30/30 | 0/30 | 0.467242 m | 0.079857 m | 22/30 |
+| `4 Sigma` | joint | 0/30 | 0/30 | 0.660826 m | 0.139326 m | 30/30 |
+
+All 270 episodes completed without collision, NaN or risk-budget failure. The
+joint-minus-deterministic mean clearance deltas were `+0.038600 m`,
+`+0.100523 m` and `+0.337212 m` as covariance increased. At `4 Sigma`, joint
+control traded that clearance for a mean final-error increase of `0.338990 m`;
+every episode missed the configured goal threshold.
+
+The campaign status is `VALIDATED_WITH_LIMITATIONS`. For zero collisions in 30
+trials, the Wilson 95% upper bound is `0.113513`, above the empirical gate
+`0.10`. Every chance-controller cell also contained positive slack and
+fallback. Median per-trial solver p99 ranged from `87.523 ms` to `95.470 ms`
+for the chance controllers, so the 50 ms real-time gate failed.

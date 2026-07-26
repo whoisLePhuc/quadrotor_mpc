@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.0.0 — Native Monte Carlo validation
+
+- Added a paired native MuJoCo benchmark for deterministic-estimated,
+  individual-risk and joint-uniform controllers.
+- Added covariance sweeps at `0.25 Sigma`, `Sigma` and `4 Sigma`, with standard
+  deviations scaled by the square root of the covariance multiplier.
+- Added Wilson confidence intervals, paired-seed deltas and separate gates for
+  execution, empirical collisions, risk accounting, slack, fallback and
+  real-time timing.
+- Added append-only checkpoints, protocol fingerprints and safe resume for long
+  validation campaigns.
+- Added raw CSV, aggregate JSON, reproducibility manifest, Markdown report and
+  six-panel PNG artifacts.
+- Kept finite-sample evidence distinct from an episode-wide probability proof.
+
 ## 1.9.0 — Native safety-console integration
 
 - Added a pure, headless-testable telemetry-to-view projection so Qt never

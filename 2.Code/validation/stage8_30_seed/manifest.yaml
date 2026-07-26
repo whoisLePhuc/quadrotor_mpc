@@ -1,0 +1,45 @@
+schema_version: 1
+stage: 8
+run_id: 20260726T165556Z-native-ccmpc-monte-carlo
+created_at_utc: '2026-07-26T16:55:56.789645+00:00'
+status: COMPLETED
+protocol_fingerprint: 30054fe6f866e81b7c34c49900a22b3eb5e5a1a3d5eeb72cf4ebd37bf31f7d84
+git_commit: 9f4a1b3a2c704ced1032555d3a3776611be2c510
+command:
+- /tmp/quadrotor_phase8_venv/bin/python
+- run_native_monte_carlo.py
+- --config
+- config/native_monte_carlo.yaml
+- --trials
+- '30'
+- --first-seed
+- '1000'
+- --workers
+- '3'
+- --batch-size
+- '5'
+- --output-dir
+- outputs/native_monte_carlo_stage8
+environment:
+  python: 3.12.13
+  platform: Linux-6.12.13-x86_64-with-glibc2.39
+  dependencies:
+    numpy: 2.5.1
+    scipy: 1.18.0
+    PyYAML: 6.0.3
+    mujoco: 3.10.0
+    casadi: 3.7.2
+    do-mpc: 5.1.1
+expected_trials: 270
+completed_at_utc: '2026-07-26T17:19:11.639370+00:00'
+completed_trials: 270
+overall_validation_status: VALIDATED_WITH_LIMITATIONS
+files:
+  protocol: protocol.yaml
+  base_config: base_config.yaml
+  checkpoint: trials.jsonl
+  trials: trials.csv
+  aggregate: aggregate.json
+  report: report.md
+  plot: report.png
+checkpoint_trials: 270

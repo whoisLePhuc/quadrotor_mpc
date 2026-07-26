@@ -1,0 +1,180 @@
+name: ccmpc-mujoco-native-estimated-dynamic
+start:
+  x: 0.0
+  y: 0.0
+  z: 1.0
+  roll: 0.0
+  pitch: 0.0
+  yaw: 0.0
+goal:
+  position:
+    x: 3.0
+    y: 2.0
+    z: 2.5
+  euler:
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.7853981633974483
+controller:
+  bounds:
+    thrust: 0.085
+    torque_rp: 0.002
+    torque_yaw: 0.0004
+  safety_margin: 0.3
+  covariance_propagation:
+    enabled: true
+    mode: open_loop
+    linearization: analytic_first_order
+    acceleration_process_std_mps2: 0.35
+    angular_acceleration_process_std_radps2: 0.6
+    obstacle_acceleration_process_std_mps2: 0.5
+    finite_difference_epsilon: 1.0e-06
+    minimum_covariance_eigenvalue: 1.0e-12
+    feedback_state_weights:
+    - 8.0
+    - 8.0
+    - 10.0
+    - 2.0
+    - 2.0
+    - 3.0
+    - 4.0
+    - 4.0
+    - 3.0
+    - 1.0
+    - 1.0
+    - 1.0
+    feedback_control_weights:
+    - 1.0
+    - 1.0
+    - 1.0
+    - 1.0
+  chance_constraints:
+    enabled: true
+    type: spherical
+    individual_epsilon: 0.05
+    risk_budget:
+      semantics: joint
+      allocation: uniform
+      total_epsilon: 0.1
+      tolerance: 1.0e-12
+    soft_constraint: true
+    slack_penalty: 1000000.0
+    slack_tolerance_m: 1.0e-06
+    minimum_direction_norm_m: 1.0e-08
+    distance_smoothing_m2: 1.0e-06
+  safety_fallback:
+    enabled: true
+    solve_deadline_s: 0.1
+    reject_on_deadline_miss: true
+    guarantee_slack_tolerance_m: 1.0e-06
+    maximum_acceptable_slack_m: 0.08
+    constraint_tolerance_m: 1.0e-06
+    maximum_solver_residual: 0.001
+    command_bound_tolerance: 1.0e-06
+    hold_last_command_steps: 1
+    emergency_after_consecutive_rejections: 20
+    position_kp_xy: 2.0
+    position_kd_xy: 1.8
+    vertical_kp: 4.0
+    vertical_kd: 2.4
+    attitude_kp: 0.004
+    attitude_kd: 0.0008
+    emergency_rate_damping: 0.0006
+    maximum_tilt_rad: 0.3
+simulation:
+  duration_s: 10.0
+  mpc_timestep_s: 0.05
+  mujoco_timestep_s: 0.002
+  horizon_steps: 20
+  max_solver_iterations: 60
+  stop_on_goal: false
+  goal_tolerance_m: 0.25
+  stop_on_collision: false
+estimation:
+  enabled: true
+  type: error_state_ekf
+  seed: 7
+  minimum_covariance_eigenvalue: 1.0e-12
+  sensor:
+    position_std_m: 0.03
+    velocity_std_mps: 0.06
+    attitude_std_rad: 0.015
+    angular_rate_std_radps: 0.02
+    obstacle_position_std_m: 0.05
+    vehicle_dropout_probability: 0.0
+    obstacle_dropout_probability: 0.0
+    position_bias_rw_std_m_sqrt_s: 0.0
+    velocity_bias_rw_std_mps_sqrt_s: 0.0
+    attitude_bias_rw_std_rad_sqrt_s: 0.0
+    angular_rate_bias_rw_std_radps_sqrt_s: 0.0
+    obstacle_bias_rw_std_m_sqrt_s: 0.0
+  vehicle_filter:
+    acceleration_process_std_mps2: 0.35
+    angular_acceleration_process_std_radps2: 0.6
+    initial_position_std_m: 0.08
+    initial_velocity_std_mps: 0.12
+    initial_attitude_std_rad: 0.04
+    initial_angular_rate_std_radps: 0.08
+  obstacle_filter:
+    acceleration_process_std_mps2: 0.5
+    initial_position_std_m: 0.1
+    initial_velocity_std_mps: 0.75
+viewer:
+  camera_mode: follow
+  distance: 7.0
+  azimuth: 60.0
+  elevation: -30.0
+  realtime_factor: 1.0
+  show_trail: true
+  show_prediction: true
+  show_obstacle_prediction: true
+  show_safety_envelopes: true
+  show_contacts: false
+  max_trail_points: 600
+  max_trail_segments: 240
+  status_every_steps: 10
+panel:
+  enabled: true
+  update_hz: 15.0
+  history_seconds: 30.0
+  stop_when_closed: true
+  maximum_alerts: 12
+recording:
+  enabled: true
+  output_dir: outputs/native
+  max_buffer_samples: 5000
+obstacles:
+- name: static_gate
+  type: static
+  radius: 0.4
+  x: 1.45
+  y: 1.05
+  z: 2.0
+- name: crossing_constant_velocity
+  type: dynamic
+  radius: 0.24
+  motion:
+    type: constant_velocity
+    initial_position:
+    - 1.85
+    - -0.8
+    - 1.8
+    velocity:
+    - 0.0
+    - 0.38
+    - 0.0
+- name: vertical_sinusoid
+  type: dynamic
+  radius: 0.2
+  motion:
+    type: sinusoidal
+    center:
+    - 2.35
+    - 1.55
+    - 2.1
+    amplitude:
+    - 0.0
+    - 0.0
+    - 0.45
+    period_s: 4.5
+    phase_rad: 0.0

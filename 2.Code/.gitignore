@@ -8,6 +8,8 @@ __pycache__/
 outputs/runs/
 outputs/sweeps/
 outputs/validation/
+outputs/native/
+outputs/native_monte_carlo*/
 output/
 *.egg-info/
 build/

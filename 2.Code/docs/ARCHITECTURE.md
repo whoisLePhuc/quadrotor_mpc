@@ -39,6 +39,7 @@ Core ownership:
 | Native risk budget | `native_risk_budget.py` | individual/joint semantics and uniform allocation |
 | Native CC-NMPC | `chance_constrained_nmpc_controller.py` | spherical chance constraints with external risk allocation |
 | Native safety supervisor | `native_safety_fallback.py` | acceptance gates, deadline policy and bounded fallback hierarchy |
+| Native validation | `native_monte_carlo.py`, `run_native_monte_carlo.py` | paired seeds, uncertainty sweep, confidence intervals, claim gates and resumable artifacts |
 | Exact baseline source | `belief_from_truth.py` | zero-covariance truth adapter used only for regression |
 
 Dependencies point inward: UI and reporting consume experiment/runtime data; the mathematics layer
@@ -83,6 +84,9 @@ Stage 6 wraps the controller output with solver, residual, slack, bound and
 deadline gates before choosing primary NMPC or a bounded fallback command.
 Stage 7 projects the resulting telemetry through an immutable presentation
 model before Qt renders status cards, bounded plots and transition alerts.
+Stage 8 executes that complete headless path over paired seeds and covariance
+levels, then applies finite-sample, slack, fallback, risk-accounting and timing
+gates to auditable trial records.
 Disabling chance constraints and the supervisor keeps the deterministic path
 unchanged.
 

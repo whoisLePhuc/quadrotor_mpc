@@ -1,0 +1,25 @@
+name: native-ccmpc-monte-carlo
+base_config: /workspace/scratch/90d73e65757a/phase8_monte_carlo/2.Code/config/mujoco_native_ccmpc.yaml
+output_dir: /workspace/scratch/90d73e65757a/phase8_monte_carlo/2.Code/outputs/native_monte_carlo_stage8
+modes:
+- deterministic
+- individual
+- joint
+noise_levels:
+- label: quarter_sigma
+  covariance_scale: 0.25
+- label: nominal_sigma
+  covariance_scale: 1.0
+- label: four_sigma
+  covariance_scale: 4.0
+trials: 30
+first_seed: 1000
+statistics:
+  confidence_level: 0.95
+  minimum_trials_for_claim: 30
+validation:
+  empirical_collision_rate_limit: 0.1
+  require_zero_positive_slack: true
+  require_zero_fallback: true
+  require_zero_budget_failures: true
+  timing_percentile: 0.99

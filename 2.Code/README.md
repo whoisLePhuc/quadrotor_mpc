@@ -85,6 +85,20 @@ This configuration distributes `epsilon_total = 0.10` uniformly across all
 `(N+1) * n_obstacles` scalar constraints in each NMPC solve. The budget is a
 receding-horizon union bound, not an episode-wide guarantee.
 
+Run the Stage 8 paired native Monte Carlo protocol:
+
+```bash
+python run_native_monte_carlo.py \
+  --config config/native_monte_carlo.yaml \
+  --workers 3
+```
+
+The default protocol evaluates deterministic-estimated, individual-risk and
+joint-uniform controllers with the same 50 seeds at `0.25 Sigma`, `Sigma` and
+`4 Sigma`. It writes an append-only checkpoint plus raw CSV, confidence
+intervals, paired deltas, claim gates, a Markdown report and a PNG summary.
+Interrupted runs can be continued with `--resume <run-directory>`.
+
 The interactive session remains open after goal, collision stop, or configured
 duration. Use **Run again** in the panel (or `Enter` in the MuJoCo window) to
 restart the same scenario, and **Stop**/`Esc` or window close to exit.
@@ -222,6 +236,7 @@ python -m unittest discover -s tests -v
 - [`docs/RISK_BUDGET_MANAGEMENT.md`](docs/RISK_BUDGET_MANAGEMENT.md)
 - [`docs/SAFE_SLACK_FALLBACK.md`](docs/SAFE_SLACK_FALLBACK.md)
 - [`docs/DESKTOP_SAFETY_INTERFACE.md`](docs/DESKTOP_SAFETY_INTERFACE.md)
+- [`docs/NATIVE_MONTE_CARLO_VALIDATION.md`](docs/NATIVE_MONTE_CARLO_VALIDATION.md)
 
 ## Directory map
 
@@ -245,6 +260,7 @@ python -m unittest discover -s tests -v
 ├── chance_constrained_nmpc_controller.py explicit native CC-NMPC controller
 ├── native_safety_fallback.py acceptance gates and bounded fallback hierarchy
 ├── native_ui_model.py pure telemetry-to-safety-console presentation model
+├── native_monte_carlo.py paired native trials, statistics and validation gates
 ├── obstacle_motion.py shared static/dynamic obstacle predictor
 ├── native_telemetry.py bounded telemetry, recording and replay loading
 ├── native_desktop_panel.py separate Qt control/plot process
@@ -253,5 +269,6 @@ python -m unittest discover -s tests -v
 ├── run_sweep.py       parameter-sweep CLI
 ├── start_dashboard.py dashboard launcher for the active Python environment
 ├── run_mujoco_native.py native desktop MuJoCo launcher
+├── run_native_monte_carlo.py resumable Stage 8 validation CLI
 └── run_simulation.py  compact backward-compatible CLI
 ```
