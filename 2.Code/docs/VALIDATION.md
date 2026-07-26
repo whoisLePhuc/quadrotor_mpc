@@ -227,7 +227,7 @@ integration does not change an applied command.
 Run:
 
 ```bash
-python run_native_monte_carlo.py \
+quadrotor-mpc-monte-carlo \
   --config config/native_monte_carlo.yaml \
   --workers 3
 ```

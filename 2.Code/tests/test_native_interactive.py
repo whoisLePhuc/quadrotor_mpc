@@ -8,19 +8,19 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from mujoco_native import load_native_mujoco_config
-from native_telemetry import (
+from quadrotor_mpc.application.native.commands import CommandName, LocalCommandQueue, RuntimeCommand
+from quadrotor_mpc.application.native.telemetry import (
     NativeRunRecorder,
     RecordingOptions,
     load_native_recording,
     step_to_sample,
 )
-from obstacle_motion import (
+from quadrotor_mpc.core.obstacle_motion import (
     normalize_obstacle,
     obstacle_position,
     predict_obstacle_positions,
 )
-from runtime_control import CommandName, LocalCommandQueue, RuntimeCommand
+from quadrotor_mpc.interfaces.desktop.viewer import load_native_mujoco_config
 
 CODE_ROOT = Path(__file__).resolve().parents[1]
 
@@ -262,7 +262,7 @@ class NativeRecordingTests(unittest.TestCase):
 )
 class InteractiveLoopTests(unittest.TestCase):
     def test_spherical_chance_constraint_reaches_native_solver(self):
-        from run_coupled import run_coupled_simulation
+        from quadrotor_mpc.application.native.runtime import run_coupled_simulation
 
         config = load_native_mujoco_config(CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml")
         result = run_coupled_simulation(
@@ -309,7 +309,7 @@ class InteractiveLoopTests(unittest.TestCase):
         )
 
     def test_reset_pause_step_and_stop_commands(self):
-        from run_coupled import run_coupled_simulation
+        from quadrotor_mpc.application.native.runtime import run_coupled_simulation
 
         class ScriptedRuntime:
             def __init__(self):
@@ -378,7 +378,7 @@ class InteractiveLoopTests(unittest.TestCase):
         self.assertTrue(runtime.closed)
 
     def test_goal_completion_holds_until_run_again_then_stop(self):
-        from run_coupled import run_coupled_simulation
+        from quadrotor_mpc.application.native.runtime import run_coupled_simulation
 
         class ScriptedRuntime:
             def __init__(self):
@@ -443,7 +443,7 @@ class InteractiveLoopTests(unittest.TestCase):
         self.assertTrue(runtime.closed)
 
     def test_replay_does_not_invoke_controller(self):
-        from native_replay import replay_native_recording
+        from quadrotor_mpc.application.native.replay import replay_native_recording
 
         class ReplayRuntime:
             def __init__(self):

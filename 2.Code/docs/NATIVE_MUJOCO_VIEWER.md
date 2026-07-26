@@ -1,7 +1,7 @@
 # Native MuJoCo Viewer
 
-`run_mujoco_native.py` opens the production 13-state NMPC/MuJoCo track in a
-desktop MuJoCo window. The viewer is an observer: `run_coupled.py` remains the
+`run_quadrotor_mpc/interfaces/desktop/viewer.py` opens the production 13-state NMPC/MuJoCo track in a
+desktop MuJoCo window. The viewer is an observer: `quadrotor_mpc/application/native/runtime.py` remains the
 only owner of controller execution and physics stepping.
 
 ## Model provenance
@@ -57,7 +57,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements-ui.txt
 
-MUJOCO_GL=glfw python run_mujoco_native.py
+MUJOCO_GL=glfw quadrotor-mpc-native
 ```
 
 On minimal Debian/Ubuntu installations, Qt/GLFW may also require the system
@@ -70,25 +70,25 @@ sudo apt install libgl1 libegl1 libxcb-cursor0 libxkbcommon-x11-0
 Run the dynamic crossing scenario:
 
 ```bash
-MUJOCO_GL=glfw python run_mujoco_native.py \
+MUJOCO_GL=glfw quadrotor-mpc-native \
   --config config/mujoco_native_dynamic.yaml
 ```
 
 Validate the YAML without opening a window:
 
 ```bash
-python run_mujoco_native.py --validate-config
+quadrotor-mpc-native --validate-config
 ```
 
 Useful overrides:
 
 ```bash
-python run_mujoco_native.py --camera fixed
-python run_mujoco_native.py --realtime-factor 0
-python run_mujoco_native.py --no-trail --no-prediction
-python run_mujoco_native.py --show-contacts
-python run_mujoco_native.py --no-panel
-python run_mujoco_native.py --no-record
+quadrotor-mpc-native --camera fixed
+quadrotor-mpc-native --realtime-factor 0
+quadrotor-mpc-native --no-trail --no-prediction
+quadrotor-mpc-native --show-contacts
+quadrotor-mpc-native --no-panel
+quadrotor-mpc-native --no-record
 ```
 
 Closing the native window cleanly terminates the control loop. In interactive
@@ -100,7 +100,7 @@ still terminate automatically for batch and Monte Carlo workflows.
 ## Interactive controls
 
 The MuJoCo window and Qt panel send commands through the same queue. Commands
-are processed only by `run_coupled.py`; neither UI is allowed to advance physics.
+are processed only by `quadrotor_mpc/application/native/runtime.py`; neither UI is allowed to advance physics.
 
 | Keyboard | Panel | Action |
 |---|---|---|
@@ -221,7 +221,7 @@ overlay and stop commands.
 Replay does not call do-mpc/IPOPT:
 
 ```bash
-MUJOCO_GL=glfw python run_mujoco_native.py \
+MUJOCO_GL=glfw quadrotor-mpc-native \
   --replay outputs/native/<timestamp>_<scenario>
 ```
 

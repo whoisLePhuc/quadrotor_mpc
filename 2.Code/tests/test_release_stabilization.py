@@ -5,9 +5,9 @@ from pathlib import Path
 
 import tomllib
 
-from mujoco_native import load_native_mujoco_config
-from native_monte_carlo import load_native_monte_carlo_protocol
-from resource_paths import resolve_input_path, resource_root
+from quadrotor_mpc.application.validation.monte_carlo import load_native_monte_carlo_protocol
+from quadrotor_mpc.infrastructure.resources import resolve_input_path, resource_root
+from quadrotor_mpc.interfaces.desktop.viewer import load_native_mujoco_config
 
 CODE_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = CODE_ROOT.parent

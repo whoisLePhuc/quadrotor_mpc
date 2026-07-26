@@ -132,10 +132,8 @@ quadrotor_mpc/
 │   ├── Theory/          theory chapters and formula reference
 │   └── Paper/           source papers
 ├── 2.Code/
-│   ├── ccmpc/           9-state controller mathematics
-│   ├── simulation/      closed-loop ODE runtime
+│   ├── quadrotor_mpc/   layered installable Python package
 │   ├── config/          native and ODE configurations
-│   ├── dashboard/       Streamlit research interface
 │   ├── models/          sourced MuJoCo model and license
 │   ├── tests/           unit, integration and release tests
 │   ├── validation/      committed validation evidence
@@ -162,6 +160,7 @@ of the current release.
 
 - [Code workbench guide](2.Code/README.md)
 - [Architecture](2.Code/docs/ARCHITECTURE.md)
+- [Layered package migration](2.Code/docs/LAYERED_PACKAGE_MIGRATION.md)
 - [Model conventions](2.Code/docs/MODEL_CONVENTIONS.md)
 - [Safety fallback](2.Code/docs/SAFE_SLACK_FALLBACK.md)
 - [Desktop safety interface](2.Code/docs/DESKTOP_SAFETY_INTERFACE.md)

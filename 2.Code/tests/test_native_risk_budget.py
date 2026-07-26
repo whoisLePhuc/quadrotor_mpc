@@ -5,7 +5,7 @@ from statistics import NormalDist
 
 import numpy as np
 
-from native_risk_budget import (
+from quadrotor_mpc.control.nmpc.risk_budget import (
     RiskBudgetOptions,
     allocate_risk_budget,
 )

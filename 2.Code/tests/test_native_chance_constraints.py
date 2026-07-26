@@ -5,13 +5,13 @@ from pathlib import Path
 
 import numpy as np
 
-from mujoco_native import load_native_mujoco_config
-from native_chance_constraints import (
+from quadrotor_mpc.control.nmpc.chance_constraints import (
     ChanceConstraintOptions,
     build_spherical_chance_profile,
     evaluate_spherical_constraints,
 )
-from native_risk_budget import RiskBudgetOptions
+from quadrotor_mpc.control.nmpc.risk_budget import RiskBudgetOptions
+from quadrotor_mpc.interfaces.desktop.viewer import load_native_mujoco_config
 
 CODE_ROOT = Path(__file__).resolve().parents[1]
 

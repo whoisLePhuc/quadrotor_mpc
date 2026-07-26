@@ -3,9 +3,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from mujoco_native import load_native_mujoco_config
-from native_desktop_panel import DesktopPanelOptions
-from native_ui_model import (
+from quadrotor_mpc.interfaces.desktop.model import (
     DANGER,
     MUTED,
     OK,
@@ -14,6 +12,8 @@ from native_ui_model import (
     build_panel_view,
     panel_transition_alerts,
 )
+from quadrotor_mpc.interfaces.desktop.panel import DesktopPanelOptions
+from quadrotor_mpc.interfaces.desktop.viewer import load_native_mujoco_config
 
 CODE_ROOT = Path(__file__).resolve().parents[1]
 

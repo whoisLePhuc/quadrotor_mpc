@@ -8,9 +8,9 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-from experiments.manager import aggregate_results, save_experiment
-from simulation.config import load_scenario
-from simulation.runner import SimulationRunner
+from quadrotor_mpc.application.experiments.manager import aggregate_results, save_experiment
+from quadrotor_mpc.application.simulation.config import load_scenario
+from quadrotor_mpc.application.simulation.runner import SimulationRunner
 
 ROOT = Path(__file__).resolve().parents[1]
 

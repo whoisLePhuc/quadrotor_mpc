@@ -7,8 +7,8 @@ from pathlib import Path
 
 import numpy as np
 
-from mujoco_native import NativeMuJoCoConfig, load_native_mujoco_config
-from vehicle import CRAZYFLIE_2
+from quadrotor_mpc.core.vehicle import CRAZYFLIE_2
+from quadrotor_mpc.interfaces.desktop.viewer import NativeMuJoCoConfig, load_native_mujoco_config
 
 CODE_ROOT = Path(__file__).resolve().parents[1]
 
@@ -72,7 +72,7 @@ class CrazyflieParameterTests(unittest.TestCase):
 )
 class CrazyfliePlantTests(unittest.TestCase):
     def _plant(self, obstacles=None):
-        from mujoco_plant import MuJoCoPlant
+        from quadrotor_mpc.infrastructure.mujoco.plant import MuJoCoPlant
 
         return MuJoCoPlant(
             {"x": 0.0, "y": 0.0, "z": 1.0, "roll": 0.0, "pitch": 0.0, "yaw": 0.0},

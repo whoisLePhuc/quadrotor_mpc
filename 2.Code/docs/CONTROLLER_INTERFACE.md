@@ -1,7 +1,7 @@
 # Native controller interface
 
 Stage 1 separates the native MuJoCo loop from do-mpc through a belief-based
-contract. The contract is defined in `controller_interface.py` and has no
+contract. The contract is defined in `quadrotor_mpc/core/contracts.py` and has no
 MuJoCo, CasADi or do-mpc dependency.
 
 ## Lifecycle
@@ -19,7 +19,7 @@ solution = controller.solve(
 
 `reset()` clears controller history and warm-start state. It is called at
 startup, Reset and Run again. `solve()` is the only control action used by
-`run_coupled.py`.
+`quadrotor_mpc/application/native/runtime.py`.
 
 ## Input contracts
 
@@ -88,11 +88,11 @@ shape, but obstacle mean trajectories may change on every tick.
 
 ## Belief sources
 
-`belief_from_truth.py` converts native truth into zero-covariance beliefs only
+`quadrotor_mpc/estimation/truth.py` converts native truth into zero-covariance beliefs only
 when `estimation.enabled: false`. It remains the deterministic regression
 baseline.
 
-When `estimation.enabled: true`, `native_estimation.py` provides:
+When `estimation.enabled: true`, `quadrotor_mpc/estimation/native.py` provides:
 
 ```text
 MuJoCo truth → sensor simulation → vehicle/obstacle estimators → beliefs
@@ -106,7 +106,7 @@ No production code imports `4.Reference`.
 
 ## Stage 3 propagation
 
-`native_covariance.py` consumes the beliefs and optimized nominal trajectory
+`quadrotor_mpc/control/nmpc/covariance.py` consumes the beliefs and optimized nominal trajectory
 behind the same controller boundary. Open-loop propagation is the Stage 3
 default; finite-horizon feedback-aware LQR propagation is an optional
 diagnostic mode. See `HORIZON_COVARIANCE_PROPAGATION.md`.
@@ -116,7 +116,7 @@ When `controller.chance_constraints.enabled: true`,
 supplies tightened radii as TVPs and reports residual/slack. See
 `SPHERICAL_CHANCE_CONSTRAINTS.md`.
 
-Stage 5 delegates epsilon allocation to `native_risk_budget.py`. Uniform joint
+Stage 5 delegates epsilon allocation to `quadrotor_mpc/control/nmpc/risk_budget.py`. Uniform joint
 allocation changes the per-cell quantile without changing the controller
 boundary. See `RISK_BUDGET_MANAGEMENT.md`.
 

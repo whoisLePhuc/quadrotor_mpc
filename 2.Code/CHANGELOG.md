@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — Layered package architecture
+
+- Moved every executable module from the `2.Code` root into the installable
+  `quadrotor_mpc` package.
+- Grouped domain contracts, controllers, estimation, infrastructure,
+  application use cases, reporting and interfaces into explicit layers.
+- Repointed all console scripts to packaged CLI adapters while preserving their
+  public command names and arguments.
+- Added architecture dependency tests and release checks that reject root-level
+  runtime modules or non-packaged entry points.
+- Updated tests and documentation to use the canonical package imports.
+
 ## 2.0.1 — Release stabilization
 
 - Corrected README commands, scope and claims to match measured repository

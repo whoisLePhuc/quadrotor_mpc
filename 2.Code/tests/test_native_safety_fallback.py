@@ -8,18 +8,18 @@ from pathlib import Path
 
 import numpy as np
 
-from controller_interface import (
+from quadrotor_mpc.control.nmpc.safety import (
+    SafeFallbackController,
+    SafetyFallbackOptions,
+)
+from quadrotor_mpc.core.contracts import (
     ControlGoal,
     ControlSolution,
     ObstacleBelief,
     SphericalObstacle,
     VehicleBelief,
 )
-from mujoco_native import load_native_mujoco_config
-from native_safety_fallback import (
-    SafeFallbackController,
-    SafetyFallbackOptions,
-)
+from quadrotor_mpc.interfaces.desktop.viewer import load_native_mujoco_config
 
 CODE_ROOT = Path(__file__).resolve().parents[1]
 BOUNDS = {
@@ -334,7 +334,7 @@ class SafetySupervisorTests(unittest.TestCase):
 )
 class SafetyFallbackClosedLoopTests(unittest.TestCase):
     def test_fault_sequence_reaches_plant_without_crashing_loop(self):
-        from run_coupled import run_coupled_simulation
+        from quadrotor_mpc.application.native.runtime import run_coupled_simulation
 
         primary = ScriptedController(
             [

@@ -15,7 +15,7 @@ read-only summary of the active controller policy. It never:
 - changes solver output or fallback policy;
 - advances the simulation or physics clock.
 
-`native_ui_model.py` is the presentation boundary:
+`quadrotor_mpc/interfaces/desktop/model.py` is the presentation boundary:
 
 ```text
 effective YAML policy + telemetry sample

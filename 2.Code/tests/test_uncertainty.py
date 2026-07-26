@@ -4,8 +4,8 @@ import unittest
 
 import numpy as np
 
-from ccmpc.dynamics import QuadrotorDynamics
-from ccmpc.uncertainty import UncertaintyPropagator
+from quadrotor_mpc.control.ccmpc.dynamics import QuadrotorDynamics
+from quadrotor_mpc.control.ccmpc.uncertainty import UncertaintyPropagator
 
 
 class UncertaintyTests(unittest.TestCase):

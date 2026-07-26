@@ -105,7 +105,7 @@ controller:
 Run the complete estimator/covariance/CC-NMPC scenario:
 
 ```bash
-MUJOCO_GL=glfw python run_mujoco_native.py \
+MUJOCO_GL=glfw quadrotor-mpc-native \
   --config config/mujoco_native_ccmpc.yaml
 ```
 

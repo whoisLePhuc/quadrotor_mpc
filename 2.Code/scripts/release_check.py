@@ -14,8 +14,11 @@ REPOSITORY_ROOT = CODE_ROOT.parent
 if str(CODE_ROOT) not in sys.path:
     sys.path.insert(0, str(CODE_ROOT))
 
-from mujoco_native import load_native_mujoco_config  # noqa: E402
-from native_monte_carlo import load_native_monte_carlo_protocol  # noqa: E402
+from quadrotor_mpc import __version__  # noqa: E402
+from quadrotor_mpc.application.validation.monte_carlo import (  # noqa: E402
+    load_native_monte_carlo_protocol,
+)
+from quadrotor_mpc.interfaces.desktop.viewer import load_native_mujoco_config  # noqa: E402
 
 EXPECTED_VERSION = "2.0.1"
 NATIVE_CONFIGS = (
@@ -34,6 +37,7 @@ def require(condition: bool, message: str) -> None:
 def main() -> int:
     project = tomllib.loads((CODE_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     require(project["project"]["version"] == EXPECTED_VERSION, "pyproject version mismatch")
+    require(__version__ == EXPECTED_VERSION, "package version mismatch")
     require(
         f"## {EXPECTED_VERSION} " in (CODE_ROOT / "CHANGELOG.md").read_text(encoding="utf-8"),
         "CHANGELOG is missing the release heading",
@@ -42,6 +46,8 @@ def main() -> int:
     require((CODE_ROOT / "LICENSE").is_file(), "wheel LICENSE is missing")
     require((REPOSITORY_ROOT / ".github/workflows/ci.yml").is_file(), "CI workflow is missing")
     require((CODE_ROOT / "uv.lock").is_file(), "uv.lock is missing")
+    require((CODE_ROOT / "quadrotor_mpc/__init__.py").is_file(), "package root is missing")
+    require(not list(CODE_ROOT.glob("*.py")), "runtime modules leaked into 2.Code root")
 
     scripts = project["project"].get("scripts", {})
     expected_scripts = {
@@ -53,6 +59,13 @@ def main() -> int:
         "quadrotor-mpc-dashboard",
     }
     require(expected_scripts <= set(scripts), "console-script packaging is incomplete")
+    require(
+        all(
+            target.startswith("quadrotor_mpc.interfaces.cli.")
+            for target in scripts.values()
+        ),
+        "console scripts must target packaged CLI adapters",
+    )
 
     config_summaries: dict[str, dict[str, float | bool]] = {}
     for filename in NATIVE_CONFIGS:

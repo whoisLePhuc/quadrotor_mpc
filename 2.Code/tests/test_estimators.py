@@ -4,8 +4,8 @@ import unittest
 
 import numpy as np
 
-from ccmpc.dynamics import QuadrotorDynamics
-from simulation.estimators import ExtendedKalmanEstimator
+from quadrotor_mpc.application.simulation.estimators import ExtendedKalmanEstimator
+from quadrotor_mpc.control.ccmpc.dynamics import QuadrotorDynamics
 
 
 class EstimatorTests(unittest.TestCase):

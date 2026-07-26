@@ -95,7 +95,7 @@ that generated it.
 Use the estimated dynamic scenario:
 
 ```bash
-MUJOCO_GL=glfw python run_mujoco_native.py \
+MUJOCO_GL=glfw quadrotor-mpc-native \
   --config config/mujoco_native_estimation.yaml
 ```
 
@@ -147,6 +147,6 @@ compatible with Stage 1 bundles.
 ## Stage boundary
 
 Stage 2 produces calibrated current-time beliefs. Stage 3 consumes these
-posterior covariances in `native_covariance.py` and propagates vehicle and
+posterior covariances in `quadrotor_mpc/control/nmpc/covariance.py` and propagates vehicle and
 obstacle uncertainty across the controller horizon. See
 `HORIZON_COVARIANCE_PROPAGATION.md`.

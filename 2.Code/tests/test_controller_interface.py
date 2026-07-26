@@ -4,14 +4,14 @@ import unittest
 
 import numpy as np
 
-from belief_from_truth import exact_obstacle_beliefs
-from controller_interface import (
+from quadrotor_mpc.core.contracts import (
     ControlGoal,
     ControlSolution,
     ObstacleBelief,
     SphericalObstacle,
     VehicleBelief,
 )
+from quadrotor_mpc.estimation.truth import exact_obstacle_beliefs
 
 
 class BeliefContractTests(unittest.TestCase):

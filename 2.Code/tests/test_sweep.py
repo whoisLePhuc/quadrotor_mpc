@@ -3,8 +3,8 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from experiments.sweep import run_parameter_sweep
-from simulation.config import load_scenario
+from quadrotor_mpc.application.experiments.sweep import run_parameter_sweep
+from quadrotor_mpc.application.simulation.config import load_scenario
 
 ROOT = Path(__file__).resolve().parents[1]
 

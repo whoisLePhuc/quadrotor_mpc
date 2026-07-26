@@ -5,8 +5,8 @@ from pathlib import Path
 
 import numpy as np
 
-from mujoco_native import load_native_mujoco_config
-from native_estimation import (
+from quadrotor_mpc.core.obstacle_motion import obstacle_position
+from quadrotor_mpc.estimation.native import (
     ConstantVelocityObstacleFilter,
     ErrorStateEkf,
     EstimationOptions,
@@ -20,7 +20,7 @@ from native_estimation import (
     inject_error,
     state_error,
 )
-from obstacle_motion import obstacle_position
+from quadrotor_mpc.interfaces.desktop.viewer import load_native_mujoco_config
 
 CODE_ROOT = Path(__file__).resolve().parents[1]
 IDENTITY_STATE = np.array([0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])

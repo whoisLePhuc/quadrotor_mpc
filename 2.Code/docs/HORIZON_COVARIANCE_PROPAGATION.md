@@ -36,7 +36,7 @@ P_o[0,j] = ObstacleBelief[j].covariance_6
 
 ## Vehicle propagation
 
-`native_covariance.py` derives the continuous local-error Jacobians from the
+`quadrotor_mpc/control/nmpc/covariance.py` derives the continuous local-error Jacobians from the
 same rigid-body equations used by the native ESEKF, then applies the real-time
 first-order discretization:
 

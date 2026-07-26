@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 
-from ccmpc.dynamics import QuadrotorDynamics, continuous_dynamics
+from quadrotor_mpc.control.ccmpc.dynamics import QuadrotorDynamics, continuous_dynamics
 
 
 class DynamicsTests(unittest.TestCase):

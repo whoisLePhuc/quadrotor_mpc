@@ -76,7 +76,7 @@ produces `FAIL_DIRTY_SOURCE` release provenance.
 ## Running and resuming
 
 ```bash
-python run_native_monte_carlo.py \
+quadrotor-mpc-monte-carlo \
   --config config/native_monte_carlo.yaml \
   --workers 3 \
   --batch-size 5
@@ -90,7 +90,7 @@ batch.
 Resume an interrupted campaign with the same effective overrides:
 
 ```bash
-python run_native_monte_carlo.py \
+quadrotor-mpc-monte-carlo \
   --config config/native_monte_carlo.yaml \
   --workers 3 \
   --resume outputs/native_monte_carlo/<run-id>

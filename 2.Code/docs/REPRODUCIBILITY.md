@@ -1,6 +1,6 @@
 # Reproducibility
 
-`run_experiment.py` creates an immutable run folder under `outputs/runs/` containing:
+`quadrotor-mpc-run` creates an immutable run folder under `outputs/runs/` containing:
 
 - scenario and controller snapshots;
 - manifest with timestamp, Python/platform, dependencies, commit and seeds;

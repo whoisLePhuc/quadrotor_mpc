@@ -5,12 +5,12 @@ import unittest
 
 import numpy as np
 
-from ccmpc.risk import (
+from quadrotor_mpc.control.ccmpc.risk import (
     chance_constraint_residual,
     collision_clearance,
     symmetric_matrix_sqrt,
 )
-from ccmpc.utils import Omega_matrix, yaw_to_rotation
+from quadrotor_mpc.control.ccmpc.utils import Omega_matrix, yaw_to_rotation
 
 
 class RiskGeometryTests(unittest.TestCase):

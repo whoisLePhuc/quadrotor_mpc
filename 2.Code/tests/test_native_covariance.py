@@ -5,9 +5,7 @@ from pathlib import Path
 
 import numpy as np
 
-from controller_interface import ObstacleBelief, SphericalObstacle, VehicleBelief
-from mujoco_native import load_native_mujoco_config
-from native_covariance import (
+from quadrotor_mpc.control.nmpc.covariance import (
     CovariancePropagationOptions,
     HorizonCovariancePropagator,
     analytic_error_state_jacobians,
@@ -15,7 +13,9 @@ from native_covariance import (
     obstacle_process_covariance,
     obstacle_transition,
 )
-from native_estimation import propagate_nominal
+from quadrotor_mpc.core.contracts import ObstacleBelief, SphericalObstacle, VehicleBelief
+from quadrotor_mpc.estimation.native import propagate_nominal
+from quadrotor_mpc.interfaces.desktop.viewer import load_native_mujoco_config
 
 CODE_ROOT = Path(__file__).resolve().parents[1]
 IDENTITY_STATE = np.array([0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])

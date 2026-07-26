@@ -154,7 +154,7 @@ quadrotor-mpc-sim --config config/scenarios/point_to_point.yaml
 
 ## Experiment artifacts
 
-Every `run_experiment.py` execution creates:
+Every `quadrotor-mpc-run` execution creates:
 
 ```text
 outputs/runs/<run-id>/
@@ -238,6 +238,7 @@ python -m unittest discover -s tests -v
 ## Documentation
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- [`docs/LAYERED_PACKAGE_MIGRATION.md`](docs/LAYERED_PACKAGE_MIGRATION.md)
 - [`docs/MODEL_CONVENTIONS.md`](docs/MODEL_CONVENTIONS.md)
 - [`docs/EXPERIMENT_PROTOCOL.md`](docs/EXPERIMENT_PROTOCOL.md)
 - [`docs/THEORY_CODE_MAPPING.md`](docs/THEORY_CODE_MAPPING.md)
@@ -257,33 +258,18 @@ python -m unittest discover -s tests -v
 
 ```text
 2.Code/
-├── ccmpc/             mathematical controller core
-├── simulation/        closed-loop runtime and metrics
-├── experiments/       tracking, aggregation and sweeps
-├── reporting/         Plotly and HTML reports
-├── dashboard/         Streamlit multi-page workbench
+├── quadrotor_mpc/     installable Python package
+│   ├── core/          stable contracts and shared domain values
+│   ├── control/       9-state CC-MPC and native quaternion NMPC
+│   ├── estimation/    sensor simulation, ESEKF and obstacle tracking
+│   ├── infrastructure/ MuJoCo plant and resource adapters
+│   ├── application/   simulation, native runtime, experiments and validation
+│   ├── reporting/     Plotly, Matplotlib and HTML reports
+│   └── interfaces/    CLI, Streamlit and Qt/MuJoCo desktop adapters
 ├── config/            controller and scenario YAML
 ├── docs/              architecture and research protocol
 ├── models/            sourced MuJoCo MJCF and mesh assets
-├── controller_interface.py belief-based native controller contract
-├── deterministic_nmpc_controller.py do-mpc adapter for the deterministic baseline
-├── belief_from_truth.py transitional zero-covariance belief source
-├── native_estimation.py seeded sensors, vehicle ESEKF and obstacle KFs
-├── native_covariance.py vehicle/obstacle prediction-horizon covariance
-├── native_chance_constraints.py spherical tightening and residual evaluation
-├── native_risk_budget.py       individual/joint semantics and uniform allocation
-├── chance_constrained_nmpc_controller.py explicit native CC-NMPC controller
-├── native_safety_fallback.py acceptance gates and bounded fallback hierarchy
-├── native_ui_model.py pure telemetry-to-safety-console presentation model
-├── native_monte_carlo.py paired native trials, statistics and validation gates
-├── obstacle_motion.py shared static/dynamic obstacle predictor
-├── native_telemetry.py bounded telemetry, recording and replay loading
-├── native_desktop_panel.py separate Qt control/plot process
-├── tests/             unit and integration tests
-├── run_experiment.py  tracked experiment CLI
-├── run_sweep.py       parameter-sweep CLI
-├── start_dashboard.py dashboard launcher for the active Python environment
-├── run_mujoco_native.py native desktop MuJoCo launcher
-├── run_native_monte_carlo.py resumable Stage 8 validation CLI
-└── run_simulation.py  compact backward-compatible CLI
+├── tests/             unit, integration and architecture tests
+├── validation/        committed evidence
+└── pyproject.toml     build metadata and six console entry points
 ```

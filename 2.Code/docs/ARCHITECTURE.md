@@ -1,49 +1,63 @@
 # Architecture
 
-The workbench separates the controller model, true plant, estimator and experiment layer.
+All executable Python code lives under the `quadrotor_mpc` package. The package
+separates stable domain contracts, controller mathematics, estimation,
+infrastructure adapters, application orchestration and user-facing interfaces.
+The `2.Code` root contains only package-independent assets and project tooling.
 
 ```mermaid
-flowchart LR
-    A[Scenario and seed] --> B[Estimator and covariance]
-    B --> C[Controller interface]
-    C --> D[ODE 9D or MuJoCo 13D]
-    D --> B
-    B --> E[Experiment logger]
-    C --> E
+flowchart TD
+    A["Interfaces<br/>CLI · Dashboard · Desktop"] --> B["Application<br/>Simulation · Native runtime · Validation"]
+    B --> C["Control and estimation<br/>CC-MPC · NMPC · ESEKF"]
+    B --> D["Infrastructure<br/>MuJoCo plant · Resources"]
+    C --> E["Core<br/>Contracts · Vehicle · Obstacle motion"]
     D --> E
-    E --> F[Dashboard and reports]
 ```
 
 The 9-state plant is the executable research baseline. The optional 13-state quaternion/MuJoCo
 track is deliberately separate and is used to study model mismatch. Both must not be described as
 the same physical model.
 
-Core ownership:
+## Layer ownership
 
 | Layer | Modules | Responsibility |
 |---|---|---|
-| Mathematics | `ccmpc/` | dynamics, uncertainty, ellipsoid risk and QP |
-| Runtime | `simulation/` | controller adapter, plant loop, metrics and static report |
-| Experiments | `experiments/` | run identity, manifest, paired statistics and sweeps |
-| Reporting | `reporting/` | interactive Plotly figures and HTML |
-| UI | `dashboard/` | Learn, Run, Compare and Explore workflows |
-| Native MuJoCo | `mujoco_plant.py`, `mujoco_native.py` | sourced Crazyflie plant and passive desktop viewer |
-| Native interaction | `runtime_control.py`, `native_ui_model.py`, `native_desktop_panel.py` | command queue, pure safety presentation model and separate Qt process |
-| Native evidence | `native_telemetry.py`, `native_replay.py` | bounded data, recording bundle and solver-free replay |
-| Obstacle motion | `obstacle_motion.py` | one predictor shared by controller, plant, metrics and viewer |
-| Controller contract | `controller_interface.py` | belief, goal and normalized solution types |
-| Native deterministic adapter | `deterministic_nmpc_controller.py` | do-mpc backend behind the shared contract |
-| Native estimation | `native_estimation.py` | seeded sensors, 12D ESEKF and 6D obstacle trackers |
-| Horizon uncertainty | `native_covariance.py` | 12D vehicle and 6D obstacle covariance propagation |
-| Native chance tightening | `native_chance_constraints.py` | collision-normal projection and spherical safety radii |
-| Native risk budget | `native_risk_budget.py` | individual/joint semantics and uniform allocation |
-| Native CC-NMPC | `chance_constrained_nmpc_controller.py` | spherical chance constraints with external risk allocation |
-| Native safety supervisor | `native_safety_fallback.py` | acceptance gates, deadline policy and bounded fallback hierarchy |
-| Native validation | `native_monte_carlo.py`, `run_native_monte_carlo.py` | paired seeds, uncertainty sweep, confidence intervals, claim gates and resumable artifacts |
-| Exact baseline source | `belief_from_truth.py` | zero-covariance truth adapter used only for regression |
+| Core | `quadrotor_mpc/core/` | belief/control contracts, vehicle parameters and shared obstacle motion |
+| Control | `quadrotor_mpc/control/ccmpc/`, `control/nmpc/` | 9-state CC-MPC, quaternion NMPC, covariance, risk allocation and safety supervision |
+| Estimation | `quadrotor_mpc/estimation/` | exact-truth adapter, seeded sensors, 12D ESEKF and obstacle trackers |
+| Infrastructure | `quadrotor_mpc/infrastructure/` | source/wheel resource resolution and the MuJoCo plant adapter |
+| Application | `quadrotor_mpc/application/` | ODE and native closed loops, experiments, telemetry, replay and Monte Carlo validation |
+| Reporting | `quadrotor_mpc/reporting/` | Plotly, Matplotlib and HTML report generation |
+| Interfaces | `quadrotor_mpc/interfaces/` | six console adapters, Streamlit workbench, MuJoCo viewer and Qt panel |
 
-Dependencies point inward: UI and reporting consume experiment/runtime data; the mathematics layer
-does not depend on the dashboard.
+The import rules are guarded by `tests/test_architecture.py`. Core cannot import
+outer layers; control and estimation cannot import application or interfaces;
+infrastructure cannot depend on presentation code. Package `__init__.py` files
+remain lightweight so importing numerical helpers does not initialize do-mpc,
+MuJoCo, Qt or Streamlit.
+
+## Package map
+
+```text
+quadrotor_mpc/
+├── core/                   stable contracts and domain values
+├── control/
+│   ├── ccmpc/              9-state QP/CC-MPC mathematics
+│   └── nmpc/               native quaternion NMPC and safety
+├── estimation/             sensor simulation and belief estimation
+├── infrastructure/
+│   └── mujoco/             true-plant adapter
+├── application/
+│   ├── simulation/         ODE closed-loop use case
+│   ├── native/             MuJoCo runtime, telemetry and replay
+│   ├── experiments/        manifests, aggregation and sweeps
+│   └── validation/         paired native Monte Carlo evidence
+├── reporting/              figures and reports
+└── interfaces/
+    ├── cli/                console entry points
+    ├── dashboard/          Streamlit workbench
+    └── desktop/            MuJoCo viewer and Qt safety panel
+```
 
 The native viewer is connected through the `CoupledRuntime` lifecycle protocol.
 It never owns the controller or advances physics, so closing/rendering the window
@@ -61,8 +75,8 @@ applied control command directly.
 
 ## Native controller boundary
 
-`run_coupled.py` no longer calls `mpc.make_step` or reads do-mpc prediction data.
-It calls the backend-independent contract:
+`application/native/runtime.py` does not call `mpc.make_step` or read do-mpc
+prediction data. It calls the backend-independent contract:
 
 ```python
 controller.reset(vehicle_belief)
@@ -70,9 +84,9 @@ solution = controller.solve(vehicle_belief, obstacle_beliefs, goal, time_s)
 ```
 
 The deterministic baseline creates zero-covariance beliefs from MuJoCo truth in
-`belief_from_truth.py`. The estimated configuration instead routes truth through
+`estimation/truth.py`. The estimated configuration instead routes truth through
 the seeded sensor simulator, 12D vehicle error-state EKF and one 6D
-constant-velocity tracker per obstacle in `native_estimation.py`. Both paths
+constant-velocity tracker per obstacle in `estimation/native.py`. Both paths
 produce the same controller contract without changing runtime signatures.
 
 With Stage 3 enabled, the controller linearizes a shifted nominal quaternion

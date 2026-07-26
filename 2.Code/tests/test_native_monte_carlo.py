@@ -8,8 +8,7 @@ from unittest.mock import patch
 
 import numpy as np
 
-from mujoco_native import load_native_mujoco_config
-from native_monte_carlo import (
+from quadrotor_mpc.application.validation.monte_carlo import (
     NativeMonteCarloProtocol,
     NativeTrialResult,
     NoiseLevel,
@@ -24,6 +23,7 @@ from native_monte_carlo import (
     summarize_native_trial,
     wilson_interval,
 )
+from quadrotor_mpc.interfaces.desktop.viewer import load_native_mujoco_config
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -276,7 +276,7 @@ class NativeMonteCarloArtifactTests(unittest.TestCase):
                 }
             )
             with (
-                patch("native_monte_carlo.source_provenance", return_value=dirty),
+                patch("quadrotor_mpc.application.validation.monte_carlo.source_provenance", return_value=dirty),
                 self.assertRaisesRegex(RuntimeError, "clean Git source"),
             ):
                 create_validation_directory(configured, base, run_id="dirty")
@@ -322,7 +322,7 @@ class NativeMonteCarloArtifactTests(unittest.TestCase):
                 }
             )
             with (
-                patch("native_monte_carlo.source_provenance", return_value=editable),
+                patch("quadrotor_mpc.application.validation.monte_carlo.source_provenance", return_value=editable),
                 self.assertRaisesRegex(RuntimeError, "non-editable distribution"),
             ):
                 create_validation_directory(configured, base, run_id="editable")
@@ -352,7 +352,7 @@ class NativeMonteCarloArtifactTests(unittest.TestCase):
                 "source_file_count": 12,
                 "distribution_version": None,
             }
-            with patch("native_monte_carlo.source_provenance", return_value=dirty):
+            with patch("quadrotor_mpc.application.validation.monte_carlo.source_provenance", return_value=dirty):
                 directory = create_validation_directory(
                     configured,
                     base,
