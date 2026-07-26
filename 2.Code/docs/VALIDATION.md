@@ -17,6 +17,9 @@ Validation is layered:
 9. Native estimation validation: seeded reset repeatability, dropout behavior,
    quaternion local-error consistency, ESEKF update contraction, covariance PSD,
    position-only obstacle velocity recovery and truth-free tracker horizons.
+10. Horizon covariance validation: initial-belief agreement, local-error
+    linearization, vehicle/obstacle horizon dimensions, symmetry, PSD, open-loop
+    growth, feedback-aware behavior and numeric recording round-trip.
 
 For a native release, run both `config/mujoco_native.yaml` and
 `config/mujoco_native_dynamic.yaml`. Check that the reported current obstacle
@@ -57,4 +60,20 @@ Run `config/mujoco_native_estimation.yaml` and report separately:
 
 The controller must receive tracker-extrapolated obstacle means. Ground-truth
 motion is allowed only in the sensor simulator, collision/clearance metrics and
-validation logs. Horizon covariance consistency is a Stage 3 criterion.
+validation logs.
+
+## Stage 3 horizon covariance checks
+
+Run `config/mujoco_native_estimation.yaml` and verify:
+
+- `predicted_error_covariance_horizon.shape == (ticks, N+1, 12, 12)`;
+- `predicted_obstacle_covariance_horizon.shape == (ticks, N+1, n_obs, 6, 6)`;
+- horizon index zero matches the belief supplied to that controller tick;
+- every covariance is finite, symmetric and positive semidefinite;
+- terminal position sigma responds to process-noise configuration;
+- deterministic control, clearance and collision regression are unchanged
+  because Stage 3 does not yet tighten a constraint.
+
+The `feedback_lqr` mode is checked as a propagation approximation, not as a
+replacement controller. No chance-constraint guarantee may be claimed until
+Stage 4 makes the propagated uncertainty change the optimization constraint.

@@ -139,9 +139,7 @@ class ObstacleBelief:
         if self.predicted_positions is not None:
             prediction = np.asarray(self.predicted_positions, dtype=float)
             if prediction.ndim != 2 or prediction.shape[1] != 3 or prediction.shape[0] < 1:
-                raise ValueError(
-                    "ObstacleBelief.predicted_positions must have shape (steps, 3)"
-                )
+                raise ValueError("ObstacleBelief.predicted_positions must have shape (steps, 3)")
             if not np.all(np.isfinite(prediction)):
                 raise ValueError(
                     "ObstacleBelief.predicted_positions must contain only finite values"
@@ -200,6 +198,7 @@ class ControlSolution:
     risk_allocations: np.ndarray
     slacks: np.ndarray
     solver_status: str
+    predicted_obstacle_covariances: np.ndarray | None = None
 
     def __post_init__(self) -> None:
         command = _readonly_array(self.command, (CONTROL_SIZE,), "ControlSolution.command")
@@ -216,8 +215,7 @@ class ControlSolution:
         )
         if covariances.shape != expected_covariance_shape:
             raise ValueError(
-                "ControlSolution.predicted_covariances must have shape "
-                f"{expected_covariance_shape}"
+                f"ControlSolution.predicted_covariances must have shape {expected_covariance_shape}"
             )
         margins = np.asarray(self.chance_margins, dtype=float)
         risks = np.asarray(self.risk_allocations, dtype=float)
@@ -228,9 +226,31 @@ class ControlSolution:
             raise ValueError(
                 "ControlSolution risk_allocations and slacks must match chance_margins"
             )
+        if self.predicted_obstacle_covariances is None:
+            obstacle_covariances = np.zeros(
+                (states.shape[0], margins.shape[1], OBSTACLE_STATE_SIZE, OBSTACLE_STATE_SIZE),
+                dtype=float,
+            )
+        else:
+            obstacle_covariances = np.asarray(
+                self.predicted_obstacle_covariances,
+                dtype=float,
+            )
+        expected_obstacle_covariance_shape = (
+            states.shape[0],
+            margins.shape[1],
+            OBSTACLE_STATE_SIZE,
+            OBSTACLE_STATE_SIZE,
+        )
+        if obstacle_covariances.shape != expected_obstacle_covariance_shape:
+            raise ValueError(
+                "ControlSolution.predicted_obstacle_covariances must have shape "
+                f"{expected_obstacle_covariance_shape}"
+            )
         for label, array in (
             ("nominal_states", states),
             ("predicted_covariances", covariances),
+            ("predicted_obstacle_covariances", obstacle_covariances),
             ("chance_margins", margins),
             ("risk_allocations", risks),
             ("slacks", slacks),
@@ -240,6 +260,14 @@ class ControlSolution:
             copied = array.copy()
             copied.setflags(write=False)
             object.__setattr__(self, label, copied)
+        for label, array in (
+            ("predicted_covariances", covariances),
+            ("predicted_obstacle_covariances", obstacle_covariances),
+        ):
+            if not np.allclose(array, np.swapaxes(array, -1, -2), rtol=1e-8, atol=1e-10):
+                raise ValueError(f"ControlSolution.{label} must be symmetric")
+            if array.size and float(np.min(np.linalg.eigvalsh(array))) < -1e-9:
+                raise ValueError(f"ControlSolution.{label} must be positive semidefinite")
         object.__setattr__(self, "command", command)
         object.__setattr__(self, "solver_status", str(self.solver_status))
 

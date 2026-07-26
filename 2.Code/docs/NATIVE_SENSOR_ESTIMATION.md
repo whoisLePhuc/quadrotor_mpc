@@ -146,6 +146,7 @@ compatible with Stage 1 bundles.
 
 ## Stage boundary
 
-Stage 2 produces calibrated current-time beliefs. It does not yet propagate the
-vehicle and obstacle covariance along the controller horizon. That propagation,
-including feedback-aware alternatives, belongs to Stage 3.
+Stage 2 produces calibrated current-time beliefs. Stage 3 consumes these
+posterior covariances in `native_covariance.py` and propagates vehicle and
+obstacle uncertainty across the controller horizon. See
+`HORIZON_COVARIANCE_PROPAGATION.md`.

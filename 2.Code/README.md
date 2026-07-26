@@ -200,6 +200,7 @@ python -m unittest discover -s tests -v
 - [`docs/NATIVE_MUJOCO_VIEWER.md`](docs/NATIVE_MUJOCO_VIEWER.md)
 - [`docs/CONTROLLER_INTERFACE.md`](docs/CONTROLLER_INTERFACE.md)
 - [`docs/NATIVE_SENSOR_ESTIMATION.md`](docs/NATIVE_SENSOR_ESTIMATION.md)
+- [`docs/HORIZON_COVARIANCE_PROPAGATION.md`](docs/HORIZON_COVARIANCE_PROPAGATION.md)
 
 ## Directory map
 
@@ -217,6 +218,7 @@ python -m unittest discover -s tests -v
 ├── deterministic_nmpc_controller.py do-mpc adapter for the deterministic baseline
 ├── belief_from_truth.py transitional zero-covariance belief source
 ├── native_estimation.py seeded sensors, vehicle ESEKF and obstacle KFs
+├── native_covariance.py vehicle/obstacle prediction-horizon covariance
 ├── obstacle_motion.py shared static/dynamic obstacle predictor
 ├── native_telemetry.py bounded telemetry, recording and replay loading
 ├── native_desktop_panel.py separate Qt control/plot process

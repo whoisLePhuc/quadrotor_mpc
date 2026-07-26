@@ -43,14 +43,18 @@ inputs are normalized at construction.
 | `command` | `[thrust_deviation, τx, τy, τz]` | `(4,)` |
 | `nominal_states` | optimized mean state horizon | `(N+1, 13)` |
 | `predicted_covariances` | error-state covariance horizon | `(N+1, 12, 12)` |
+| `predicted_obstacle_covariances` | 6D covariance horizon per obstacle | `(N+1, n_obs, 6, 6)` |
 | `chance_margins` | signed obstacle constraint margins | `(N+1, n_obs)` |
 | `risk_allocations` | allocated risk per horizon constraint | `(N+1, n_obs)` |
 | `slacks` | nonnegative constraint relaxation | `(N+1, n_obs)` |
 | `solver_status` | backend-independent status label | string |
 
-The deterministic adapter returns zero predicted covariance and zero risk
-allocation. Its geometric margin and implied violation slack are populated so
-the same telemetry schema is already exercised before CC-MPC is introduced.
+When Stage 3 is disabled, the deterministic adapter returns zero predicted
+covariance and zero risk allocation. When propagation is enabled, the same
+adapter returns vehicle and obstacle covariance horizons but still uses the
+unchanged deterministic obstacle constraint. Its geometric margin and implied
+violation slack are populated so the same telemetry schema is exercised before
+CC-MPC is introduced.
 
 ## Current deterministic adapter
 
@@ -83,3 +87,10 @@ nominal state. Each obstacle has a position-only constant-velocity Kalman
 filter. Tracker means—not configured truth motion—form the obstacle horizon.
 
 No production code imports `4.Reference`.
+
+## Stage 3 propagation
+
+`native_covariance.py` consumes the beliefs and optimized nominal trajectory
+behind the same controller boundary. Open-loop propagation is the Stage 3
+default; finite-horizon feedback-aware LQR propagation is an optional
+diagnostic mode. See `HORIZON_COVARIANCE_PROPAGATION.md`.

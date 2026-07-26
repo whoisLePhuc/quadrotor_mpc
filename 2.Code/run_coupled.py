@@ -19,6 +19,7 @@ import numpy as np
 from belief_from_truth import exact_obstacle_beliefs
 from controller_interface import ControlGoal, Controller, VehicleBelief
 from mujoco_plant import MuJoCoPlant
+from native_covariance import CovariancePropagationOptions
 from native_estimation import EstimationOptions, NativeBeliefEstimator
 from obstacle_motion import predict_obstacle_positions
 from quad_mpc_core import (
@@ -73,6 +74,7 @@ class CoupledStep:
     risk_allocations: np.ndarray | None = None
     slacks: np.ndarray | None = None
     solver_status: str = ""
+    predicted_obstacle_covariances: np.ndarray | None = None
 
 
 class CoupledRuntime(Protocol):
@@ -117,6 +119,7 @@ def run_coupled_simulation(
     stop_on_collision=False,
     controller: Controller | None = None,
     estimation_options: EstimationOptions | None = None,
+    covariance_options: CovariancePropagationOptions | None = None,
 ):
     """
     `cached`: optional (model, mpc, dyn_idx, goal_state) tuple from
@@ -141,6 +144,7 @@ def run_coupled_simulation(
             timestep_s=mpc_dt,
             max_iter=max_iter,
             cached=cached,
+            covariance_options=covariance_options,
         )
     elif int(active_controller.horizon_steps) != int(n_horizon):
         raise ValueError(
@@ -185,18 +189,10 @@ def run_coupled_simulation(
     if estimator is not None:
         current_belief = initial_estimation.vehicle_belief
         current_obstacle_beliefs = initial_estimation.obstacle_beliefs
-        current_vehicle_measurement_available = (
-            initial_estimation.vehicle_measurement_available
-        )
-        current_obstacle_measurement_available = (
-            initial_estimation.obstacle_measurement_available
-        )
-        current_vehicle_measurement_state = (
-            initial_estimation.vehicle_measurement_state_13
-        )
-        current_obstacle_measurement_positions = (
-            initial_estimation.obstacle_measurement_positions
-        )
+        current_vehicle_measurement_available = initial_estimation.vehicle_measurement_available
+        current_obstacle_measurement_available = initial_estimation.obstacle_measurement_available
+        current_vehicle_measurement_state = initial_estimation.vehicle_measurement_state_13
+        current_obstacle_measurement_positions = initial_estimation.obstacle_measurement_positions
     else:
         current_belief, current_obstacle_beliefs = initial_estimation
         current_vehicle_measurement_available = True
@@ -219,6 +215,7 @@ def run_coupled_simulation(
     ts, poss, eulers, us, clearances, frames = [], [], [], [], [], []
     estimated_states, estimation_covariances = [], []
     obstacle_estimated_states, obstacle_estimation_covariances = [], []
+    horizon_vehicle_covariances, horizon_obstacle_covariances = [], []
     vehicle_measurement_history, obstacle_measurement_history = [], []
     vehicle_measurements, obstacle_measurements = [], []
     collided = False
@@ -297,13 +294,9 @@ def run_coupled_simulation(
                 else:
                     current_belief, current_obstacle_beliefs = reset_estimation
                     current_vehicle_measurement_available = True
-                    current_obstacle_measurement_available = np.ones(
-                        len(obstacles), dtype=bool
-                    )
+                    current_obstacle_measurement_available = np.ones(len(obstacles), dtype=bool)
                     current_vehicle_measurement_state = x0[:, 0].copy()
-                    current_obstacle_measurement_positions = (
-                        truth_obstacle_positions(0.0)
-                    )
+                    current_obstacle_measurement_positions = truth_obstacle_positions(0.0)
                 active_controller.reset(current_belief)
                 ts.clear()
                 poss.clear()
@@ -315,6 +308,8 @@ def run_coupled_simulation(
                 estimation_covariances.clear()
                 obstacle_estimated_states.clear()
                 obstacle_estimation_covariances.clear()
+                horizon_vehicle_covariances.clear()
+                horizon_obstacle_covariances.clear()
                 vehicle_measurement_history.clear()
                 obstacle_measurement_history.clear()
                 vehicle_measurements.clear()
@@ -368,6 +363,8 @@ def run_coupled_simulation(
                 t,
             )
             u0 = solution.command
+            horizon_vehicle_covariances.append(solution.predicted_covariances.copy())
+            horizon_obstacle_covariances.append(solution.predicted_obstacle_covariances.copy())
             solver_time_ms = (time.perf_counter() - solver_start) * 1000.0
             plant.apply_control_and_step(u0, n_substeps, t)  # MuJoCo "true" plant
             x_curr = plant.get_state_13()
@@ -396,18 +393,10 @@ def run_coupled_simulation(
                 )
                 current_belief = estimation.vehicle_belief
                 current_obstacle_beliefs = estimation.obstacle_beliefs
-                current_vehicle_measurement_available = (
-                    estimation.vehicle_measurement_available
-                )
-                current_obstacle_measurement_available = (
-                    estimation.obstacle_measurement_available
-                )
-                current_vehicle_measurement_state = (
-                    estimation.vehicle_measurement_state_13
-                )
-                current_obstacle_measurement_positions = (
-                    estimation.obstacle_measurement_positions
-                )
+                current_vehicle_measurement_available = estimation.vehicle_measurement_available
+                current_obstacle_measurement_available = estimation.obstacle_measurement_available
+                current_vehicle_measurement_state = estimation.vehicle_measurement_state_13
+                current_obstacle_measurement_positions = estimation.obstacle_measurement_positions
             else:
                 current_belief = VehicleBelief.exact(x_curr[:, 0])
                 current_obstacle_beliefs = exact_obstacle_beliefs(
@@ -417,9 +406,7 @@ def run_coupled_simulation(
                     mpc_dt,
                 )
                 current_vehicle_measurement_available = True
-                current_obstacle_measurement_available = np.ones(
-                    len(obstacles), dtype=bool
-                )
+                current_obstacle_measurement_available = np.ones(len(obstacles), dtype=bool)
                 current_vehicle_measurement_state = x_curr[:, 0].copy()
                 current_obstacle_measurement_positions = obstacle_positions.copy()
             estimated_obstacle_states_array = np.asarray(
@@ -445,17 +432,13 @@ def run_coupled_simulation(
             obstacle_estimated_states.append(estimated_obstacle_states_array.copy())
             obstacle_estimation_covariances.append(obstacle_covariances_array.copy())
             vehicle_measurement_history.append(current_vehicle_measurement_available)
-            obstacle_measurement_history.append(
-                current_obstacle_measurement_available.copy()
-            )
+            obstacle_measurement_history.append(current_obstacle_measurement_available.copy())
             vehicle_measurements.append(
                 np.full(13, np.nan)
                 if current_vehicle_measurement_state is None
                 else current_vehicle_measurement_state.copy()
             )
-            obstacle_measurements.append(
-                current_obstacle_measurement_positions.copy()
-            )
+            obstacle_measurements.append(current_obstacle_measurement_positions.copy())
             min_clear = np.inf
             for obs, obstacle_position in zip(obstacles, obstacle_positions):
                 d = np.linalg.norm(position - obstacle_position) - obs["radius"] - DRONE_RADIUS
@@ -482,13 +465,9 @@ def run_coupled_simulation(
                         obstacle_covariances=obstacle_covariances_array,
                         estimated_obstacle_predictions=estimated_obstacle_predictions_array,
                         vehicle_measurement_available=current_vehicle_measurement_available,
-                        obstacle_measurement_available=(
-                            current_obstacle_measurement_available
-                        ),
+                        obstacle_measurement_available=(current_obstacle_measurement_available),
                         vehicle_measurement_state_13=current_vehicle_measurement_state,
-                        obstacle_measurement_positions=(
-                            current_obstacle_measurement_positions
-                        ),
+                        obstacle_measurement_positions=(current_obstacle_measurement_positions),
                         predicted_positions=solution.predicted_positions,
                         min_clearance_m=float(min_clear),
                         goal_distance_m=goal_distance,
@@ -500,6 +479,7 @@ def run_coupled_simulation(
                         risk_allocations=solution.risk_allocations,
                         slacks=solution.slacks,
                         solver_status=solution.solver_status,
+                        predicted_obstacle_covariances=(solution.predicted_obstacle_covariances),
                     )
                 )
                 if not keep_running:
@@ -550,19 +530,19 @@ def run_coupled_simulation(
         "estimated_state": np.asarray(estimated_states, dtype=float),
         "error_covariance": np.asarray(estimation_covariances, dtype=float),
         "estimated_obstacle_state": np.asarray(obstacle_estimated_states, dtype=float),
-        "obstacle_covariance": np.asarray(
-            obstacle_estimation_covariances, dtype=float
+        "obstacle_covariance": np.asarray(obstacle_estimation_covariances, dtype=float),
+        "predicted_error_covariance_horizon": np.asarray(
+            horizon_vehicle_covariances,
+            dtype=float,
         ),
-        "vehicle_measurement_available": np.asarray(
-            vehicle_measurement_history, dtype=bool
+        "predicted_obstacle_covariance_horizon": np.asarray(
+            horizon_obstacle_covariances,
+            dtype=float,
         ),
-        "obstacle_measurement_available": np.asarray(
-            obstacle_measurement_history, dtype=bool
-        ),
+        "vehicle_measurement_available": np.asarray(vehicle_measurement_history, dtype=bool),
+        "obstacle_measurement_available": np.asarray(obstacle_measurement_history, dtype=bool),
         "vehicle_measurement_state": np.asarray(vehicle_measurements, dtype=float),
-        "obstacle_measurement_position": np.asarray(
-            obstacle_measurements, dtype=float
-        ),
+        "obstacle_measurement_position": np.asarray(obstacle_measurements, dtype=float),
         "estimation_enabled": estimator is not None,
     }
 

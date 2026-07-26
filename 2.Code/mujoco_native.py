@@ -18,6 +18,7 @@ import numpy as np
 import yaml
 
 from native_desktop_panel import DesktopPanelOptions, DesktopPanelProcess
+from native_covariance import CovariancePropagationOptions
 from native_estimation import EstimationOptions
 from native_telemetry import (
     NativeRunRecorder,
@@ -123,6 +124,7 @@ class NativeMuJoCoConfig:
     goal_tolerance_m: float
     stop_on_collision: bool
     estimation: EstimationOptions
+    covariance_propagation: CovariancePropagationOptions
     viewer: NativeViewerOptions
     panel: DesktopPanelOptions
     recording: RecordingOptions
@@ -140,6 +142,10 @@ class NativeMuJoCoConfig:
         panel_raw = _mapping(raw.get("panel", {}), "panel")
         recording_raw = _mapping(raw.get("recording", {}), "recording")
         estimation_raw = _mapping(raw.get("estimation", {}), "estimation")
+        covariance_raw = _mapping(
+            controller_raw.get("covariance_propagation", {}),
+            "controller.covariance_propagation",
+        )
 
         start = _xyz(start_raw, "start")
         start.update({axis: float(start_raw.get(axis, 0.0)) for axis in ("roll", "pitch", "yaw")})
@@ -191,6 +197,7 @@ class NativeMuJoCoConfig:
             ),
             stop_on_collision=bool(simulation_raw.get("stop_on_collision", False)),
             estimation=EstimationOptions.from_mapping(estimation_raw),
+            covariance_propagation=CovariancePropagationOptions.from_mapping(covariance_raw),
             viewer=NativeViewerOptions.from_mapping(viewer_raw),
             panel=DesktopPanelOptions.from_mapping(dict(panel_raw)),
             recording=RecordingOptions.from_mapping(recording_raw),
@@ -208,6 +215,7 @@ class NativeMuJoCoConfig:
             "controller": {
                 "bounds": dict(self.bounds),
                 "safety_margin": self.safety_margin,
+                "covariance_propagation": self.covariance_propagation.to_mapping(),
             },
             "simulation": {
                 "duration_s": self.duration_s,
@@ -390,9 +398,7 @@ class NativeMuJoCoViewer:
                         (1.0, 0.45, 0.05, 0.12),
                     )
             if self._show_obstacle_prediction:
-                displayed_predictions = getattr(
-                    step, "estimated_obstacle_predictions", None
-                )
+                displayed_predictions = getattr(step, "estimated_obstacle_predictions", None)
                 if displayed_predictions is None:
                     displayed_predictions = step.obstacle_predictions
                 for prediction in np.asarray(displayed_predictions, dtype=float):

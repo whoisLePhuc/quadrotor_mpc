@@ -121,6 +121,7 @@ def _panel_main(
             self.pz: deque[float] = deque()
             self.goal_error: deque[float] = deque()
             self.clearance: deque[float] = deque()
+            self.horizon_position_sigma: deque[float] = deque()
             self.thrust: deque[float] = deque()
             self.tau_norm: deque[float] = deque()
             self.solve_ms: deque[float] = deque()
@@ -184,6 +185,10 @@ def _panel_main(
             )
             self.clearance_curve = self.safety_plot.plot(
                 pen=pg.mkPen("#ff704d", width=2), name="clearance"
+            )
+            self.horizon_sigma_curve = self.safety_plot.plot(
+                pen=pg.mkPen("#58d5e8", width=2, style=QtCore.Qt.DashLine),
+                name="max terminal σ position",
             )
             self.thrust_curve = self.control_plot.plot(
                 pen=pg.mkPen("#4ea1ff", width=2), name="thrust dev."
@@ -261,6 +266,7 @@ def _panel_main(
                 self.pz,
                 self.goal_error,
                 self.clearance,
+                self.horizon_position_sigma,
                 self.thrust,
                 self.tau_norm,
                 self.solve_ms,
@@ -270,6 +276,10 @@ def _panel_main(
 
         def _append(self, sample: dict[str, Any]) -> None:
             t = float(sample["time_s"])
+            terminal_sigma = sample.get("horizon_terminal_position_sigma")
+            terminal_sigma_max = (
+                float("nan") if terminal_sigma is None else max(terminal_sigma)
+            )
             for series, value in (
                 (self.times, t),
                 (self.px, sample["position"][0]),
@@ -277,6 +287,7 @@ def _panel_main(
                 (self.pz, sample["position"][2]),
                 (self.goal_error, sample["goal_distance_m"]),
                 (self.clearance, sample["min_clearance_m"]),
+                (self.horizon_position_sigma, terminal_sigma_max),
                 (self.thrust, sample["control"][0]),
                 (self.tau_norm, sum(v * v for v in sample["control"][1:]) ** 0.5),
                 (self.solve_ms, sample["solver_time_ms"]),
@@ -291,6 +302,7 @@ def _panel_main(
                     self.pz,
                     self.goal_error,
                     self.clearance,
+                    self.horizon_position_sigma,
                     self.thrust,
                     self.tau_norm,
                     self.solve_ms,
@@ -303,6 +315,10 @@ def _panel_main(
                 curve.setData(x, list(series))
             self.goal_curve.setData(x, list(self.goal_error))
             self.clearance_curve.setData(x, list(self.clearance))
+            self.horizon_sigma_curve.setData(
+                x,
+                list(self.horizon_position_sigma),
+            )
             self.thrust_curve.setData(x, list(self.thrust))
             self.torque_curve.setData(x, list(self.tau_norm))
             self.solve_curve.setData(x, list(self.solve_ms))

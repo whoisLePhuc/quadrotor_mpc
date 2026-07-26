@@ -18,6 +18,15 @@ controller:
     torque_rp: 0.002
     torque_yaw: 0.0004
   safety_margin: 0.30
+  covariance_propagation:
+    enabled: true
+    mode: open_loop
+    linearization: analytic_first_order
+    acceleration_process_std_mps2: 0.35
+    angular_acceleration_process_std_radps2: 0.60
+    obstacle_acceleration_process_std_mps2: 0.50
+    finite_difference_epsilon: 1.0e-6
+    minimum_covariance_eigenvalue: 1.0e-12
 
 simulation:
   duration_s: 10.0

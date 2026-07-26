@@ -137,8 +137,7 @@ def replay_native_recording(config: Any, recording: dict[str, Any], runtime: Any
                     obstacle_covariances=None,
                     estimated_obstacle_predictions=(
                         recording["estimated_obstacle_predictions"][index]
-                        if len(recording.get("estimated_obstacle_predictions", []))
-                        == len(rows)
+                        if len(recording.get("estimated_obstacle_predictions", [])) == len(rows)
                         else obstacle_predictions
                     ),
                     vehicle_measurement_available=True,
@@ -151,6 +150,28 @@ def replay_native_recording(config: Any, recording: dict[str, Any], runtime: Any
                     solver_time_ms=float(row["solver_time_ms"]),
                     collided=collided,
                     paused=paused,
+                    predicted_covariances=(
+                        recording["predicted_error_covariance_horizons"][index]
+                        if len(
+                            recording.get(
+                                "predicted_error_covariance_horizons",
+                                [],
+                            )
+                        )
+                        == len(rows)
+                        else None
+                    ),
+                    predicted_obstacle_covariances=(
+                        recording["predicted_obstacle_covariance_horizons"][index]
+                        if len(
+                            recording.get(
+                                "predicted_obstacle_covariance_horizons",
+                                [],
+                            )
+                        )
+                        == len(rows)
+                        else None
+                    ),
                 )
             )
             if not keep_running:

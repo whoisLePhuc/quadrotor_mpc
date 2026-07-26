@@ -141,6 +141,16 @@ class NativeRecordingTests(unittest.TestCase):
             paused=False,
             predicted_positions=np.zeros((3, 3), dtype=float),
             obstacle_predictions=np.zeros((1, 3, 3), dtype=float),
+            predicted_covariances=np.repeat(
+                (np.eye(12) * 0.01)[None, :, :],
+                3,
+                axis=0,
+            ),
+            predicted_obstacle_covariances=np.repeat(
+                (np.eye(6) * 0.02)[None, None, :, :],
+                3,
+                axis=0,
+            ),
         )
         sample = step_to_sample(step)
         with tempfile.TemporaryDirectory() as directory:
@@ -165,6 +175,15 @@ class NativeRecordingTests(unittest.TestCase):
             np.testing.assert_allclose(loaded["states"][0], step.state_13)
             self.assertEqual(loaded["predicted_positions"].dtype, np.float64)
             self.assertEqual(loaded["obstacle_predictions"].shape, (1, 1, 3, 3))
+            self.assertEqual(
+                loaded["predicted_error_covariance_horizons"].shape,
+                (1, 3, 12, 12),
+            )
+            self.assertEqual(
+                loaded["predicted_obstacle_covariance_horizons"].shape,
+                (1, 3, 1, 6, 6),
+            )
+            self.assertIsNotNone(sample["horizon_terminal_position_sigma"])
             self.assertTrue((run_dir / "snapshot-001.json").is_file())
 
 
@@ -234,6 +253,10 @@ class InteractiveLoopTests(unittest.TestCase):
         self.assertTrue(runtime.steps[0].paused)
         self.assertEqual(runtime.steps[0].solver_status, "SOLVED_DETERMINISTIC")
         self.assertEqual(runtime.steps[0].predicted_covariances.shape[1:], (12, 12))
+        self.assertEqual(
+            runtime.steps[0].predicted_obstacle_covariances.shape[2:],
+            (6, 6),
+        )
         self.assertEqual(runtime.steps[0].chance_margins.shape[1], len(config.obstacles))
         self.assertEqual(runtime.steps[0].risk_allocations.shape, runtime.steps[0].slacks.shape)
         self.assertTrue(runtime.closed)

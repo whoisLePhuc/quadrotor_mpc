@@ -18,6 +18,9 @@ controller:
     torque_rp: 0.002
     torque_yaw: 0.0004
   safety_margin: 0.30
+  covariance_propagation:
+    enabled: false
+    mode: open_loop
 
 simulation:
   duration_s: 10.0

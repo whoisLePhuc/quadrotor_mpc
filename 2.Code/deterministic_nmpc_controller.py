@@ -13,8 +13,13 @@ from controller_interface import (
     ObstacleBelief,
     VehicleBelief,
 )
+from native_covariance import (
+    CovariancePropagationOptions,
+    HorizonCovariancePropagator,
+)
 from quad_mpc_core import (
     DRONE_RADIUS,
+    INPUT_NAMES,
     STATE_NAMES,
     build_controller,
     build_model,
@@ -36,6 +41,39 @@ def _extract_nominal_states(mpc, fallback_state: np.ndarray) -> np.ndarray:
     return np.column_stack([axis[-length:] for axis in axes])
 
 
+def _extract_nominal_controls(
+    mpc,
+    fallback_command: np.ndarray,
+    horizon_length: int,
+) -> np.ndarray:
+    control_steps = max(int(horizon_length) - 1, 0)
+    if control_steps == 0:
+        return np.empty((0, 4), dtype=float)
+    axes: list[np.ndarray] = []
+    try:
+        for name in INPUT_NAMES:
+            values = np.asarray(mpc.data.prediction(("_u", name)), dtype=float)
+            axes.append(values.reshape(-1))
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return np.repeat(
+            np.asarray(fallback_command, dtype=float).reshape(1, 4),
+            control_steps,
+            axis=0,
+        )
+    available = min((len(axis) for axis in axes), default=0)
+    if available < 1:
+        return np.repeat(
+            np.asarray(fallback_command, dtype=float).reshape(1, 4),
+            control_steps,
+            axis=0,
+        )
+    extracted = np.column_stack([axis[-available:] for axis in axes])
+    if available >= control_steps:
+        return extracted[:control_steps].copy()
+    padding = np.repeat(extracted[-1:, :], control_steps - available, axis=0)
+    return np.vstack([extracted, padding])
+
+
 class DeterministicNMPCController:
     """Adapter preserving the existing 13-state deterministic NMPC behavior."""
 
@@ -49,6 +87,7 @@ class DeterministicNMPCController:
         timestep_s: float,
         max_iter: int = 60,
         cached=None,
+        covariance_options: CovariancePropagationOptions | None = None,
     ):
         self._obstacle_specs = tuple(dict(item) for item in obstacle_specs)
         self._margin = float(margin)
@@ -58,6 +97,13 @@ class DeterministicNMPCController:
             raise ValueError("horizon_steps must be >= 1")
         if self._timestep_s <= 0.0:
             raise ValueError("timestep_s must be > 0")
+        self._covariance_options = (
+            CovariancePropagationOptions() if covariance_options is None else covariance_options
+        )
+        self._covariance_propagator = HorizonCovariancePropagator(
+            self._covariance_options,
+            self._timestep_s,
+        )
 
         if cached is not None:
             self.model, self.mpc, self._obstacle_tvp_idx, self._goal_state = cached
@@ -142,7 +188,30 @@ class DeterministicNMPCController:
         ).reshape(4)
         nominal_states = _extract_nominal_states(self.mpc, belief.mean_state_13)
         horizon_length = nominal_states.shape[0]
-        predicted_covariances = np.zeros((horizon_length, 12, 12), dtype=float)
+        nominal_controls = _extract_nominal_controls(
+            self.mpc,
+            command,
+            horizon_length,
+        )
+        if self._covariance_options.enabled:
+            (
+                predicted_covariances,
+                predicted_obstacle_covariances,
+            ) = self._covariance_propagator.propagate(
+                belief,
+                obstacles,
+                nominal_states,
+                nominal_controls,
+            )
+        else:
+            predicted_covariances = np.zeros(
+                (horizon_length, 12, 12),
+                dtype=float,
+            )
+            predicted_obstacle_covariances = np.zeros(
+                (horizon_length, len(obstacles), 6, 6),
+                dtype=float,
+            )
 
         margins = np.empty((horizon_length, len(obstacles)), dtype=float)
         for obstacle_index, obstacle in enumerate(obstacles):
@@ -153,9 +222,7 @@ class DeterministicNMPCController:
                 positions = np.column_stack(
                     [np.interp(target, source, positions[:, axis]) for axis in range(3)]
                 )
-            safe_distance = (
-                obstacle.shape.bounding_radius_m + self._margin + DRONE_RADIUS
-            )
+            safe_distance = obstacle.shape.bounding_radius_m + self._margin + DRONE_RADIUS
             margins[:, obstacle_index] = (
                 np.linalg.norm(nominal_states[:, :3] - positions, axis=1) - safe_distance
             )
@@ -168,4 +235,5 @@ class DeterministicNMPCController:
             risk_allocations=np.zeros_like(margins),
             slacks=np.maximum(0.0, -margins),
             solver_status="SOLVED_DETERMINISTIC",
+            predicted_obstacle_covariances=predicted_obstacle_covariances,
         )

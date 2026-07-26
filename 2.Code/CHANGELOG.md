@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.5.0 — Native horizon covariance propagation
+
+- Added 12D quaternion error-state covariance propagation along the optimized
+  native NMPC horizon with analytic first-order local Jacobians and an optional
+  RK4 finite-difference verification mode.
+- Added 6D constant-velocity obstacle covariance horizons with white
+  acceleration process noise.
+- Added `open_loop` and optional feedback-aware `feedback_lqr` propagation
+  modes without changing the deterministic NMPC constraint.
+- Extended `ControlSolution`, native results, telemetry, recording and replay
+  with vehicle and obstacle horizon covariance.
+- Added numerical PSD projection, configuration validation and Stage 3
+  unit/integration tests.
+
 ## 1.4.0 — Native sensor and estimator pipeline
 
 - Added seeded Gaussian vehicle and obstacle sensor simulation with optional

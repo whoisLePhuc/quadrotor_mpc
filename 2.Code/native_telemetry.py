@@ -68,6 +68,20 @@ def step_to_sample(step: Any) -> dict[str, Any]:
     if covariance is not None:
         covariance = np.asarray(covariance, dtype=float)
         position_sigma = np.sqrt(np.maximum(np.diag(covariance)[:3], 0.0)).tolist()
+    predicted_covariance = getattr(step, "predicted_covariances", None)
+    horizon_terminal_position_sigma = None
+    horizon_max_position_sigma = None
+    horizon_terminal_covariance_trace = None
+    if predicted_covariance is not None:
+        predicted_covariance = np.asarray(predicted_covariance, dtype=float)
+        if predicted_covariance.size:
+            position_variances = np.maximum(
+                np.diagonal(predicted_covariance[:, :3, :3], axis1=1, axis2=2),
+                0.0,
+            )
+            horizon_terminal_position_sigma = np.sqrt(position_variances[-1]).tolist()
+            horizon_max_position_sigma = np.sqrt(np.max(position_variances, axis=0)).tolist()
+            horizon_terminal_covariance_trace = float(np.trace(predicted_covariance[-1]))
     obstacle_measurements = getattr(step, "obstacle_measurement_positions", None)
     serialized_obstacle_measurements = None
     if obstacle_measurements is not None:
@@ -90,10 +104,11 @@ def step_to_sample(step: Any) -> dict[str, Any]:
         "paused": bool(getattr(step, "paused", False)),
         "estimated_state": None if estimated is None else estimated.tolist(),
         "position_sigma": position_sigma,
+        "horizon_terminal_position_sigma": horizon_terminal_position_sigma,
+        "horizon_max_position_sigma": horizon_max_position_sigma,
+        "horizon_terminal_covariance_trace": horizon_terminal_covariance_trace,
         "estimation_error_norm": estimation_error_norm,
-        "vehicle_measurement_available": bool(
-            getattr(step, "vehicle_measurement_available", True)
-        ),
+        "vehicle_measurement_available": bool(getattr(step, "vehicle_measurement_available", True)),
         "obstacle_measurement_available": (
             None
             if getattr(step, "obstacle_measurement_available", None) is None
@@ -104,9 +119,7 @@ def step_to_sample(step: Any) -> dict[str, Any]:
             if getattr(step, "vehicle_measurement_state_13", None) is None
             else np.asarray(step.vehicle_measurement_state_13, dtype=float).tolist()
         ),
-        "obstacle_measurement_positions": (
-            serialized_obstacle_measurements
-        ),
+        "obstacle_measurement_positions": (serialized_obstacle_measurements),
     }
 
 
@@ -145,6 +158,8 @@ class NativeRunRecorder:
         self.estimated_obstacle_predictions: list[np.ndarray] = []
         self.vehicle_measurements: list[np.ndarray] = []
         self.obstacle_measurements: list[np.ndarray] = []
+        self.predicted_error_covariance_horizons: list[np.ndarray] = []
+        self.predicted_obstacle_covariance_horizons: list[np.ndarray] = []
         self._finalized = False
 
     def record_step(self, step: Any, sample: Mapping[str, Any]) -> None:
@@ -198,6 +213,22 @@ class NativeRunRecorder:
             if obstacle_measurements is None
             else np.asarray(obstacle_measurements, dtype=float).copy()
         )
+        predicted_covariance = getattr(step, "predicted_covariances", None)
+        self.predicted_error_covariance_horizons.append(
+            np.empty((0, 12, 12), dtype=float)
+            if predicted_covariance is None
+            else np.asarray(predicted_covariance, dtype=float).copy()
+        )
+        predicted_obstacle_covariance = getattr(
+            step,
+            "predicted_obstacle_covariances",
+            None,
+        )
+        self.predicted_obstacle_covariance_horizons.append(
+            np.empty((0, 0, 6, 6), dtype=float)
+            if predicted_obstacle_covariance is None
+            else np.asarray(predicted_obstacle_covariance, dtype=float).copy()
+        )
 
     def record_event(
         self, name: str, time_s: float, *, source: str = "runtime", payload: Any = None
@@ -225,6 +256,8 @@ class NativeRunRecorder:
         self.estimated_obstacle_predictions.clear()
         self.vehicle_measurements.clear()
         self.obstacle_measurements.clear()
+        self.predicted_error_covariance_horizons.clear()
+        self.predicted_obstacle_covariance_horizons.clear()
 
     def write_snapshot(self, sample: Mapping[str, Any] | None) -> Path | None:
         if not self.options.enabled or sample is None:
@@ -258,17 +291,21 @@ class NativeRunRecorder:
             estimated_obstacle_state_6=_stack_or_empty(
                 self.estimated_obstacle_states, trailing_rank=2
             ),
-            obstacle_covariance_6=_stack_or_empty(
-                self.obstacle_covariances, trailing_rank=3
-            ),
+            obstacle_covariance_6=_stack_or_empty(self.obstacle_covariances, trailing_rank=3),
             estimated_obstacle_predictions=_stack_or_empty(
                 self.estimated_obstacle_predictions, trailing_rank=3
             ),
-            vehicle_measurement_state_13=np.asarray(
-                self.vehicle_measurements, dtype=float
-            ),
+            vehicle_measurement_state_13=np.asarray(self.vehicle_measurements, dtype=float),
             obstacle_measurement_positions=_stack_or_empty(
                 self.obstacle_measurements, trailing_rank=2
+            ),
+            predicted_error_covariance_horizon=_stack_or_empty(
+                self.predicted_error_covariance_horizons,
+                trailing_rank=3,
+            ),
+            predicted_obstacle_covariance_horizon=_stack_or_empty(
+                self.predicted_obstacle_covariance_horizons,
+                trailing_rank=4,
             ),
         )
         summary = {
@@ -373,9 +410,7 @@ def load_native_recording(run_dir: str | Path) -> dict[str, Any]:
         predicted_positions = arrays["predicted_positions"].copy()
         obstacle_predictions = arrays["obstacle_predictions"].copy()
         estimated_states = (
-            arrays["estimated_state_13"].copy()
-            if "estimated_state_13" in arrays
-            else states.copy()
+            arrays["estimated_state_13"].copy() if "estimated_state_13" in arrays else states.copy()
         )
         error_covariances = (
             arrays["error_covariance_12"].copy()
@@ -397,6 +432,16 @@ def load_native_recording(run_dir: str | Path) -> dict[str, Any]:
             if "obstacle_measurement_positions" in arrays
             else obstacle_predictions[:, :, 0, :].copy()
         )
+        predicted_error_covariance_horizons = (
+            arrays["predicted_error_covariance_horizon"].copy()
+            if "predicted_error_covariance_horizon" in arrays
+            else np.empty((len(states), 0, 12, 12), dtype=float)
+        )
+        predicted_obstacle_covariance_horizons = (
+            arrays["predicted_obstacle_covariance_horizon"].copy()
+            if "predicted_obstacle_covariance_horizon" in arrays
+            else np.empty((len(states), 0, 0, 6, 6), dtype=float)
+        )
     return {
         "directory": source,
         "scenario": scenario,
@@ -409,6 +454,8 @@ def load_native_recording(run_dir: str | Path) -> dict[str, Any]:
         "estimated_obstacle_predictions": estimated_obstacle_predictions,
         "vehicle_measurements": vehicle_measurements,
         "obstacle_measurements": obstacle_measurements,
+        "predicted_error_covariance_horizons": (predicted_error_covariance_horizons),
+        "predicted_obstacle_covariance_horizons": (predicted_obstacle_covariance_horizons),
     }
 
 
