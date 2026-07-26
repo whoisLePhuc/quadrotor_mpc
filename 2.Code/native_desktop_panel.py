@@ -247,7 +247,8 @@ def _panel_main(
                 )
                 self.status.setText(
                     f"<b style='color:{color}'>{state}</b> &nbsp; "
-                    f"t={latest['time_s']:.2f}s &nbsp; goal={latest['goal_distance_m']:.3f}m &nbsp; "
+                    f"t={latest['time_s']:.2f}s &nbsp; "
+                    f"goal={latest['goal_distance_m']:.3f}m &nbsp; "
                     f"clearance={latest['min_clearance_m']:.3f}m &nbsp; "
                     f"solve={latest['solver_time_ms']:.1f}ms &nbsp; "
                     f"solver={latest.get('solver_status', '')}"
@@ -256,6 +257,15 @@ def _panel_main(
                         f" &nbsp; slack={latest['maximum_slack_m']:.3f}m"
                         if latest.get("minimum_chance_residual_m") is not None
                         and latest.get("maximum_slack_m") is not None
+                        else ""
+                    )
+                    + (
+                        f" &nbsp; risk={latest.get('risk_semantics', '')}"
+                        f"/{latest.get('risk_allocation_method', '')}"
+                        f" {latest.get('risk_budget_allocated', 0.0):.6f}"
+                        f"/{latest['risk_budget_total']:.6f}"
+                        f" ({latest.get('risk_budget_status', '')})"
+                        if latest.get("risk_budget_total") is not None
                         else ""
                     )
                     + (

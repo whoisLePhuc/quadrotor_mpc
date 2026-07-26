@@ -78,6 +78,13 @@ class CoupledStep:
     predicted_obstacle_covariances: np.ndarray | None = None
     projected_uncertainties: np.ndarray | None = None
     tightened_safety_radii: np.ndarray | None = None
+    risk_semantics: str = ""
+    risk_allocation_method: str = ""
+    risk_budget_total: float | None = None
+    risk_budget_allocated: float = 0.0
+    risk_budget_remaining: float | None = None
+    risk_constraint_count: int = 0
+    risk_budget_status: str = ""
 
 
 class CoupledRuntime(Protocol):
@@ -235,6 +242,13 @@ def run_coupled_simulation(
     chance_margin_history, risk_allocation_history, slack_history = [], [], []
     projected_uncertainty_history, tightened_radius_history = [], []
     solver_status_history: list[str] = []
+    risk_semantics_history: list[str] = []
+    risk_allocation_method_history: list[str] = []
+    risk_budget_total_history: list[float] = []
+    risk_budget_allocated_history: list[float] = []
+    risk_budget_remaining_history: list[float] = []
+    risk_constraint_count_history: list[int] = []
+    risk_budget_status_history: list[str] = []
     vehicle_measurement_history, obstacle_measurement_history = [], []
     vehicle_measurements, obstacle_measurements = [], []
     collided = False
@@ -335,6 +349,13 @@ def run_coupled_simulation(
                 projected_uncertainty_history.clear()
                 tightened_radius_history.clear()
                 solver_status_history.clear()
+                risk_semantics_history.clear()
+                risk_allocation_method_history.clear()
+                risk_budget_total_history.clear()
+                risk_budget_allocated_history.clear()
+                risk_budget_remaining_history.clear()
+                risk_constraint_count_history.clear()
+                risk_budget_status_history.clear()
                 vehicle_measurement_history.clear()
                 obstacle_measurement_history.clear()
                 vehicle_measurements.clear()
@@ -396,6 +417,21 @@ def run_coupled_simulation(
             projected_uncertainty_history.append(solution.projected_uncertainties.copy())
             tightened_radius_history.append(solution.tightened_safety_radii.copy())
             solver_status_history.append(solution.solver_status)
+            risk_semantics_history.append(solution.risk_semantics)
+            risk_allocation_method_history.append(solution.risk_allocation_method)
+            risk_budget_total_history.append(
+                np.nan
+                if solution.risk_budget_total is None
+                else solution.risk_budget_total
+            )
+            risk_budget_allocated_history.append(solution.risk_budget_allocated)
+            risk_budget_remaining_history.append(
+                np.nan
+                if solution.risk_budget_remaining is None
+                else solution.risk_budget_remaining
+            )
+            risk_constraint_count_history.append(solution.risk_constraint_count)
+            risk_budget_status_history.append(solution.risk_budget_status)
             solver_time_ms = (time.perf_counter() - solver_start) * 1000.0
             plant.apply_control_and_step(u0, n_substeps, t)  # MuJoCo "true" plant
             x_curr = plant.get_state_13()
@@ -513,6 +549,13 @@ def run_coupled_simulation(
                         predicted_obstacle_covariances=(solution.predicted_obstacle_covariances),
                         projected_uncertainties=solution.projected_uncertainties,
                         tightened_safety_radii=solution.tightened_safety_radii,
+                        risk_semantics=solution.risk_semantics,
+                        risk_allocation_method=solution.risk_allocation_method,
+                        risk_budget_total=solution.risk_budget_total,
+                        risk_budget_allocated=solution.risk_budget_allocated,
+                        risk_budget_remaining=solution.risk_budget_remaining,
+                        risk_constraint_count=solution.risk_constraint_count,
+                        risk_budget_status=solution.risk_budget_status,
                     )
                 )
                 if not keep_running:
@@ -584,6 +627,25 @@ def run_coupled_simulation(
             dtype=float,
         ),
         "solver_status": np.asarray(solver_status_history, dtype=str),
+        "risk_semantics": np.asarray(risk_semantics_history, dtype=str),
+        "risk_allocation_method": np.asarray(
+            risk_allocation_method_history,
+            dtype=str,
+        ),
+        "risk_budget_total": np.asarray(risk_budget_total_history, dtype=float),
+        "risk_budget_allocated": np.asarray(
+            risk_budget_allocated_history,
+            dtype=float,
+        ),
+        "risk_budget_remaining": np.asarray(
+            risk_budget_remaining_history,
+            dtype=float,
+        ),
+        "risk_constraint_count": np.asarray(
+            risk_constraint_count_history,
+            dtype=int,
+        ),
+        "risk_budget_status": np.asarray(risk_budget_status_history, dtype=str),
         "vehicle_measurement_available": np.asarray(vehicle_measurement_history, dtype=bool),
         "obstacle_measurement_available": np.asarray(obstacle_measurement_history, dtype=bool),
         "vehicle_measurement_state": np.asarray(vehicle_measurements, dtype=float),

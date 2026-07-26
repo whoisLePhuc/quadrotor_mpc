@@ -36,7 +36,8 @@ Core ownership:
 | Native estimation | `native_estimation.py` | seeded sensors, 12D ESEKF and 6D obstacle trackers |
 | Horizon uncertainty | `native_covariance.py` | 12D vehicle and 6D obstacle covariance propagation |
 | Native chance tightening | `native_chance_constraints.py` | collision-normal projection and spherical safety radii |
-| Native CC-NMPC | `chance_constrained_nmpc_controller.py` | individual spherical chance constraints |
+| Native risk budget | `native_risk_budget.py` | individual/joint semantics and uniform allocation |
+| Native CC-NMPC | `chance_constrained_nmpc_controller.py` | spherical chance constraints with external risk allocation |
 | Exact baseline source | `belief_from_truth.py` | zero-covariance truth adapter used only for regression |
 
 Dependencies point inward: UI and reporting consume experiment/runtime data; the mathematics layer
@@ -70,8 +71,9 @@ produce the same controller contract without changing runtime signatures.
 With Stage 3 enabled, the controller linearizes a shifted nominal quaternion
 trajectory in the 12D local-error chart and returns vehicle and obstacle
 covariance horizons. Stage 4 can project these arrays onto collision normals and
-tighten time-varying spherical safety radii. Disabling chance constraints keeps
-the deterministic radius unchanged.
+tighten time-varying spherical safety radii. Stage 5 allocates either legacy
+individual risk or a uniform joint budget over the complete constraint grid.
+Disabling chance constraints keeps the deterministic radius unchanged.
 
 All obstacle centers are TVPs in the native NMPC model. Geometry and obstacle
 count define the compiled NLP; estimated mean trajectories can change at every

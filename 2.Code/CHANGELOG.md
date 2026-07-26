@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.7.0 — Native joint risk-budget management
+
+- Added explicit `individual` and `joint` chance-constraint risk semantics.
+- Added uniform allocation of `total_epsilon` over every active
+  horizon-step/obstacle pair with Boole union-bound accounting.
+- Added per-constraint Gaussian quantiles from the allocated epsilon instead of
+  one global beta.
+- Added runtime allocation audits with total, allocated and remaining risk,
+  active-constraint count and `BUDGET_OK` / `INDIVIDUAL_ONLY` / `DISABLED`.
+- Extended controller results, native telemetry, recording, replay and desktop
+  status with risk-budget metadata.
+- Preserved Stage 4 individual mode and documented that a receding-horizon
+  budget is not an episode-wide probability guarantee.
+
 ## 1.6.0 — Native spherical chance constraints
 
 - Added individual Gaussian spherical chance constraints with

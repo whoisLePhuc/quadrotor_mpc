@@ -201,6 +201,13 @@ class ControlSolution:
     predicted_obstacle_covariances: np.ndarray | None = None
     projected_uncertainties: np.ndarray | None = None
     tightened_safety_radii: np.ndarray | None = None
+    risk_semantics: str = ""
+    risk_allocation_method: str = ""
+    risk_budget_total: float | None = None
+    risk_budget_allocated: float = 0.0
+    risk_budget_remaining: float | None = None
+    risk_constraint_count: int = 0
+    risk_budget_status: str = ""
 
     def __post_init__(self) -> None:
         command = _readonly_array(self.command, (CONTROL_SIZE,), "ControlSolution.command")
@@ -292,6 +299,39 @@ class ControlSolution:
                 raise ValueError(f"ControlSolution.{label} must be positive semidefinite")
         object.__setattr__(self, "command", command)
         object.__setattr__(self, "solver_status", str(self.solver_status))
+        object.__setattr__(self, "risk_semantics", str(self.risk_semantics))
+        object.__setattr__(
+            self,
+            "risk_allocation_method",
+            str(self.risk_allocation_method),
+        )
+        for label in (
+            "risk_budget_total",
+            "risk_budget_remaining",
+        ):
+            value = getattr(self, label)
+            if value is not None:
+                number = float(value)
+                if not np.isfinite(number) or number < -1e-12:
+                    raise ValueError(
+                        f"ControlSolution.{label} must be finite and nonnegative"
+                    )
+                object.__setattr__(self, label, max(0.0, number))
+        allocated = float(self.risk_budget_allocated)
+        if not np.isfinite(allocated) or allocated < -1e-12:
+            raise ValueError(
+                "ControlSolution.risk_budget_allocated must be finite and nonnegative"
+            )
+        object.__setattr__(self, "risk_budget_allocated", max(0.0, allocated))
+        count = int(self.risk_constraint_count)
+        if count < 0:
+            raise ValueError("ControlSolution.risk_constraint_count must be >= 0")
+        object.__setattr__(self, "risk_constraint_count", count)
+        object.__setattr__(
+            self,
+            "risk_budget_status",
+            str(self.risk_budget_status),
+        )
 
     @property
     def predicted_positions(self) -> np.ndarray:

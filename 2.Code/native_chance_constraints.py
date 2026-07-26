@@ -6,18 +6,25 @@ trajectory and returns deterministic, time-varying safety radii:
 
     r_tight = r_drone + r_obstacle + r_margin + beta * sigma
 
-The first milestone deliberately implements individual Gaussian chance
-constraints.  Joint risk-budget allocation belongs to the next stage.
+Risk allocation is delegated to :mod:`native_risk_budget`.  This keeps the
+geometric projection independent of whether epsilon is interpreted as an
+individual constraint risk or a joint receding-horizon budget.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from statistics import NormalDist
 from typing import Any
 
 import numpy as np
+
+from native_risk_budget import (
+    RiskAllocation,
+    RiskBudgetOptions,
+    allocate_risk_budget,
+)
 
 
 def _positive(value: Any, label: str, *, allow_zero: bool = False) -> float:
@@ -31,10 +38,11 @@ def _positive(value: Any, label: str, *, allow_zero: bool = False) -> float:
 
 @dataclass(frozen=True, slots=True)
 class ChanceConstraintOptions:
-    """Configuration for individual spherical chance constraints."""
+    """Configuration for spherical chance constraints and their risk semantics."""
 
     enabled: bool = False
     individual_epsilon: float = 0.05
+    risk_budget: RiskBudgetOptions = field(default_factory=RiskBudgetOptions)
     soft_constraint: bool = True
     slack_penalty: float = 1_000_000.0
     slack_tolerance_m: float = 1e-6
@@ -48,6 +56,10 @@ class ChanceConstraintOptions:
                 "controller.chance_constraints.individual_epsilon must be in (0, 0.5)"
             )
         object.__setattr__(self, "individual_epsilon", epsilon)
+        if not isinstance(self.risk_budget, RiskBudgetOptions):
+            raise TypeError(
+                "controller.chance_constraints.risk_budget must be RiskBudgetOptions"
+            )
         object.__setattr__(
             self,
             "slack_penalty",
@@ -88,11 +100,17 @@ class ChanceConstraintOptions:
         constraint_type = str(raw.get("type", "spherical")).lower()
         if constraint_type != "spherical":
             raise ValueError(
-                "controller.chance_constraints.type must be 'spherical' in Stage 4"
+                "controller.chance_constraints.type must be 'spherical' in Stage 5"
+            )
+        risk_raw = raw.get("risk_budget", {})
+        if not isinstance(risk_raw, Mapping):
+            raise TypeError(
+                "controller.chance_constraints.risk_budget must be a mapping"
             )
         return cls(
             enabled=bool(raw.get("enabled", False)),
             individual_epsilon=raw.get("individual_epsilon", 0.05),
+            risk_budget=RiskBudgetOptions.from_mapping(risk_raw),
             soft_constraint=bool(raw.get("soft_constraint", True)),
             slack_penalty=raw.get("slack_penalty", 1_000_000.0),
             slack_tolerance_m=raw.get("slack_tolerance_m", 1e-6),
@@ -110,6 +128,7 @@ class ChanceConstraintOptions:
             "enabled": self.enabled,
             "type": "spherical",
             "individual_epsilon": self.individual_epsilon,
+            "risk_budget": self.risk_budget.to_mapping(),
             "soft_constraint": self.soft_constraint,
             "slack_penalty": self.slack_penalty,
             "slack_tolerance_m": self.slack_tolerance_m,
@@ -127,6 +146,14 @@ class SphericalChanceProfile:
     tightenings_m: np.ndarray
     safety_radii_m: np.ndarray
     risk_allocations: np.ndarray
+    gaussian_quantiles: np.ndarray
+    risk_semantics: str
+    risk_allocation_method: str
+    configured_total_epsilon: float | None
+    allocated_epsilon: float
+    remaining_epsilon: float | None
+    active_constraint_count: int
+    budget_status: str
 
     def __post_init__(self) -> None:
         sigmas = np.asarray(self.projected_sigmas_m, dtype=float)
@@ -141,13 +168,14 @@ class SphericalChanceProfile:
             "tightenings_m": np.asarray(self.tightenings_m, dtype=float),
             "safety_radii_m": np.asarray(self.safety_radii_m, dtype=float),
             "risk_allocations": np.asarray(self.risk_allocations, dtype=float),
+            "gaussian_quantiles": np.asarray(self.gaussian_quantiles, dtype=float),
         }
         for label, array in arrays.items():
             if array.shape != expected:
                 raise ValueError(f"{label} must have shape {expected}")
             if not np.all(np.isfinite(array)):
                 raise ValueError(f"{label} must contain only finite values")
-            if label != "risk_allocations" and np.any(array < 0.0):
+            if np.any(array < 0.0):
                 raise ValueError(f"{label} must be nonnegative")
             copied = array.copy()
             copied.setflags(write=False)
@@ -157,6 +185,32 @@ class SphericalChanceProfile:
         copied_normals = normals.copy()
         copied_normals.setflags(write=False)
         object.__setattr__(self, "collision_normals", copied_normals)
+        object.__setattr__(self, "risk_semantics", str(self.risk_semantics))
+        object.__setattr__(
+            self,
+            "risk_allocation_method",
+            str(self.risk_allocation_method),
+        )
+        object.__setattr__(
+            self,
+            "active_constraint_count",
+            int(self.active_constraint_count),
+        )
+        object.__setattr__(self, "budget_status", str(self.budget_status))
+        for label in (
+            "configured_total_epsilon",
+            "remaining_epsilon",
+        ):
+            value = getattr(self, label)
+            if value is not None:
+                number = float(value)
+                if not np.isfinite(number) or number < -1e-12:
+                    raise ValueError(f"{label} must be finite and nonnegative")
+                object.__setattr__(self, label, max(0.0, number))
+        allocated = float(self.allocated_epsilon)
+        if not np.isfinite(allocated) or allocated < -1e-12:
+            raise ValueError("allocated_epsilon must be finite and nonnegative")
+        object.__setattr__(self, "allocated_epsilon", max(0.0, allocated))
 
 
 def _fallback_direction(relative_covariance: np.ndarray) -> np.ndarray:
@@ -236,19 +290,29 @@ def build_spherical_chance_profile(
             normals[step, obstacle] = normal
             sigmas[step, obstacle] = np.sqrt(max(variance, 0.0))
 
-    risk = np.full(
-        (steps, obstacle_count),
-        options.individual_epsilon,
-        dtype=float,
+    risk: RiskAllocation = allocate_risk_budget(
+        steps=steps,
+        obstacle_count=obstacle_count,
+        enabled=options.enabled,
+        individual_epsilon=options.individual_epsilon,
+        options=options.risk_budget,
     )
-    tightening = options.beta * sigmas if options.enabled else np.zeros_like(sigmas)
+    tightening = risk.gaussian_quantiles * sigmas
     safety_radii = base_radii[None, :] + tightening
     return SphericalChanceProfile(
         collision_normals=normals,
         projected_sigmas_m=sigmas,
         tightenings_m=tightening,
         safety_radii_m=safety_radii,
-        risk_allocations=risk if options.enabled else np.zeros_like(risk),
+        risk_allocations=risk.epsilons,
+        gaussian_quantiles=risk.gaussian_quantiles,
+        risk_semantics=risk.semantics,
+        risk_allocation_method=risk.allocation,
+        configured_total_epsilon=risk.configured_total_epsilon,
+        allocated_epsilon=risk.allocated_epsilon,
+        remaining_epsilon=risk.remaining_epsilon,
+        active_constraint_count=risk.active_constraint_count,
+        budget_status=risk.budget_status,
     )
 
 

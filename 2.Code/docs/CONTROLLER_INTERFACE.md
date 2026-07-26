@@ -50,6 +50,13 @@ inputs are normalized at construction.
 | `risk_allocations` | allocated risk per horizon constraint | `(N+1, n_obs)` |
 | `slacks` | nonnegative constraint relaxation | `(N+1, n_obs)` |
 | `solver_status` | backend-independent status label | string |
+| `risk_semantics` | `disabled`, `individual` or `joint` | string |
+| `risk_allocation_method` | `none` or `uniform` | string |
+| `risk_budget_total` | configured joint budget, otherwise `None` | scalar |
+| `risk_budget_allocated` | sum of risk over the returned horizon | scalar |
+| `risk_budget_remaining` | unallocated joint budget, otherwise `None` | scalar |
+| `risk_constraint_count` | number of allocated scalar constraints | integer |
+| `risk_budget_status` | allocation audit status | string |
 
 When Stage 3 is disabled, the deterministic adapter returns zero predicted
 covariance and zero risk allocation. When propagation is enabled, the same
@@ -101,3 +108,7 @@ When `controller.chance_constraints.enabled: true`,
 `SphericalChanceConstrainedNMPCController` projects relative covariance,
 supplies tightened radii as TVPs and reports residual/slack. See
 `SPHERICAL_CHANCE_CONSTRAINTS.md`.
+
+Stage 5 delegates epsilon allocation to `native_risk_budget.py`. Uniform joint
+allocation changes the per-cell quantile without changing the controller
+boundary. See `RISK_BUDGET_MANAGEMENT.md`.

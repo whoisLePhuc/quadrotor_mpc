@@ -30,9 +30,16 @@ controller:
   chance_constraints:
     enabled: true
     type: spherical
-    # Stage 4 semantics: this risk is applied independently to every
-    # horizon-step/obstacle pair. It is not yet a joint horizon risk budget.
+    # Backward-compatible Stage 4 value. It is used only when
+    # risk_budget.semantics is set to individual.
     individual_epsilon: 0.05
+    # Stage 5 joint semantics are per receding-horizon solve, not a claim about
+    # the probability of collision over an entire closed-loop episode.
+    risk_budget:
+      semantics: joint
+      allocation: uniform
+      total_epsilon: 0.10
+      tolerance: 1.0e-12
     soft_constraint: true
     slack_penalty: 1000000.0
     slack_tolerance_m: 1.0e-6

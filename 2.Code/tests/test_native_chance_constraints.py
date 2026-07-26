@@ -11,6 +11,7 @@ from native_chance_constraints import (
     build_spherical_chance_profile,
     evaluate_spherical_constraints,
 )
+from native_risk_budget import RiskBudgetOptions
 
 CODE_ROOT = Path(__file__).resolve().parents[1]
 
@@ -70,6 +71,36 @@ class ChanceConstraintMathTests(unittest.TestCase):
         )
         np.testing.assert_allclose(profile.projected_sigmas_m, 0.1)
 
+    def test_joint_profile_uses_per_constraint_risk_and_budget(self):
+        vehicle, obstacles, vehicle_covariance, obstacle_covariance = profile_inputs()
+        vehicle_covariance[:, :3, :3] = np.eye(3) * 0.04
+        options = ChanceConstraintOptions(
+            enabled=True,
+            risk_budget=RiskBudgetOptions(
+                semantics="joint",
+                allocation="uniform",
+                total_epsilon=0.02,
+            ),
+        )
+        profile = build_spherical_chance_profile(
+            vehicle_positions=vehicle,
+            obstacle_positions=obstacles,
+            vehicle_covariances=vehicle_covariance,
+            obstacle_covariances=obstacle_covariance,
+            base_safety_radii_m=np.array([0.5]),
+            options=options,
+        )
+
+        np.testing.assert_allclose(profile.risk_allocations, 0.01)
+        np.testing.assert_allclose(
+            profile.tightenings_m,
+            profile.gaussian_quantiles * profile.projected_sigmas_m,
+        )
+        self.assertAlmostEqual(profile.allocated_epsilon, 0.02)
+        self.assertAlmostEqual(profile.remaining_epsilon, 0.0)
+        self.assertEqual(profile.active_constraint_count, 2)
+        self.assertEqual(profile.budget_status, "BUDGET_OK")
+
     def test_disabled_profile_preserves_deterministic_radius_and_zero_risk(self):
         vehicle, obstacles, vehicle_covariance, obstacle_covariance = profile_inputs()
         vehicle_covariance[:, :3, :3] = np.eye(3)
@@ -110,6 +141,12 @@ class ChanceConstraintConfigurationTests(unittest.TestCase):
         self.assertTrue(config.chance_constraints.enabled)
         self.assertTrue(config.covariance_propagation.enabled)
         self.assertAlmostEqual(config.chance_constraints.individual_epsilon, 0.05)
+        self.assertEqual(config.chance_constraints.risk_budget.semantics, "joint")
+        self.assertEqual(config.chance_constraints.risk_budget.allocation, "uniform")
+        self.assertAlmostEqual(
+            config.chance_constraints.risk_budget.total_epsilon,
+            0.10,
+        )
         self.assertEqual(type(config).from_mapping(config.to_mapping()), config)
 
     def test_legacy_mapping_defaults_to_disabled(self):

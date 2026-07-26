@@ -7,7 +7,7 @@ from native_chance_constraints import ChanceConstraintOptions
 
 
 class SphericalChanceConstrainedNMPCController(DeterministicNMPCController):
-    """Explicit controller type for the Stage 4 CC-NMPC workflow."""
+    """Native spherical CC-NMPC with externally allocated Stage 5 risk."""
 
     def __init__(
         self,

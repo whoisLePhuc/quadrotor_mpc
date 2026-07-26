@@ -2,14 +2,14 @@
 
 ## Scope
 
-Stage 4 adds individual Gaussian chance constraints to the native quaternion
+Stage 4 adds Gaussian spherical chance constraints to the native quaternion
 NMPC. It supports spherical obstacles only. Covariance propagation remains
 outside the do-mpc nonlinear program, and the deterministic controller remains
 available with the same plant, estimator and seed.
 
-This stage does **not** claim a joint collision probability over the complete
-horizon. Joint risk-budget allocation, fallback policy and emergency handling
-are separate milestones.
+Stage 5 adds individual-versus-joint semantics and uniform horizon allocation.
+See `RISK_BUDGET_MANAGEMENT.md`. Fallback policy and emergency handling remain
+separate milestones.
 
 ## Constraint
 
@@ -42,15 +42,15 @@ n_{i,j}^{T}P_{\mathrm{rel},i,j}n_{i,j}
 }.
 \]
 
-For individual violation probability \(\epsilon\):
+For allocated violation probability \(\epsilon_{i,j}\):
 
 \[
-\beta = \Phi^{-1}(1-\epsilon),
+\beta_{i,j} = \Phi^{-1}(1-\epsilon_{i,j}),
 \qquad
 r_{\mathrm{tight},i,j}
 =
 r_{\mathrm{drone}}+r_{\mathrm{obs},j}+r_{\mathrm{margin}}
-+\beta\sigma_{i,j}.
++\beta_{i,j}\sigma_{i,j}.
 \]
 
 The deterministic nonlinear constraint supplied to do-mpc is:
@@ -73,7 +73,7 @@ optimized nominal solution.
 3. Linearize the 12D quaternion error-state dynamics around the seed.
 4. Propagate vehicle and 6D obstacle covariance over \(N+1\) points.
 5. Compute collision normals, projected sigma and tightened radii.
-6. Fill do-mpc TVPs for obstacle mean, sigma, beta, individual risk and radius.
+6. Allocate risk and fill do-mpc TVPs for mean, sigma, beta, risk and radius.
 7. Solve the native NMPC once.
 8. Record chance residual, slack, risk, covariance and solver classification.
 
@@ -92,6 +92,10 @@ controller:
     enabled: true
     type: spherical
     individual_epsilon: 0.05
+    risk_budget:
+      semantics: joint
+      allocation: uniform
+      total_epsilon: 0.10
     soft_constraint: true
     slack_penalty: 1000000.0
     slack_tolerance_m: 1.0e-6
@@ -111,16 +115,17 @@ MUJOCO_GL=glfw python run_mujoco_native.py \
   require positive slack. The chance guarantee is not satisfied.
 - `SOLVED_DETERMINISTIC`: chance tightening is disabled.
 
-Fallback and emergency statuses are not implemented in Stage 4.
+Fallback and emergency statuses are not implemented through Stage 5.
 
 ## Assumptions and limitations
 
 - Gaussian local position errors.
 - Vehicle and obstacle errors are independent; cross-covariance is zero.
 - Collision normal is frozen from the shifted nominal trajectory.
-- Every horizon-step/obstacle pair uses the same **individual**
-  `individual_epsilon`.
-- `individual_epsilon: 0.05` for 20 steps and three obstacles does not mean the
-  joint horizon collision probability is below 5%.
+- In `individual` mode, every horizon-step/obstacle pair uses the same
+  `individual_epsilon`; this is not a joint statement.
+- In `joint` mode, the uniform allocator accounts for every \(N+1\) NLP state
+  node and obstacle. The budget applies to one prediction horizon, not the
+  complete receding-horizon episode.
 - Spherical obstacle geometry only.
 - Positive slack invalidates the chance guarantee and is never hidden.

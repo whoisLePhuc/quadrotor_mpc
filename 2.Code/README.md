@@ -73,15 +73,16 @@ MUJOCO_GL=glfw python run_mujoco_native.py \
   --config config/mujoco_native_estimation.yaml
 ```
 
-Run the Stage 4 native spherical CC-MPC with the same estimator, plant and seed:
+Run the Stage 5 native spherical CC-MPC with uniform joint-risk allocation:
 
 ```bash
 MUJOCO_GL=glfw python run_mujoco_native.py \
   --config config/mujoco_native_ccmpc.yaml
 ```
 
-This configuration uses an individual risk of `0.05` for each
-horizon-step/obstacle constraint. It is not yet a 5% joint horizon guarantee.
+This configuration distributes `epsilon_total = 0.10` uniformly across all
+`(N+1) * n_obstacles` scalar constraints in each NMPC solve. The budget is a
+receding-horizon union bound, not an episode-wide guarantee.
 
 The interactive session remains open after goal, collision stop, or configured
 duration. Use **Run again** in the panel (or `Enter` in the MuJoCo window) to
@@ -212,6 +213,7 @@ python -m unittest discover -s tests -v
 - [`docs/NATIVE_SENSOR_ESTIMATION.md`](docs/NATIVE_SENSOR_ESTIMATION.md)
 - [`docs/HORIZON_COVARIANCE_PROPAGATION.md`](docs/HORIZON_COVARIANCE_PROPAGATION.md)
 - [`docs/SPHERICAL_CHANCE_CONSTRAINTS.md`](docs/SPHERICAL_CHANCE_CONSTRAINTS.md)
+- [`docs/RISK_BUDGET_MANAGEMENT.md`](docs/RISK_BUDGET_MANAGEMENT.md)
 
 ## Directory map
 
@@ -231,6 +233,7 @@ python -m unittest discover -s tests -v
 ├── native_estimation.py seeded sensors, vehicle ESEKF and obstacle KFs
 ├── native_covariance.py vehicle/obstacle prediction-horizon covariance
 ├── native_chance_constraints.py spherical tightening and residual evaluation
+├── native_risk_budget.py       individual/joint semantics and uniform allocation
 ├── chance_constrained_nmpc_controller.py explicit native CC-NMPC controller
 ├── obstacle_motion.py shared static/dynamic obstacle predictor
 ├── native_telemetry.py bounded telemetry, recording and replay loading

@@ -133,6 +133,25 @@ def step_to_sample(step: Any) -> dict[str, Any]:
         ),
         "obstacle_measurement_positions": (serialized_obstacle_measurements),
         "solver_status": str(getattr(step, "solver_status", "")),
+        "risk_semantics": str(getattr(step, "risk_semantics", "")),
+        "risk_allocation_method": str(
+            getattr(step, "risk_allocation_method", "")
+        ),
+        "risk_budget_total": getattr(step, "risk_budget_total", None),
+        "risk_budget_allocated": float(
+            getattr(step, "risk_budget_allocated", 0.0)
+        ),
+        "risk_budget_remaining": getattr(
+            step,
+            "risk_budget_remaining",
+            None,
+        ),
+        "risk_constraint_count": int(
+            getattr(step, "risk_constraint_count", 0)
+        ),
+        "risk_budget_status": str(
+            getattr(step, "risk_budget_status", "")
+        ),
         "minimum_chance_residual_m": (
             None if chance_residuals.size == 0 else float(np.min(chance_residuals))
         ),
@@ -384,6 +403,36 @@ class NativeRunRecorder:
             "min_clearance_m": (
                 float(np.min(result["clearance"])) if len(result.get("clearance", [])) else None
             ),
+            "risk_semantics": (
+                self.samples[-1].get("risk_semantics", "")
+                if self.samples
+                else ""
+            ),
+            "risk_allocation_method": (
+                self.samples[-1].get("risk_allocation_method", "")
+                if self.samples
+                else ""
+            ),
+            "risk_budget_total": (
+                self.samples[-1].get("risk_budget_total")
+                if self.samples
+                else None
+            ),
+            "risk_budget_status": (
+                self.samples[-1].get("risk_budget_status", "")
+                if self.samples
+                else ""
+            ),
+            "maximum_slack_m": (
+                max(
+                    (
+                        float(sample["maximum_slack_m"])
+                        for sample in self.samples
+                        if sample.get("maximum_slack_m") is not None
+                    ),
+                    default=None,
+                )
+            ),
         }
         (self.run_dir / "summary.yaml").write_text(
             yaml.safe_dump(summary, sort_keys=False), encoding="utf-8"
@@ -416,6 +465,13 @@ class NativeRunRecorder:
             "min_clearance_m",
             "solver_time_ms",
             "solver_status",
+            "risk_semantics",
+            "risk_allocation_method",
+            "risk_budget_total",
+            "risk_budget_allocated",
+            "risk_budget_remaining",
+            "risk_constraint_count",
+            "risk_budget_status",
             "minimum_chance_residual_m",
             "maximum_slack_m",
             "maximum_projected_uncertainty_m",
@@ -456,6 +512,27 @@ class NativeRunRecorder:
                         "min_clearance_m": sample["min_clearance_m"],
                         "solver_time_ms": sample["solver_time_ms"],
                         "solver_status": sample.get("solver_status", ""),
+                        "risk_semantics": sample.get("risk_semantics", ""),
+                        "risk_allocation_method": sample.get(
+                            "risk_allocation_method",
+                            "",
+                        ),
+                        "risk_budget_total": sample.get("risk_budget_total"),
+                        "risk_budget_allocated": sample.get(
+                            "risk_budget_allocated",
+                            0.0,
+                        ),
+                        "risk_budget_remaining": sample.get(
+                            "risk_budget_remaining"
+                        ),
+                        "risk_constraint_count": sample.get(
+                            "risk_constraint_count",
+                            0,
+                        ),
+                        "risk_budget_status": sample.get(
+                            "risk_budget_status",
+                            "",
+                        ),
                         "minimum_chance_residual_m": sample.get(
                             "minimum_chance_residual_m"
                         ),

@@ -23,6 +23,9 @@ Validation is layered:
 11. Native spherical chance constraints: Gaussian quantile, relative covariance
     projection, TVP tightening, risk/slack shape agreement, status semantics and
     deterministic-versus-CC-MPC paired regression.
+12. Native risk-budget management: legacy individual semantics, uniform joint
+    allocation, exact sum audit, per-cell quantiles, configuration round-trip,
+    telemetry/recording persistence and joint-versus-individual paired regression.
 
 For a native release, run both `config/mujoco_native.yaml` and
 `config/mujoco_native_dynamic.yaml`. Check that the reported current obstacle
@@ -96,3 +99,35 @@ Run `config/mujoco_native_estimation.yaml` and
 - CC-MPC produces a measurably different constraint/clearance from the paired
   deterministic run;
 - no covariance, residual, control or state contains NaN.
+
+## Stage 5 risk-budget checks
+
+Run `config/mujoco_native_ccmpc.yaml` and verify:
+
+- `risk_semantics == joint` and `risk_allocation_method == uniform`;
+- each solve allocates over `(N+1) * n_obstacles` scalar constraints;
+- `sum(risk_allocation_horizon[t]) <= risk_budget_total[t] + tolerance`;
+- `risk_budget_allocated == risk_budget_total == 0.10` for the supplied
+  three-obstacle scenario;
+- each TVP quantile equals `Phi^-1(1-risk_allocation[k,o])`;
+- changing back to `individual` reproduces Stage 4 allocations and trajectory;
+- joint allocation produces stronger tightening than individual allocation for
+  the same belief/covariance;
+- `BUDGET_OK` is not interpreted as a safety guarantee when slack is positive.
+
+The joint budget is for one receding prediction horizon. Monte Carlo validation
+with a confidence interval is required before making an episode-level collision
+rate claim.
+
+Verified 10-second paired run, estimator seed 7:
+
+| Controller | Final error | Minimum clearance | Maximum slack | Status counts |
+|---|---:|---:|---:|---:|
+| Deterministic dynamic baseline | 0.000135502 m | 0.299914211 m | 0 | `DISABLED` |
+| Stage 4 individual, epsilon 0.05 | 0.076558310 m | 0.317015107 m | 0.064665434 m | 161 safe / 39 slack |
+| Stage 5 joint uniform, total 0.10 | 0.104444105 m | 0.410519817 m | 0.075120639 m | 114 safe / 86 slack |
+
+For the joint run, every one of 200 solves allocated 63 constraints, the
+maximum absolute budget-sum error was \(5.55\times10^{-17}\), and no collision,
+NaN state or NaN control occurred. The positive slack prevents a probabilistic
+safety guarantee despite correct risk accounting.

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import importlib.util
 import tempfile
 import unittest
-import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -21,7 +21,6 @@ from obstacle_motion import (
     predict_obstacle_positions,
 )
 from runtime_control import CommandName, LocalCommandQueue, RuntimeCommand
-
 
 CODE_ROOT = Path(__file__).resolve().parents[1]
 
@@ -157,6 +156,13 @@ class NativeRecordingTests(unittest.TestCase):
             projected_uncertainties=np.full((3, 1), 0.12),
             tightened_safety_radii=np.full((3, 1), 0.85),
             solver_status="SOLVED_WITH_SLACK",
+            risk_semantics="joint",
+            risk_allocation_method="uniform",
+            risk_budget_total=0.10,
+            risk_budget_allocated=0.10,
+            risk_budget_remaining=0.0,
+            risk_constraint_count=3,
+            risk_budget_status="BUDGET_OK",
         )
         sample = step_to_sample(step)
         with tempfile.TemporaryDirectory() as directory:
@@ -203,6 +209,14 @@ class NativeRecordingTests(unittest.TestCase):
             self.assertEqual(sample["solver_status"], "SOLVED_WITH_SLACK")
             self.assertAlmostEqual(sample["minimum_chance_residual_m"], -0.01)
             self.assertAlmostEqual(sample["maximum_slack_m"], 0.01)
+            self.assertEqual(sample["risk_semantics"], "joint")
+            self.assertEqual(sample["risk_allocation_method"], "uniform")
+            self.assertAlmostEqual(sample["risk_budget_total"], 0.10)
+            self.assertAlmostEqual(sample["risk_budget_allocated"], 0.10)
+            self.assertEqual(sample["risk_constraint_count"], 3)
+            self.assertEqual(sample["risk_budget_status"], "BUDGET_OK")
+            self.assertEqual(loaded["rows"][0]["risk_semantics"], "joint")
+            self.assertEqual(loaded["rows"][0]["risk_budget_status"], "BUDGET_OK")
             self.assertIsNotNone(sample["horizon_terminal_position_sigma"])
             self.assertTrue((run_dir / "snapshot-001.json").is_file())
 
@@ -233,7 +247,16 @@ class InteractiveLoopTests(unittest.TestCase):
             chance_options=config.chance_constraints,
         )
         self.assertEqual(len(result["t"]), 2)
-        np.testing.assert_allclose(result["risk_allocation_horizon"], 0.05)
+        expected_cell_risk = 0.10 / ((4 + 1) * len(config.obstacles))
+        np.testing.assert_allclose(
+            result["risk_allocation_horizon"],
+            expected_cell_risk,
+        )
+        np.testing.assert_allclose(result["risk_budget_total"], 0.10)
+        np.testing.assert_allclose(result["risk_budget_allocated"], 0.10)
+        np.testing.assert_allclose(result["risk_budget_remaining"], 0.0, atol=1e-12)
+        np.testing.assert_array_equal(result["risk_semantics"], "joint")
+        np.testing.assert_array_equal(result["risk_budget_status"], "BUDGET_OK")
         nominal_radii = np.asarray(
             [
                 obstacle["radius"] + config.safety_margin + 0.03

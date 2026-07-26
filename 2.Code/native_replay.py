@@ -200,6 +200,29 @@ def replay_native_recording(config: Any, recording: dict[str, Any], runtime: Any
                         == len(rows)
                         else None
                     ),
+                    risk_semantics=str(row.get("risk_semantics", "")),
+                    risk_allocation_method=str(
+                        row.get("risk_allocation_method", "")
+                    ),
+                    risk_budget_total=(
+                        None
+                        if row.get("risk_budget_total", "") in ("", None)
+                        else float(row["risk_budget_total"])
+                    ),
+                    risk_budget_allocated=float(
+                        row.get("risk_budget_allocated", 0.0) or 0.0
+                    ),
+                    risk_budget_remaining=(
+                        None
+                        if row.get("risk_budget_remaining", "") in ("", None)
+                        else float(row["risk_budget_remaining"])
+                    ),
+                    risk_constraint_count=int(
+                        row.get("risk_constraint_count", 0) or 0
+                    ),
+                    risk_budget_status=str(
+                        row.get("risk_budget_status", "")
+                    ),
                 )
             )
             if not keep_running:

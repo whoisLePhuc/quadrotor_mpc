@@ -286,11 +286,7 @@ class DeterministicNMPCController:
         self._goal_state["obstacle_projected_sigmas"] = (
             chance_profile.projected_sigmas_m.T
         )
-        self._goal_state["obstacle_betas"] = np.full(
-            (len(obstacles), prediction_steps),
-            self._chance_options.beta if self._chance_options.enabled else 0.0,
-            dtype=float,
-        )
+        self._goal_state["obstacle_betas"] = chance_profile.gaussian_quantiles.T
         self._goal_state["obstacle_risk_allocations"] = (
             chance_profile.risk_allocations.T
         )
@@ -335,6 +331,7 @@ class DeterministicNMPCController:
         used_sigmas = chance_profile.projected_sigmas_m
         used_risks = chance_profile.risk_allocations
         used_safety_radii = chance_profile.safety_radii_m
+        used_risk_metadata = chance_profile
         if horizon_length != prediction_steps:
             target = np.linspace(0.0, 1.0, horizon_length)
             source = np.linspace(0.0, 1.0, prediction_steps)
@@ -356,18 +353,20 @@ class DeterministicNMPCController:
                     for index in range(len(obstacles))
                 ]
             )
-            used_risks = np.column_stack(
-                [
-                    np.interp(target, source, chance_profile.risk_allocations[:, index])
-                    for index in range(len(obstacles))
-                ]
+            # Reallocate for the actual output horizon.  Interpolating a joint
+            # allocation would change its sum whenever the number of returned
+            # nodes differs from the configured grid.
+            used_risk_metadata = build_spherical_chance_profile(
+                vehicle_positions=nominal_states[:, :3],
+                obstacle_positions=used_obstacle_predictions,
+                vehicle_covariances=predicted_covariances,
+                obstacle_covariances=predicted_obstacle_covariances,
+                base_safety_radii_m=base_safety_radii,
+                options=self._chance_options,
             )
-            used_safety_radii = np.column_stack(
-                [
-                    np.interp(target, source, chance_profile.safety_radii_m[:, index])
-                    for index in range(len(obstacles))
-                ]
-            )
+            used_sigmas = used_risk_metadata.projected_sigmas_m
+            used_risks = used_risk_metadata.risk_allocations
+            used_safety_radii = used_risk_metadata.safety_radii_m
         margins, slacks = evaluate_spherical_constraints(
             vehicle_positions=nominal_states[:, :3],
             obstacle_positions=used_obstacle_predictions,
@@ -395,4 +394,11 @@ class DeterministicNMPCController:
             predicted_obstacle_covariances=predicted_obstacle_covariances,
             projected_uncertainties=used_sigmas,
             tightened_safety_radii=used_safety_radii,
+            risk_semantics=used_risk_metadata.risk_semantics,
+            risk_allocation_method=used_risk_metadata.risk_allocation_method,
+            risk_budget_total=used_risk_metadata.configured_total_epsilon,
+            risk_budget_allocated=used_risk_metadata.allocated_epsilon,
+            risk_budget_remaining=used_risk_metadata.remaining_epsilon,
+            risk_constraint_count=used_risk_metadata.active_constraint_count,
+            risk_budget_status=used_risk_metadata.budget_status,
         )
