@@ -123,6 +123,28 @@ def replay_native_recording(config: Any, recording: dict[str, Any], runtime: Any
                     control=control,
                     obstacle_positions=obstacle_positions,
                     obstacle_predictions=obstacle_predictions,
+                    estimated_state_13=(
+                        recording["estimated_states"][index]
+                        if len(recording.get("estimated_states", [])) == len(rows)
+                        else state
+                    ),
+                    error_covariance_12=(
+                        recording["error_covariances"][index]
+                        if len(recording.get("error_covariances", [])) == len(rows)
+                        else np.zeros((12, 12), dtype=float)
+                    ),
+                    estimated_obstacle_states=None,
+                    obstacle_covariances=None,
+                    estimated_obstacle_predictions=(
+                        recording["estimated_obstacle_predictions"][index]
+                        if len(recording.get("estimated_obstacle_predictions", []))
+                        == len(rows)
+                        else obstacle_predictions
+                    ),
+                    vehicle_measurement_available=True,
+                    obstacle_measurement_available=None,
+                    vehicle_measurement_state_13=None,
+                    obstacle_measurement_positions=None,
                     predicted_positions=prediction,
                     min_clearance_m=clearance,
                     goal_distance_m=float(row["goal_distance_m"]),

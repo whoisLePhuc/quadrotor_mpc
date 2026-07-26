@@ -19,6 +19,7 @@ import numpy as np
 from belief_from_truth import exact_obstacle_beliefs
 from controller_interface import ControlGoal, Controller, VehicleBelief
 from mujoco_plant import MuJoCoPlant
+from native_estimation import EstimationOptions, NativeBeliefEstimator
 from obstacle_motion import predict_obstacle_positions
 from quad_mpc_core import (
     DRONE_RADIUS,
@@ -52,6 +53,15 @@ class CoupledStep:
     control: np.ndarray
     obstacle_positions: np.ndarray
     obstacle_predictions: np.ndarray
+    estimated_state_13: np.ndarray | None
+    error_covariance_12: np.ndarray | None
+    estimated_obstacle_states: np.ndarray | None
+    obstacle_covariances: np.ndarray | None
+    estimated_obstacle_predictions: np.ndarray | None
+    vehicle_measurement_available: bool
+    obstacle_measurement_available: np.ndarray | None
+    vehicle_measurement_state_13: np.ndarray | None
+    obstacle_measurement_positions: np.ndarray | None
     predicted_positions: np.ndarray | None
     min_clearance_m: float
     goal_distance_m: float
@@ -106,6 +116,7 @@ def run_coupled_simulation(
     goal_tolerance=0.25,
     stop_on_collision=False,
     controller: Controller | None = None,
+    estimation_options: EstimationOptions | None = None,
 ):
     """
     `cached`: optional (model, mpc, dyn_idx, goal_state) tuple from
@@ -144,8 +155,55 @@ def run_coupled_simulation(
 
     q0 = quat_from_euler(x0_vals.get("roll", 0), x0_vals.get("pitch", 0), x0_vals.get("yaw", 0))
     x0 = np.array([x0_vals["x"], x0_vals["y"], x0_vals["z"], 0, 0, 0, *q0, 0, 0, 0]).reshape(-1, 1)
-    initial_belief = VehicleBelief.exact(x0[:, 0])
-    active_controller.reset(initial_belief)
+    estimator: NativeBeliefEstimator | None = None
+    if estimation_options is not None and estimation_options.enabled:
+        estimator = NativeBeliefEstimator(
+            estimation_options,
+            obstacles,
+            horizon_steps=active_controller.horizon_steps,
+            timestep_s=mpc_dt,
+        )
+
+    def truth_obstacle_positions(time_s: float) -> np.ndarray:
+        if not obstacles:
+            return np.empty((0, 3), dtype=float)
+        return predict_obstacle_positions(obstacles, time_s, 1, mpc_dt)[:, 0, :]
+
+    def reset_beliefs():
+        if estimator is not None:
+            return estimator.reset(x0[:, 0], truth_obstacle_positions(0.0))
+        exact_vehicle = VehicleBelief.exact(x0[:, 0])
+        exact_obstacles = exact_obstacle_beliefs(
+            obstacles,
+            0.0,
+            active_controller.horizon_steps,
+            mpc_dt,
+        )
+        return exact_vehicle, exact_obstacles
+
+    initial_estimation = reset_beliefs()
+    if estimator is not None:
+        current_belief = initial_estimation.vehicle_belief
+        current_obstacle_beliefs = initial_estimation.obstacle_beliefs
+        current_vehicle_measurement_available = (
+            initial_estimation.vehicle_measurement_available
+        )
+        current_obstacle_measurement_available = (
+            initial_estimation.obstacle_measurement_available
+        )
+        current_vehicle_measurement_state = (
+            initial_estimation.vehicle_measurement_state_13
+        )
+        current_obstacle_measurement_positions = (
+            initial_estimation.obstacle_measurement_positions
+        )
+    else:
+        current_belief, current_obstacle_beliefs = initial_estimation
+        current_vehicle_measurement_available = True
+        current_obstacle_measurement_available = np.ones(len(obstacles), dtype=bool)
+        current_vehicle_measurement_state = x0[:, 0].copy()
+        current_obstacle_measurement_positions = truth_obstacle_positions(0.0)
+    active_controller.reset(current_belief)
     control_goal = ControlGoal(
         position=np.array([goal_pos["x"], goal_pos["y"], goal_pos["z"]], dtype=float),
         quaternion_wxyz=quat_from_euler(
@@ -159,6 +217,10 @@ def run_coupled_simulation(
     n_steps = int(sim_seconds / mpc_dt)
 
     ts, poss, eulers, us, clearances, frames = [], [], [], [], [], []
+    estimated_states, estimation_covariances = [], []
+    obstacle_estimated_states, obstacle_estimation_covariances = [], []
+    vehicle_measurement_history, obstacle_measurement_history = [], []
+    vehicle_measurements, obstacle_measurements = [], []
     collided = False
     termination_reason = "completed"
     x_curr = x0
@@ -215,14 +277,48 @@ def run_coupled_simulation(
 
             if reset_requested:
                 plant.reset(x0_vals)
-                active_controller.reset(initial_belief)
                 x_curr = x0.copy()
+                reset_estimation = reset_beliefs()
+                if estimator is not None:
+                    current_belief = reset_estimation.vehicle_belief
+                    current_obstacle_beliefs = reset_estimation.obstacle_beliefs
+                    current_vehicle_measurement_available = (
+                        reset_estimation.vehicle_measurement_available
+                    )
+                    current_obstacle_measurement_available = (
+                        reset_estimation.obstacle_measurement_available
+                    )
+                    current_vehicle_measurement_state = (
+                        reset_estimation.vehicle_measurement_state_13
+                    )
+                    current_obstacle_measurement_positions = (
+                        reset_estimation.obstacle_measurement_positions
+                    )
+                else:
+                    current_belief, current_obstacle_beliefs = reset_estimation
+                    current_vehicle_measurement_available = True
+                    current_obstacle_measurement_available = np.ones(
+                        len(obstacles), dtype=bool
+                    )
+                    current_vehicle_measurement_state = x0[:, 0].copy()
+                    current_obstacle_measurement_positions = (
+                        truth_obstacle_positions(0.0)
+                    )
+                active_controller.reset(current_belief)
                 ts.clear()
                 poss.clear()
                 eulers.clear()
                 us.clear()
                 clearances.clear()
                 frames.clear()
+                estimated_states.clear()
+                estimation_covariances.clear()
+                obstacle_estimated_states.clear()
+                obstacle_estimation_covariances.clear()
+                vehicle_measurement_history.clear()
+                obstacle_measurement_history.clear()
+                vehicle_measurements.clear()
+                obstacle_measurements.clear()
                 collided = False
                 t = 0.0
                 k = 0
@@ -265,16 +361,9 @@ def run_coupled_simulation(
                 continue
 
             solver_start = time.perf_counter()
-            belief = VehicleBelief.exact(x_curr[:, 0])
-            obstacle_beliefs = exact_obstacle_beliefs(
-                obstacles,
-                t,
-                active_controller.horizon_steps,
-                mpc_dt,
-            )
             solution = active_controller.solve(
-                belief,
-                obstacle_beliefs,
+                current_belief,
+                current_obstacle_beliefs,
                 control_goal,
                 t,
             )
@@ -298,6 +387,75 @@ def run_coupled_simulation(
                 mpc_dt,
             )
             obstacle_positions = obstacle_predictions[:, 0, :]
+            if estimator is not None:
+                estimation = estimator.advance(
+                    x_curr[:, 0],
+                    obstacle_positions,
+                    u0,
+                    dt=mpc_dt,
+                )
+                current_belief = estimation.vehicle_belief
+                current_obstacle_beliefs = estimation.obstacle_beliefs
+                current_vehicle_measurement_available = (
+                    estimation.vehicle_measurement_available
+                )
+                current_obstacle_measurement_available = (
+                    estimation.obstacle_measurement_available
+                )
+                current_vehicle_measurement_state = (
+                    estimation.vehicle_measurement_state_13
+                )
+                current_obstacle_measurement_positions = (
+                    estimation.obstacle_measurement_positions
+                )
+            else:
+                current_belief = VehicleBelief.exact(x_curr[:, 0])
+                current_obstacle_beliefs = exact_obstacle_beliefs(
+                    obstacles,
+                    step_time,
+                    active_controller.horizon_steps,
+                    mpc_dt,
+                )
+                current_vehicle_measurement_available = True
+                current_obstacle_measurement_available = np.ones(
+                    len(obstacles), dtype=bool
+                )
+                current_vehicle_measurement_state = x_curr[:, 0].copy()
+                current_obstacle_measurement_positions = obstacle_positions.copy()
+            estimated_obstacle_states_array = np.asarray(
+                [belief.mean_state_6 for belief in current_obstacle_beliefs],
+                dtype=float,
+            ).reshape(-1, 6)
+            obstacle_covariances_array = np.asarray(
+                [belief.covariance_6 for belief in current_obstacle_beliefs],
+                dtype=float,
+            ).reshape(-1, 6, 6)
+            estimated_obstacle_predictions_array = np.asarray(
+                [
+                    belief.mean_positions(
+                        active_controller.horizon_steps + 1,
+                        mpc_dt,
+                    )
+                    for belief in current_obstacle_beliefs
+                ],
+                dtype=float,
+            ).reshape(-1, active_controller.horizon_steps + 1, 3)
+            estimated_states.append(current_belief.mean_state_13.copy())
+            estimation_covariances.append(current_belief.error_covariance_12.copy())
+            obstacle_estimated_states.append(estimated_obstacle_states_array.copy())
+            obstacle_estimation_covariances.append(obstacle_covariances_array.copy())
+            vehicle_measurement_history.append(current_vehicle_measurement_available)
+            obstacle_measurement_history.append(
+                current_obstacle_measurement_available.copy()
+            )
+            vehicle_measurements.append(
+                np.full(13, np.nan)
+                if current_vehicle_measurement_state is None
+                else current_vehicle_measurement_state.copy()
+            )
+            obstacle_measurements.append(
+                current_obstacle_measurement_positions.copy()
+            )
             min_clear = np.inf
             for obs, obstacle_position in zip(obstacles, obstacle_positions):
                 d = np.linalg.norm(position - obstacle_position) - obs["radius"] - DRONE_RADIUS
@@ -318,6 +476,19 @@ def run_coupled_simulation(
                         control=control,
                         obstacle_positions=obstacle_positions,
                         obstacle_predictions=obstacle_predictions,
+                        estimated_state_13=current_belief.mean_state_13,
+                        error_covariance_12=current_belief.error_covariance_12,
+                        estimated_obstacle_states=estimated_obstacle_states_array,
+                        obstacle_covariances=obstacle_covariances_array,
+                        estimated_obstacle_predictions=estimated_obstacle_predictions_array,
+                        vehicle_measurement_available=current_vehicle_measurement_available,
+                        obstacle_measurement_available=(
+                            current_obstacle_measurement_available
+                        ),
+                        vehicle_measurement_state_13=current_vehicle_measurement_state,
+                        obstacle_measurement_positions=(
+                            current_obstacle_measurement_positions
+                        ),
                         predicted_positions=solution.predicted_positions,
                         min_clearance_m=float(min_clear),
                         goal_distance_m=goal_distance,
@@ -376,6 +547,23 @@ def run_coupled_simulation(
         "frames": frames,
         "render_error": render_err,
         "termination_reason": termination_reason,
+        "estimated_state": np.asarray(estimated_states, dtype=float),
+        "error_covariance": np.asarray(estimation_covariances, dtype=float),
+        "estimated_obstacle_state": np.asarray(obstacle_estimated_states, dtype=float),
+        "obstacle_covariance": np.asarray(
+            obstacle_estimation_covariances, dtype=float
+        ),
+        "vehicle_measurement_available": np.asarray(
+            vehicle_measurement_history, dtype=bool
+        ),
+        "obstacle_measurement_available": np.asarray(
+            obstacle_measurement_history, dtype=bool
+        ),
+        "vehicle_measurement_state": np.asarray(vehicle_measurements, dtype=float),
+        "obstacle_measurement_position": np.asarray(
+            obstacle_measurements, dtype=float
+        ),
+        "estimation_enabled": estimator is not None,
     }
 
 

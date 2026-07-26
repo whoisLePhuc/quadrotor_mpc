@@ -65,6 +65,14 @@ MUJOCO_GL=glfw python run_mujoco_native.py \
   --config config/mujoco_native_dynamic.yaml
 ```
 
+Run the same native track through noisy sensors, a 12D quaternion error-state
+EKF and 6D obstacle trackers:
+
+```bash
+MUJOCO_GL=glfw python run_mujoco_native.py \
+  --config config/mujoco_native_estimation.yaml
+```
+
 The interactive session remains open after goal, collision stop, or configured
 duration. Use **Run again** in the panel (or `Enter` in the MuJoCo window) to
 restart the same scenario, and **Stop**/`Esc` or window close to exit.
@@ -191,6 +199,7 @@ python -m unittest discover -s tests -v
 - [`docs/VALIDATION.md`](docs/VALIDATION.md)
 - [`docs/NATIVE_MUJOCO_VIEWER.md`](docs/NATIVE_MUJOCO_VIEWER.md)
 - [`docs/CONTROLLER_INTERFACE.md`](docs/CONTROLLER_INTERFACE.md)
+- [`docs/NATIVE_SENSOR_ESTIMATION.md`](docs/NATIVE_SENSOR_ESTIMATION.md)
 
 ## Directory map
 
@@ -207,6 +216,7 @@ python -m unittest discover -s tests -v
 ├── controller_interface.py belief-based native controller contract
 ├── deterministic_nmpc_controller.py do-mpc adapter for the deterministic baseline
 ├── belief_from_truth.py transitional zero-covariance belief source
+├── native_estimation.py seeded sensors, vehicle ESEKF and obstacle KFs
 ├── obstacle_motion.py shared static/dynamic obstacle predictor
 ├── native_telemetry.py bounded telemetry, recording and replay loading
 ├── native_desktop_panel.py separate Qt control/plot process

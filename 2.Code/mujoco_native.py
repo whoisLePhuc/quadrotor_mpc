@@ -18,6 +18,7 @@ import numpy as np
 import yaml
 
 from native_desktop_panel import DesktopPanelOptions, DesktopPanelProcess
+from native_estimation import EstimationOptions
 from native_telemetry import (
     NativeRunRecorder,
     RecordingOptions,
@@ -121,6 +122,7 @@ class NativeMuJoCoConfig:
     stop_on_goal: bool
     goal_tolerance_m: float
     stop_on_collision: bool
+    estimation: EstimationOptions
     viewer: NativeViewerOptions
     panel: DesktopPanelOptions
     recording: RecordingOptions
@@ -137,6 +139,7 @@ class NativeMuJoCoConfig:
         viewer_raw = _mapping(raw.get("viewer", {}), "viewer")
         panel_raw = _mapping(raw.get("panel", {}), "panel")
         recording_raw = _mapping(raw.get("recording", {}), "recording")
+        estimation_raw = _mapping(raw.get("estimation", {}), "estimation")
 
         start = _xyz(start_raw, "start")
         start.update({axis: float(start_raw.get(axis, 0.0)) for axis in ("roll", "pitch", "yaw")})
@@ -187,6 +190,7 @@ class NativeMuJoCoConfig:
                 simulation_raw.get("goal_tolerance_m", 0.25), "goal_tolerance_m"
             ),
             stop_on_collision=bool(simulation_raw.get("stop_on_collision", False)),
+            estimation=EstimationOptions.from_mapping(estimation_raw),
             viewer=NativeViewerOptions.from_mapping(viewer_raw),
             panel=DesktopPanelOptions.from_mapping(dict(panel_raw)),
             recording=RecordingOptions.from_mapping(recording_raw),
@@ -215,6 +219,7 @@ class NativeMuJoCoConfig:
                 "goal_tolerance_m": self.goal_tolerance_m,
                 "stop_on_collision": self.stop_on_collision,
             },
+            "estimation": self.estimation.to_mapping(),
             "viewer": {
                 field: getattr(self.viewer, field) for field in self.viewer.__dataclass_fields__
             },
@@ -385,7 +390,12 @@ class NativeMuJoCoViewer:
                         (1.0, 0.45, 0.05, 0.12),
                     )
             if self._show_obstacle_prediction:
-                for prediction in np.asarray(step.obstacle_predictions, dtype=float):
+                displayed_predictions = getattr(
+                    step, "estimated_obstacle_predictions", None
+                )
+                if displayed_predictions is None:
+                    displayed_predictions = step.obstacle_predictions
+                for prediction in np.asarray(displayed_predictions, dtype=float):
                     self._add_polyline(
                         list(prediction),
                         (1.00, 0.40, 0.15, 0.55),

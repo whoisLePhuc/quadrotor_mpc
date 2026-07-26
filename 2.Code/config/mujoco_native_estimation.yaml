@@ -1,4 +1,4 @@
-name: nmpc-mujoco-native-dynamic-crossing
+name: nmpc-mujoco-native-estimated-dynamic
 
 start:
   x: 0.0
@@ -29,11 +29,35 @@ simulation:
   goal_tolerance_m: 0.25
   stop_on_collision: false
 
-# Disabled here so this scenario remains the deterministic NMPC baseline.
 estimation:
-  enabled: false
+  enabled: true
   type: error_state_ekf
   seed: 7
+  minimum_covariance_eigenvalue: 1.0e-12
+  sensor:
+    position_std_m: 0.03
+    velocity_std_mps: 0.06
+    attitude_std_rad: 0.015
+    angular_rate_std_radps: 0.02
+    obstacle_position_std_m: 0.05
+    vehicle_dropout_probability: 0.0
+    obstacle_dropout_probability: 0.0
+    position_bias_rw_std_m_sqrt_s: 0.0
+    velocity_bias_rw_std_mps_sqrt_s: 0.0
+    attitude_bias_rw_std_rad_sqrt_s: 0.0
+    angular_rate_bias_rw_std_radps_sqrt_s: 0.0
+    obstacle_bias_rw_std_m_sqrt_s: 0.0
+  vehicle_filter:
+    acceleration_process_std_mps2: 0.35
+    angular_acceleration_process_std_radps2: 0.60
+    initial_position_std_m: 0.08
+    initial_velocity_std_mps: 0.12
+    initial_attitude_std_rad: 0.04
+    initial_angular_rate_std_radps: 0.08
+  obstacle_filter:
+    acceleration_process_std_mps2: 0.50
+    initial_position_std_m: 0.10
+    initial_velocity_std_mps: 0.75
 
 viewer:
   camera_mode: follow

@@ -66,16 +66,20 @@ the same telemetry schema is already exercised before CC-MPC is introduced.
 All obstacle centers are TVPs. The compiled NLP depends on obstacle count and
 shape, but obstacle mean trajectories may change on every tick.
 
-## Temporary truth adapter
+## Belief sources
 
 `belief_from_truth.py` converts native truth into zero-covariance beliefs only
-to preserve the deterministic baseline during Stage 1. Controllers do not
-receive the `MuJoCoPlant` and cannot read its state directly.
+when `estimation.enabled: false`. It remains the deterministic regression
+baseline.
 
-Stage 2 replaces this module at the runner boundary with:
+When `estimation.enabled: true`, `native_estimation.py` provides:
 
 ```text
 MuJoCo truth → sensor simulation → vehicle/obstacle estimators → beliefs
 ```
+
+The vehicle estimator is a 12D error-state EKF around the 13D quaternion
+nominal state. Each obstacle has a position-only constant-velocity Kalman
+filter. Tracker means—not configured truth motion—form the obstacle horizon.
 
 No production code imports `4.Reference`.

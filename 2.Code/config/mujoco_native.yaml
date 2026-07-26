@@ -39,6 +39,13 @@ simulation:
   goal_tolerance_m: 0.25
   stop_on_collision: false
 
+# Disabled here to preserve the exact deterministic regression baseline.
+# Use config/mujoco_native_estimation.yaml for the noisy belief-based pipeline.
+estimation:
+  enabled: false
+  type: error_state_ekf
+  seed: 7
+
 viewer:
   camera_mode: follow
   distance: 7.0

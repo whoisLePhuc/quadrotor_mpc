@@ -14,6 +14,9 @@ Validation is layered:
 8. Controller-contract validation: state/covariance dimensions, quaternion
    normalization, positive-semidefinite covariance, horizon shape agreement and
    normalized solver diagnostics.
+9. Native estimation validation: seeded reset repeatability, dropout behavior,
+   quaternion local-error consistency, ESEKF update contraction, covariance PSD,
+   position-only obstacle velocity recovery and truth-free tracker horizons.
 
 For a native release, run both `config/mujoco_native.yaml` and
 `config/mujoco_native_dynamic.yaml`. Check that the reported current obstacle
@@ -40,3 +43,18 @@ belief-interface refactor. The verified dynamic scenario result is:
 The runtime integration tests also assert that `ControlSolution` diagnostics
 reach `CoupledStep`, and that goal completion, `Run again`, reset, pause,
 single-step and explicit stop preserve their v1.2.1 behavior.
+
+## Stage 2 estimator checks
+
+Run `config/mujoco_native_estimation.yaml` and report separately:
+
+- vehicle position, velocity, attitude and body-rate RMSE;
+- normalized estimation error squared when calibration is evaluated;
+- vehicle and obstacle dropout counts;
+- covariance minimum eigenvalue;
+- obstacle position/velocity RMSE;
+- deterministic versus estimated closed-loop safety metrics.
+
+The controller must receive tracker-extrapolated obstacle means. Ground-truth
+motion is allowed only in the sensor simulator, collision/clearance metrics and
+validation logs. Horizon covariance consistency is a Stage 3 criterion.

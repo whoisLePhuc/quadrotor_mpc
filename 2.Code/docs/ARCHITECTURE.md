@@ -33,7 +33,8 @@ Core ownership:
 | Obstacle motion | `obstacle_motion.py` | one predictor shared by controller, plant, metrics and viewer |
 | Controller contract | `controller_interface.py` | belief, goal and normalized solution types |
 | Native deterministic adapter | `deterministic_nmpc_controller.py` | do-mpc backend behind the shared contract |
-| Transitional belief source | `belief_from_truth.py` | zero-covariance truth adapter used only for regression |
+| Native estimation | `native_estimation.py` | seeded sensors, 12D ESEKF and 6D obstacle trackers |
+| Exact baseline source | `belief_from_truth.py` | zero-covariance truth adapter used only for regression |
 
 Dependencies point inward: UI and reporting consume experiment/runtime data; the mathematics layer
 does not depend on the dashboard.
@@ -57,11 +58,11 @@ controller.reset(vehicle_belief)
 solution = controller.solve(vehicle_belief, obstacle_beliefs, goal, time_s)
 ```
 
-The deterministic baseline currently creates zero-covariance beliefs from the
-MuJoCo state and shared obstacle predictor in `belief_from_truth.py`. This is an
-explicit transitional adapter, not an estimator. Stage 2 replaces this source
-with sensor simulation and vehicle/obstacle estimators without changing the
-controller or runtime signatures.
+The deterministic baseline creates zero-covariance beliefs from MuJoCo truth in
+`belief_from_truth.py`. The estimated configuration instead routes truth through
+the seeded sensor simulator, 12D vehicle error-state EKF and one 6D
+constant-velocity tracker per obstacle in `native_estimation.py`. Both paths
+produce the same controller contract without changing runtime signatures.
 
 All obstacle centers are TVPs in the native NMPC model. Geometry and obstacle
 count define the compiled NLP; estimated mean trajectories can change at every
