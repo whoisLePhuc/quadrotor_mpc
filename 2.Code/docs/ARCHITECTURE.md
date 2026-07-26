@@ -31,6 +31,9 @@ Core ownership:
 | Native interaction | `runtime_control.py`, `native_desktop_panel.py` | command queue and separate Qt telemetry process |
 | Native evidence | `native_telemetry.py`, `native_replay.py` | bounded data, recording bundle and solver-free replay |
 | Obstacle motion | `obstacle_motion.py` | one predictor shared by controller, plant, metrics and viewer |
+| Controller contract | `controller_interface.py` | belief, goal and normalized solution types |
+| Native deterministic adapter | `deterministic_nmpc_controller.py` | do-mpc backend behind the shared contract |
+| Transitional belief source | `belief_from_truth.py` | zero-covariance truth adapter used only for regression |
 
 Dependencies point inward: UI and reporting consume experiment/runtime data; the mathematics layer
 does not depend on the dashboard.
@@ -43,3 +46,23 @@ The Qt panel runs in a child process because Qt and GLFW both have main-thread
 event-loop requirements. Only plain command and telemetry dictionaries cross the
 process boundary. The simulation process remains the sole owner of do-mpc and
 MuJoCo state.
+
+## Native controller boundary
+
+`run_coupled.py` no longer calls `mpc.make_step` or reads do-mpc prediction data.
+It calls the backend-independent contract:
+
+```python
+controller.reset(vehicle_belief)
+solution = controller.solve(vehicle_belief, obstacle_beliefs, goal, time_s)
+```
+
+The deterministic baseline currently creates zero-covariance beliefs from the
+MuJoCo state and shared obstacle predictor in `belief_from_truth.py`. This is an
+explicit transitional adapter, not an estimator. Stage 2 replaces this source
+with sensor simulation and vehicle/obstacle estimators without changing the
+controller or runtime signatures.
+
+All obstacle centers are TVPs in the native NMPC model. Geometry and obstacle
+count define the compiled NLP; estimated mean trajectories can change at every
+control tick without rebuilding it.

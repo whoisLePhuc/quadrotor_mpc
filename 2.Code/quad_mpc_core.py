@@ -20,9 +20,10 @@ Obstacle avoidance is expressed as a genuine nonlinear (soft) inequality constra
 ad-hoc potential-field penalty, so it is enforced by the solver directly.
 """
 
-import numpy as np
-from casadi import vertcat, sqrt as ca_sqrt
 import do_mpc
+import numpy as np
+from casadi import sqrt as ca_sqrt
+from casadi import vertcat
 
 from obstacle_motion import obstacle_position
 from vehicle import DEFAULT_QUADROTOR
@@ -134,8 +135,10 @@ def build_model(dt, obstacles):
     model.set_variable("_tvp", "qyg")
     model.set_variable("_tvp", "qzg")
 
-    dyn_idx = [i for i, o in enumerate(obstacles) if o["type"] == "dynamic"]
-    for i in dyn_idx:
+    # Every obstacle center is a TVP, including static obstacles.  This keeps the
+    # compiled NLP reusable when a future estimator updates an obstacle belief.
+    obstacle_tvp_idx = list(range(len(obstacles)))
+    for i in obstacle_tvp_idx:
         model.set_variable("_tvp", f"obsx_{i}")
         model.set_variable("_tvp", f"obsy_{i}")
         model.set_variable("_tvp", f"obsz_{i}")
@@ -158,7 +161,7 @@ def build_model(dt, obstacles):
         model.set_rhs(n, x_next[i])
 
     model.setup()
-    return model, dyn_idx
+    return model, obstacle_tvp_idx
 
 
 def build_controller(
@@ -238,10 +241,11 @@ def build_controller(
     mpc.bounds["upper", "_u", "tauz"] = torque_yaw_lim
 
     for i, obs in enumerate(obstacles):
-        if obs["type"] == "static":
-            cx, cy, cz = obs["x"], obs["y"], obs["z"]
-        else:
-            cx, cy, cz = model.tvp[f"obsx_{i}"], model.tvp[f"obsy_{i}"], model.tvp[f"obsz_{i}"]
+        cx, cy, cz = (
+            model.tvp[f"obsx_{i}"],
+            model.tvp[f"obsy_{i}"],
+            model.tvp[f"obsz_{i}"],
+        )
         safe_dist = obs["radius"] + margin + DRONE_RADIUS
         dist_expr = ca_sqrt((x - cx) ** 2 + (y - cy) ** 2 + (z - cz) ** 2 + 1e-6)
         mpc.set_nl_cons(
@@ -255,7 +259,16 @@ def build_controller(
     return mpc
 
 
-def _fill_tvp(template, k_or_none, goal_pos, qg, obstacles, dyn_idx, t_abs):
+def _fill_tvp(
+    template,
+    k_or_none,
+    goal_pos,
+    qg,
+    obstacles,
+    obstacle_tvp_idx,
+    t_abs,
+    obstacle_positions=None,
+):
     def setv(key, val):
         if k_or_none is None:
             template[key] = val
@@ -269,8 +282,11 @@ def _fill_tvp(template, k_or_none, goal_pos, qg, obstacles, dyn_idx, t_abs):
     setv("qxg", qg[1])
     setv("qyg", qg[2])
     setv("qzg", qg[3])
-    for i in dyn_idx:
-        px, py, pz = obstacle_pos_at(obstacles[i], t_abs)
+    for i in obstacle_tvp_idx:
+        if obstacle_positions is None:
+            px, py, pz = obstacle_pos_at(obstacles[i], t_abs)
+        else:
+            px, py, pz = obstacle_positions[i]
         setv(f"obsx_{i}", px)
         setv(f"obsy_{i}", py)
         setv(f"obsz_{i}", pz)
@@ -284,11 +300,28 @@ def make_mpc_tvp_fun(template, goal_state, obstacles, dyn_idx, n_horizon, dt):
     below)."""
 
     def tvp_fun(t_now):
-        qg = quat_from_euler(
-            goal_state["euler"]["roll"], goal_state["euler"]["pitch"], goal_state["euler"]["yaw"]
-        )
+        qg = goal_state.get("quaternion_wxyz")
+        if qg is None:
+            qg = quat_from_euler(
+                goal_state["euler"]["roll"],
+                goal_state["euler"]["pitch"],
+                goal_state["euler"]["yaw"],
+            )
+        obstacle_predictions = goal_state.get("obstacle_predictions")
         for k in range(n_horizon + 1):
-            _fill_tvp(template, k, goal_state["pos"], qg, obstacles, dyn_idx, t_now + k * dt)
+            obstacle_positions = (
+                None if obstacle_predictions is None else obstacle_predictions[:, k, :]
+            )
+            _fill_tvp(
+                template,
+                k,
+                goal_state["pos"],
+                qg,
+                obstacles,
+                dyn_idx,
+                t_now + k * dt,
+                obstacle_positions=obstacle_positions,
+            )
         return template
 
     return tvp_fun

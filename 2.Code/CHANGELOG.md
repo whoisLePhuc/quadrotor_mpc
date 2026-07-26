@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.0 — Belief-based controller foundation
+
+- Added a backend-independent `Controller` protocol and validated `VehicleBelief`,
+  `ObstacleBelief`, `ControlGoal` and `ControlSolution` contracts.
+- Wrapped the existing do-mpc controller in `DeterministicNMPCController`.
+- Changed every obstacle center to a time-varying parameter so future estimators can
+  update obstacle means without recompiling the NLP.
+- Routed native MuJoCo execution through the shared controller interface while
+  preserving a clearly isolated perfect-information adapter for deterministic regression.
+- Exposed covariance, chance-margin, risk-allocation, slack and solver-status fields
+  at the runtime boundary for later CC-MPC implementations.
+
 ## 1.2.1 — Persistent interactive session
 
 - Kept the native viewer and telemetry panel open after goal, collision stop or

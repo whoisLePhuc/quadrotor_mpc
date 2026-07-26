@@ -15,16 +15,16 @@ from dataclasses import dataclass
 from typing import Protocol
 
 import numpy as np
-from quad_mpc_core import (
-    build_model,
-    build_controller,
-    make_mpc_tvp_fun,
-    quat_from_euler,
-    quat_to_euler,
-    DRONE_RADIUS,
-)
+
+from belief_from_truth import exact_obstacle_beliefs
+from controller_interface import ControlGoal, Controller, VehicleBelief
 from mujoco_plant import MuJoCoPlant
 from obstacle_motion import predict_obstacle_positions
+from quad_mpc_core import (
+    DRONE_RADIUS,
+    quat_from_euler,
+    quat_to_euler,
+)
 from runtime_control import CommandName
 from vehicle import DEFAULT_QUADROTOR
 
@@ -58,6 +58,11 @@ class CoupledStep:
     solver_time_ms: float
     collided: bool
     paused: bool = False
+    predicted_covariances: np.ndarray | None = None
+    chance_margins: np.ndarray | None = None
+    risk_allocations: np.ndarray | None = None
+    slacks: np.ndarray | None = None
+    solver_status: str = ""
 
 
 class CoupledRuntime(Protocol):
@@ -80,21 +85,6 @@ class CoupledRuntime(Protocol):
     def close(self) -> None: ...
 
 
-def _predicted_positions(mpc) -> np.ndarray | None:
-    """Best-effort extraction of the most recent do-mpc position horizon."""
-    axes: list[np.ndarray] = []
-    try:
-        for name in ("x", "y", "z"):
-            values = np.asarray(mpc.data.prediction(("_x", name)), dtype=float)
-            axes.append(values.reshape(-1))
-    except (AttributeError, KeyError, TypeError, ValueError):
-        return None
-    length = min((len(axis) for axis in axes), default=0)
-    if length < 2:
-        return None
-    return np.column_stack([axis[-length:] for axis in axes])
-
-
 def run_coupled_simulation(
     x0_vals,
     goal_pos,
@@ -115,6 +105,7 @@ def run_coupled_simulation(
     stop_on_goal=False,
     goal_tolerance=0.25,
     stop_on_collision=False,
+    controller: Controller | None = None,
 ):
     """
     `cached`: optional (model, mpc, dyn_idx, goal_state) tuple from
@@ -125,23 +116,25 @@ def run_coupled_simulation(
     solve; caching (and optionally JIT) is where the real speedup comes from, not
     anything MuJoCo-specific.
     """
-    if cached is not None:
-        model, mpc, dyn_idx, goal_state = cached
-        goal_state["pos"] = goal_pos
-        goal_state["euler"] = goal_euler
-        mpc.reset_history()
-    else:
-        model, dyn_idx = build_model(mpc_dt, obstacles)
-        mpc = build_controller(
-            model, obstacles, dyn_idx, bounds, margin, n_horizon, mpc_dt, max_iter=max_iter
+    if controller is not None and cached is not None:
+        raise ValueError("pass either controller or cached, not both")
+    active_controller = controller
+    if active_controller is None:
+        from deterministic_nmpc_controller import DeterministicNMPCController
+
+        active_controller = DeterministicNMPCController(
+            bounds=bounds,
+            obstacle_specs=obstacles,
+            margin=margin,
+            horizon_steps=n_horizon,
+            timestep_s=mpc_dt,
+            max_iter=max_iter,
+            cached=cached,
         )
-        goal_state = {"pos": goal_pos, "euler": goal_euler}
-        mpc.set_tvp_fun(
-            make_mpc_tvp_fun(
-                mpc.get_tvp_template(), goal_state, obstacles, dyn_idx, n_horizon, mpc_dt
-            )
+    elif int(active_controller.horizon_steps) != int(n_horizon):
+        raise ValueError(
+            "injected controller horizon_steps must match run_coupled_simulation n_horizon"
         )
-        mpc.setup()
 
     plant = MuJoCoPlant(x0_vals, goal_pos, obstacles, mj_dt=mj_dt)
 
@@ -151,8 +144,16 @@ def run_coupled_simulation(
 
     q0 = quat_from_euler(x0_vals.get("roll", 0), x0_vals.get("pitch", 0), x0_vals.get("yaw", 0))
     x0 = np.array([x0_vals["x"], x0_vals["y"], x0_vals["z"], 0, 0, 0, *q0, 0, 0, 0]).reshape(-1, 1)
-    mpc.x0 = x0
-    mpc.set_initial_guess()
+    initial_belief = VehicleBelief.exact(x0[:, 0])
+    active_controller.reset(initial_belief)
+    control_goal = ControlGoal(
+        position=np.array([goal_pos["x"], goal_pos["y"], goal_pos["z"]], dtype=float),
+        quaternion_wxyz=quat_from_euler(
+            goal_euler["roll"],
+            goal_euler["pitch"],
+            goal_euler["yaw"],
+        ),
+    )
 
     n_substeps = max(1, round(mpc_dt / mj_dt))
     n_steps = int(sim_seconds / mpc_dt)
@@ -214,9 +215,7 @@ def run_coupled_simulation(
 
             if reset_requested:
                 plant.reset(x0_vals)
-                mpc.reset_history()
-                mpc.x0 = x0
-                mpc.set_initial_guess()
+                active_controller.reset(initial_belief)
                 x_curr = x0.copy()
                 ts.clear()
                 poss.clear()
@@ -266,16 +265,29 @@ def run_coupled_simulation(
                 continue
 
             solver_start = time.perf_counter()
-            u0 = mpc.make_step(x_curr)  # MPC "brain" (its own model)
+            belief = VehicleBelief.exact(x_curr[:, 0])
+            obstacle_beliefs = exact_obstacle_beliefs(
+                obstacles,
+                t,
+                active_controller.horizon_steps,
+                mpc_dt,
+            )
+            solution = active_controller.solve(
+                belief,
+                obstacle_beliefs,
+                control_goal,
+                t,
+            )
+            u0 = solution.command
             solver_time_ms = (time.perf_counter() - solver_start) * 1000.0
-            plant.apply_control_and_step(u0.flatten(), n_substeps, t)  # MuJoCo "true" plant
+            plant.apply_control_and_step(u0, n_substeps, t)  # MuJoCo "true" plant
             x_curr = plant.get_state_13()
 
             ts.append(t)
             position = x_curr[0:3, 0].copy()
             poss.append(position)
             eulers.append(quat_to_euler(x_curr[6:10, 0]))
-            control = u0.flatten().copy()
+            control = u0.copy()
             us.append(control)
 
             step_time = t + mpc_dt
@@ -306,12 +318,17 @@ def run_coupled_simulation(
                         control=control,
                         obstacle_positions=obstacle_positions,
                         obstacle_predictions=obstacle_predictions,
-                        predicted_positions=_predicted_positions(mpc),
+                        predicted_positions=solution.predicted_positions,
                         min_clearance_m=float(min_clear),
                         goal_distance_m=goal_distance,
                         solver_time_ms=solver_time_ms,
                         collided=collided,
                         paused=paused,
+                        predicted_covariances=solution.predicted_covariances,
+                        chance_margins=solution.chance_margins,
+                        risk_allocations=solution.risk_allocations,
+                        slacks=solution.slacks,
+                        solver_status=solution.solver_status,
                     )
                 )
                 if not keep_running:

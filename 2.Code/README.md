@@ -190,6 +190,7 @@ python -m unittest discover -s tests -v
 - [`docs/THEORY_CODE_MAPPING.md`](docs/THEORY_CODE_MAPPING.md)
 - [`docs/VALIDATION.md`](docs/VALIDATION.md)
 - [`docs/NATIVE_MUJOCO_VIEWER.md`](docs/NATIVE_MUJOCO_VIEWER.md)
+- [`docs/CONTROLLER_INTERFACE.md`](docs/CONTROLLER_INTERFACE.md)
 
 ## Directory map
 
@@ -203,6 +204,9 @@ python -m unittest discover -s tests -v
 ├── config/            controller and scenario YAML
 ├── docs/              architecture and research protocol
 ├── models/            sourced MuJoCo MJCF and mesh assets
+├── controller_interface.py belief-based native controller contract
+├── deterministic_nmpc_controller.py do-mpc adapter for the deterministic baseline
+├── belief_from_truth.py transitional zero-covariance belief source
 ├── obstacle_motion.py shared static/dynamic obstacle predictor
 ├── native_telemetry.py bounded telemetry, recording and replay loading
 ├── native_desktop_panel.py separate Qt control/plot process

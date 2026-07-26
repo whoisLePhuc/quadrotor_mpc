@@ -232,6 +232,10 @@ class InteractiveLoopTests(unittest.TestCase):
         self.assertEqual(runtime.reset_count, 1)
         self.assertEqual(len(runtime.steps), 1)
         self.assertTrue(runtime.steps[0].paused)
+        self.assertEqual(runtime.steps[0].solver_status, "SOLVED_DETERMINISTIC")
+        self.assertEqual(runtime.steps[0].predicted_covariances.shape[1:], (12, 12))
+        self.assertEqual(runtime.steps[0].chance_margins.shape[1], len(config.obstacles))
+        self.assertEqual(runtime.steps[0].risk_allocations.shape, runtime.steps[0].slacks.shape)
         self.assertTrue(runtime.closed)
 
     def test_goal_completion_holds_until_run_again_then_stop(self):
