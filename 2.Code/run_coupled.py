@@ -19,6 +19,7 @@ import numpy as np
 from belief_from_truth import exact_obstacle_beliefs
 from controller_interface import ControlGoal, Controller, VehicleBelief
 from mujoco_plant import MuJoCoPlant
+from native_chance_constraints import ChanceConstraintOptions
 from native_covariance import CovariancePropagationOptions
 from native_estimation import EstimationOptions, NativeBeliefEstimator
 from obstacle_motion import predict_obstacle_positions
@@ -75,6 +76,8 @@ class CoupledStep:
     slacks: np.ndarray | None = None
     solver_status: str = ""
     predicted_obstacle_covariances: np.ndarray | None = None
+    projected_uncertainties: np.ndarray | None = None
+    tightened_safety_radii: np.ndarray | None = None
 
 
 class CoupledRuntime(Protocol):
@@ -120,6 +123,7 @@ def run_coupled_simulation(
     controller: Controller | None = None,
     estimation_options: EstimationOptions | None = None,
     covariance_options: CovariancePropagationOptions | None = None,
+    chance_options: ChanceConstraintOptions | None = None,
 ):
     """
     `cached`: optional (model, mpc, dyn_idx, goal_state) tuple from
@@ -134,9 +138,20 @@ def run_coupled_simulation(
         raise ValueError("pass either controller or cached, not both")
     active_controller = controller
     if active_controller is None:
-        from deterministic_nmpc_controller import DeterministicNMPCController
+        effective_chance_options = (
+            ChanceConstraintOptions() if chance_options is None else chance_options
+        )
+        if effective_chance_options.enabled:
+            from chance_constrained_nmpc_controller import (
+                SphericalChanceConstrainedNMPCController,
+            )
 
-        active_controller = DeterministicNMPCController(
+            controller_type = SphericalChanceConstrainedNMPCController
+        else:
+            from deterministic_nmpc_controller import DeterministicNMPCController
+
+            controller_type = DeterministicNMPCController
+        active_controller = controller_type(
             bounds=bounds,
             obstacle_specs=obstacles,
             margin=margin,
@@ -145,6 +160,7 @@ def run_coupled_simulation(
             max_iter=max_iter,
             cached=cached,
             covariance_options=covariance_options,
+            chance_options=effective_chance_options,
         )
     elif int(active_controller.horizon_steps) != int(n_horizon):
         raise ValueError(
@@ -216,6 +232,9 @@ def run_coupled_simulation(
     estimated_states, estimation_covariances = [], []
     obstacle_estimated_states, obstacle_estimation_covariances = [], []
     horizon_vehicle_covariances, horizon_obstacle_covariances = [], []
+    chance_margin_history, risk_allocation_history, slack_history = [], [], []
+    projected_uncertainty_history, tightened_radius_history = [], []
+    solver_status_history: list[str] = []
     vehicle_measurement_history, obstacle_measurement_history = [], []
     vehicle_measurements, obstacle_measurements = [], []
     collided = False
@@ -310,6 +329,12 @@ def run_coupled_simulation(
                 obstacle_estimation_covariances.clear()
                 horizon_vehicle_covariances.clear()
                 horizon_obstacle_covariances.clear()
+                chance_margin_history.clear()
+                risk_allocation_history.clear()
+                slack_history.clear()
+                projected_uncertainty_history.clear()
+                tightened_radius_history.clear()
+                solver_status_history.clear()
                 vehicle_measurement_history.clear()
                 obstacle_measurement_history.clear()
                 vehicle_measurements.clear()
@@ -365,6 +390,12 @@ def run_coupled_simulation(
             u0 = solution.command
             horizon_vehicle_covariances.append(solution.predicted_covariances.copy())
             horizon_obstacle_covariances.append(solution.predicted_obstacle_covariances.copy())
+            chance_margin_history.append(solution.chance_margins.copy())
+            risk_allocation_history.append(solution.risk_allocations.copy())
+            slack_history.append(solution.slacks.copy())
+            projected_uncertainty_history.append(solution.projected_uncertainties.copy())
+            tightened_radius_history.append(solution.tightened_safety_radii.copy())
+            solver_status_history.append(solution.solver_status)
             solver_time_ms = (time.perf_counter() - solver_start) * 1000.0
             plant.apply_control_and_step(u0, n_substeps, t)  # MuJoCo "true" plant
             x_curr = plant.get_state_13()
@@ -480,6 +511,8 @@ def run_coupled_simulation(
                         slacks=solution.slacks,
                         solver_status=solution.solver_status,
                         predicted_obstacle_covariances=(solution.predicted_obstacle_covariances),
+                        projected_uncertainties=solution.projected_uncertainties,
+                        tightened_safety_radii=solution.tightened_safety_radii,
                     )
                 )
                 if not keep_running:
@@ -539,6 +572,18 @@ def run_coupled_simulation(
             horizon_obstacle_covariances,
             dtype=float,
         ),
+        "chance_residual_horizon": np.asarray(chance_margin_history, dtype=float),
+        "risk_allocation_horizon": np.asarray(risk_allocation_history, dtype=float),
+        "slack_horizon": np.asarray(slack_history, dtype=float),
+        "projected_uncertainty_horizon": np.asarray(
+            projected_uncertainty_history,
+            dtype=float,
+        ),
+        "tightened_safety_radius_horizon": np.asarray(
+            tightened_radius_history,
+            dtype=float,
+        ),
+        "solver_status": np.asarray(solver_status_history, dtype=str),
         "vehicle_measurement_available": np.asarray(vehicle_measurement_history, dtype=bool),
         "obstacle_measurement_available": np.asarray(obstacle_measurement_history, dtype=bool),
         "vehicle_measurement_state": np.asarray(vehicle_measurements, dtype=float),

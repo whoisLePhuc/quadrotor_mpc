@@ -29,6 +29,12 @@ controller:
   covariance_propagation:
     enabled: false
     mode: open_loop
+  chance_constraints:
+    enabled: false
+    type: spherical
+    individual_epsilon: 0.05
+    soft_constraint: true
+    slack_penalty: 1000000.0
 
 simulation:
   duration_s: 10.0

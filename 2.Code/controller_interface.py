@@ -199,6 +199,8 @@ class ControlSolution:
     slacks: np.ndarray
     solver_status: str
     predicted_obstacle_covariances: np.ndarray | None = None
+    projected_uncertainties: np.ndarray | None = None
+    tightened_safety_radii: np.ndarray | None = None
 
     def __post_init__(self) -> None:
         command = _readonly_array(self.command, (CONTROL_SIZE,), "ControlSolution.command")
@@ -225,6 +227,24 @@ class ControlSolution:
         if risks.shape != margins.shape or slacks.shape != margins.shape:
             raise ValueError(
                 "ControlSolution risk_allocations and slacks must match chance_margins"
+            )
+        projected_uncertainties = (
+            np.zeros_like(margins)
+            if self.projected_uncertainties is None
+            else np.asarray(self.projected_uncertainties, dtype=float)
+        )
+        tightened_safety_radii = (
+            np.zeros_like(margins)
+            if self.tightened_safety_radii is None
+            else np.asarray(self.tightened_safety_radii, dtype=float)
+        )
+        if (
+            projected_uncertainties.shape != margins.shape
+            or tightened_safety_radii.shape != margins.shape
+        ):
+            raise ValueError(
+                "ControlSolution projected_uncertainties and tightened_safety_radii "
+                "must match chance_margins"
             )
         if self.predicted_obstacle_covariances is None:
             obstacle_covariances = np.zeros(
@@ -254,6 +274,8 @@ class ControlSolution:
             ("chance_margins", margins),
             ("risk_allocations", risks),
             ("slacks", slacks),
+            ("projected_uncertainties", projected_uncertainties),
+            ("tightened_safety_radii", tightened_safety_radii),
         ):
             if not np.all(np.isfinite(array)):
                 raise ValueError(f"ControlSolution.{label} must contain only finite values")

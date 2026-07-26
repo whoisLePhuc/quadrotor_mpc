@@ -142,6 +142,13 @@ def build_model(dt, obstacles):
         model.set_variable("_tvp", f"obsx_{i}")
         model.set_variable("_tvp", f"obsy_{i}")
         model.set_variable("_tvp", f"obsz_{i}")
+        # Chance-constraint quantities are computed outside the NLP.  Keeping
+        # them as TVPs makes one compiled model reusable for deterministic and
+        # chance-constrained runs.
+        model.set_variable("_tvp", f"obs_sigma_{i}")
+        model.set_variable("_tvp", f"obs_beta_{i}")
+        model.set_variable("_tvp", f"obs_risk_{i}")
+        model.set_variable("_tvp", f"obs_safe_dist_{i}")
 
     xvec = vertcat(*xvars)
     uvec = vertcat(*uvars)
@@ -180,6 +187,7 @@ def build_controller(
     w_rate=(2, 2, 0.5),
     r_ctrl=(0.05, 0.08, 0.08, 0.05),
     penalty=1e4,
+    soft_obstacle_constraints=True,
 ):
     mpc = do_mpc.controller.MPC(model)
     nlpsol_opts = {
@@ -246,13 +254,13 @@ def build_controller(
             model.tvp[f"obsy_{i}"],
             model.tvp[f"obsz_{i}"],
         )
-        safe_dist = obs["radius"] + margin + DRONE_RADIUS
+        safe_dist = model.tvp[f"obs_safe_dist_{i}"]
         dist_expr = ca_sqrt((x - cx) ** 2 + (y - cy) ** 2 + (z - cz) ** 2 + 1e-6)
         mpc.set_nl_cons(
             f"obstacle_{i}",
             safe_dist - dist_expr,
             ub=0,
-            soft_constraint=True,
+            soft_constraint=soft_obstacle_constraints,
             penalty_term_cons=penalty,
         )
 
@@ -268,6 +276,10 @@ def _fill_tvp(
     obstacle_tvp_idx,
     t_abs,
     obstacle_positions=None,
+    obstacle_sigmas=None,
+    obstacle_betas=None,
+    obstacle_risks=None,
+    obstacle_safe_distances=None,
 ):
     def setv(key, val):
         if k_or_none is None:
@@ -290,9 +302,32 @@ def _fill_tvp(
         setv(f"obsx_{i}", px)
         setv(f"obsy_{i}", py)
         setv(f"obsz_{i}", pz)
+        base_safe_distance = obstacles[i]["radius"] + DRONE_RADIUS
+        # The configured controller margin is already included by callers that
+        # supply obstacle_safe_distances.  Legacy simulator TVPs fall back to
+        # geometry-only values because they do not use the controller constraint.
+        setv(f"obs_sigma_{i}", 0.0 if obstacle_sigmas is None else obstacle_sigmas[i])
+        setv(f"obs_beta_{i}", 0.0 if obstacle_betas is None else obstacle_betas[i])
+        setv(f"obs_risk_{i}", 0.0 if obstacle_risks is None else obstacle_risks[i])
+        setv(
+            f"obs_safe_dist_{i}",
+            (
+                base_safe_distance
+                if obstacle_safe_distances is None
+                else obstacle_safe_distances[i]
+            ),
+        )
 
 
-def make_mpc_tvp_fun(template, goal_state, obstacles, dyn_idx, n_horizon, dt):
+def make_mpc_tvp_fun(
+    template,
+    goal_state,
+    obstacles,
+    dyn_idx,
+    n_horizon,
+    dt,
+    margin=0.0,
+):
     """`goal_state` is a MUTABLE dict {'pos':..., 'euler':...} read fresh on every
     call (rather than a value baked into the closure at build time) - this is what
     lets the same compiled MPC controller be reused for a new start/goal without
@@ -308,6 +343,22 @@ def make_mpc_tvp_fun(template, goal_state, obstacles, dyn_idx, n_horizon, dt):
                 goal_state["euler"]["yaw"],
             )
         obstacle_predictions = goal_state.get("obstacle_predictions")
+        obstacle_sigmas = goal_state.get("obstacle_projected_sigmas")
+        obstacle_betas = goal_state.get("obstacle_betas")
+        obstacle_risks = goal_state.get("obstacle_risk_allocations")
+        obstacle_safe_distances = goal_state.get("obstacle_safe_distances")
+        if obstacle_safe_distances is None:
+            obstacle_safe_distances = np.repeat(
+                np.asarray(
+                    [
+                        obstacle["radius"] + float(margin) + DRONE_RADIUS
+                        for obstacle in obstacles
+                    ],
+                    dtype=float,
+                )[:, None],
+                n_horizon + 1,
+                axis=1,
+            )
         for k in range(n_horizon + 1):
             obstacle_positions = (
                 None if obstacle_predictions is None else obstacle_predictions[:, k, :]
@@ -321,6 +372,18 @@ def make_mpc_tvp_fun(template, goal_state, obstacles, dyn_idx, n_horizon, dt):
                 dyn_idx,
                 t_now + k * dt,
                 obstacle_positions=obstacle_positions,
+                obstacle_sigmas=(
+                    None if obstacle_sigmas is None else obstacle_sigmas[:, k]
+                ),
+                obstacle_betas=None if obstacle_betas is None else obstacle_betas[:, k],
+                obstacle_risks=(
+                    None if obstacle_risks is None else obstacle_risks[:, k]
+                ),
+                obstacle_safe_distances=(
+                    None
+                    if obstacle_safe_distances is None
+                    else obstacle_safe_distances[:, k]
+                ),
             )
         return template
 
@@ -364,7 +427,15 @@ def build_cached_mpc(bounds, obstacles, margin, n_horizon=20, dt=0.05, max_iter=
     )
     goal_state = {"pos": {"x": 0, "y": 0, "z": 1}, "euler": {"roll": 0, "pitch": 0, "yaw": 0}}
     mpc.set_tvp_fun(
-        make_mpc_tvp_fun(mpc.get_tvp_template(), goal_state, obstacles, dyn_idx, n_horizon, dt)
+        make_mpc_tvp_fun(
+            mpc.get_tvp_template(),
+            goal_state,
+            obstacles,
+            dyn_idx,
+            n_horizon,
+            dt,
+            margin,
+        )
     )
     mpc.setup()
     return model, mpc, dyn_idx, goal_state
@@ -406,7 +477,15 @@ def run_simulation(
         )
         goal_state = {"pos": goal_pos, "euler": goal_euler}
         mpc.set_tvp_fun(
-            make_mpc_tvp_fun(mpc.get_tvp_template(), goal_state, obstacles, dyn_idx, n_horizon, dt)
+            make_mpc_tvp_fun(
+                mpc.get_tvp_template(),
+                goal_state,
+                obstacles,
+                dyn_idx,
+                n_horizon,
+                dt,
+                margin,
+            )
         )
         mpc.setup()
 

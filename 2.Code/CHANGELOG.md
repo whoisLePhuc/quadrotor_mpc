@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.6.0 — Native spherical chance constraints
+
+- Added individual Gaussian spherical chance constraints with
+  collision-normal covariance projection.
+- Added one-iteration shifted-nominal tightening outside the do-mpc NLP.
+- Added TVPs for projected sigma, Gaussian quantile, individual risk and
+  time-varying tightened safety radius.
+- Added explicit soft-constraint slack telemetry and `SOLVED_SAFE` /
+  `SOLVED_WITH_SLACK` classification.
+- Added a complete native CC-MPC scenario and preserved deterministic
+  regression configurations.
+- Extended native telemetry, recording, replay and visualization with chance
+  residual, risk, slack, projected uncertainty and tightened safety radii.
+
 ## 1.5.0 — Native horizon covariance propagation
 
 - Added 12D quaternion error-state covariance propagation along the optimized

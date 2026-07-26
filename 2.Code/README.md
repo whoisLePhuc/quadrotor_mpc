@@ -73,6 +73,16 @@ MUJOCO_GL=glfw python run_mujoco_native.py \
   --config config/mujoco_native_estimation.yaml
 ```
 
+Run the Stage 4 native spherical CC-MPC with the same estimator, plant and seed:
+
+```bash
+MUJOCO_GL=glfw python run_mujoco_native.py \
+  --config config/mujoco_native_ccmpc.yaml
+```
+
+This configuration uses an individual risk of `0.05` for each
+horizon-step/obstacle constraint. It is not yet a 5% joint horizon guarantee.
+
 The interactive session remains open after goal, collision stop, or configured
 duration. Use **Run again** in the panel (or `Enter` in the MuJoCo window) to
 restart the same scenario, and **Stop**/`Esc` or window close to exit.
@@ -201,6 +211,7 @@ python -m unittest discover -s tests -v
 - [`docs/CONTROLLER_INTERFACE.md`](docs/CONTROLLER_INTERFACE.md)
 - [`docs/NATIVE_SENSOR_ESTIMATION.md`](docs/NATIVE_SENSOR_ESTIMATION.md)
 - [`docs/HORIZON_COVARIANCE_PROPAGATION.md`](docs/HORIZON_COVARIANCE_PROPAGATION.md)
+- [`docs/SPHERICAL_CHANCE_CONSTRAINTS.md`](docs/SPHERICAL_CHANCE_CONSTRAINTS.md)
 
 ## Directory map
 
@@ -219,6 +230,8 @@ python -m unittest discover -s tests -v
 ├── belief_from_truth.py transitional zero-covariance belief source
 ├── native_estimation.py seeded sensors, vehicle ESEKF and obstacle KFs
 ├── native_covariance.py vehicle/obstacle prediction-horizon covariance
+├── native_chance_constraints.py spherical tightening and residual evaluation
+├── chance_constrained_nmpc_controller.py explicit native CC-NMPC controller
 ├── obstacle_motion.py shared static/dynamic obstacle predictor
 ├── native_telemetry.py bounded telemetry, recording and replay loading
 ├── native_desktop_panel.py separate Qt control/plot process

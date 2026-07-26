@@ -17,8 +17,9 @@ from typing import TYPE_CHECKING, Any, Mapping, Sequence
 import numpy as np
 import yaml
 
-from native_desktop_panel import DesktopPanelOptions, DesktopPanelProcess
+from native_chance_constraints import ChanceConstraintOptions
 from native_covariance import CovariancePropagationOptions
+from native_desktop_panel import DesktopPanelOptions, DesktopPanelProcess
 from native_estimation import EstimationOptions
 from native_telemetry import (
     NativeRunRecorder,
@@ -125,6 +126,7 @@ class NativeMuJoCoConfig:
     stop_on_collision: bool
     estimation: EstimationOptions
     covariance_propagation: CovariancePropagationOptions
+    chance_constraints: ChanceConstraintOptions
     viewer: NativeViewerOptions
     panel: DesktopPanelOptions
     recording: RecordingOptions
@@ -145,6 +147,10 @@ class NativeMuJoCoConfig:
         covariance_raw = _mapping(
             controller_raw.get("covariance_propagation", {}),
             "controller.covariance_propagation",
+        )
+        chance_raw = _mapping(
+            controller_raw.get("chance_constraints", {}),
+            "controller.chance_constraints",
         )
 
         start = _xyz(start_raw, "start")
@@ -172,6 +178,14 @@ class NativeMuJoCoConfig:
         if horizon_steps < 1 or max_solver_iterations < 1:
             raise ValueError("horizon_steps and max_solver_iterations must be >= 1")
 
+        covariance_options = CovariancePropagationOptions.from_mapping(covariance_raw)
+        chance_options = ChanceConstraintOptions.from_mapping(chance_raw)
+        if chance_options.enabled and not covariance_options.enabled:
+            raise ValueError(
+                "enabled controller.chance_constraints requires "
+                "controller.covariance_propagation.enabled: true"
+            )
+
         return cls(
             name=str(raw.get("name", "nmpc-mujoco-native")),
             start=start,
@@ -197,7 +211,8 @@ class NativeMuJoCoConfig:
             ),
             stop_on_collision=bool(simulation_raw.get("stop_on_collision", False)),
             estimation=EstimationOptions.from_mapping(estimation_raw),
-            covariance_propagation=CovariancePropagationOptions.from_mapping(covariance_raw),
+            covariance_propagation=covariance_options,
+            chance_constraints=chance_options,
             viewer=NativeViewerOptions.from_mapping(viewer_raw),
             panel=DesktopPanelOptions.from_mapping(dict(panel_raw)),
             recording=RecordingOptions.from_mapping(recording_raw),
@@ -216,6 +231,7 @@ class NativeMuJoCoConfig:
                 "bounds": dict(self.bounds),
                 "safety_margin": self.safety_margin,
                 "covariance_propagation": self.covariance_propagation.to_mapping(),
+                "chance_constraints": self.chance_constraints.to_mapping(),
             },
             "simulation": {
                 "duration_s": self.duration_s,
@@ -389,14 +405,29 @@ class NativeMuJoCoViewer:
                 (1.0, 0.78, 0.05, 0.90),
             )
             if self._show_safety_envelopes:
-                for obstacle_position, radius in zip(
-                    step.obstacle_positions, self._context.safety_radii
+                tightened = getattr(step, "tightened_safety_radii", None)
+                current_tightened = (
+                    None
+                    if tightened is None or np.asarray(tightened).size == 0
+                    else np.asarray(tightened, dtype=float)[0]
+                )
+                for obstacle_index, (obstacle_position, radius) in enumerate(
+                    zip(step.obstacle_positions, self._context.safety_radii)
                 ):
                     self._add_sphere(
                         np.asarray(obstacle_position, dtype=float),
                         float(radius),
                         (1.0, 0.45, 0.05, 0.12),
                     )
+                    if (
+                        current_tightened is not None
+                        and current_tightened[obstacle_index] > float(radius) + 1e-9
+                    ):
+                        self._add_sphere(
+                            np.asarray(obstacle_position, dtype=float),
+                            float(current_tightened[obstacle_index]),
+                            (0.20, 0.65, 1.0, 0.08),
+                        )
             if self._show_obstacle_prediction:
                 displayed_predictions = getattr(step, "estimated_obstacle_predictions", None)
                 if displayed_predictions is None:

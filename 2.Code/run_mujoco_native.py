@@ -159,6 +159,7 @@ def main(argv: list[str] | None = None) -> int:
             stop_on_collision=config.stop_on_collision,
             estimation_options=config.estimation,
             covariance_options=config.covariance_propagation,
+            chance_options=config.chance_constraints,
         )
     recording_path = runtime.finalize(result) if recording is None else None
 

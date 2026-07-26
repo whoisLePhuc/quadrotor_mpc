@@ -44,6 +44,8 @@ inputs are normalized at construction.
 | `nominal_states` | optimized mean state horizon | `(N+1, 13)` |
 | `predicted_covariances` | error-state covariance horizon | `(N+1, 12, 12)` |
 | `predicted_obstacle_covariances` | 6D covariance horizon per obstacle | `(N+1, n_obs, 6, 6)` |
+| `projected_uncertainties` | collision-normal relative standard deviation | `(N+1, n_obs)` |
+| `tightened_safety_radii` | deterministic radius supplied to the NLP | `(N+1, n_obs)` |
 | `chance_margins` | signed obstacle constraint margins | `(N+1, n_obs)` |
 | `risk_allocations` | allocated risk per horizon constraint | `(N+1, n_obs)` |
 | `slacks` | nonnegative constraint relaxation | `(N+1, n_obs)` |
@@ -94,3 +96,8 @@ No production code imports `4.Reference`.
 behind the same controller boundary. Open-loop propagation is the Stage 3
 default; finite-horizon feedback-aware LQR propagation is an optional
 diagnostic mode. See `HORIZON_COVARIANCE_PROPAGATION.md`.
+
+When `controller.chance_constraints.enabled: true`,
+`SphericalChanceConstrainedNMPCController` projects relative covariance,
+supplies tightened radii as TVPs and reports residual/slack. See
+`SPHERICAL_CHANCE_CONSTRAINTS.md`.

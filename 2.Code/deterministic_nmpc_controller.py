@@ -13,6 +13,11 @@ from controller_interface import (
     ObstacleBelief,
     VehicleBelief,
 )
+from native_chance_constraints import (
+    ChanceConstraintOptions,
+    build_spherical_chance_profile,
+    evaluate_spherical_constraints,
+)
 from native_covariance import (
     CovariancePropagationOptions,
     HorizonCovariancePropagator,
@@ -88,6 +93,7 @@ class DeterministicNMPCController:
         max_iter: int = 60,
         cached=None,
         covariance_options: CovariancePropagationOptions | None = None,
+        chance_options: ChanceConstraintOptions | None = None,
     ):
         self._obstacle_specs = tuple(dict(item) for item in obstacle_specs)
         self._margin = float(margin)
@@ -100,12 +106,26 @@ class DeterministicNMPCController:
         self._covariance_options = (
             CovariancePropagationOptions() if covariance_options is None else covariance_options
         )
+        self._chance_options = (
+            ChanceConstraintOptions() if chance_options is None else chance_options
+        )
+        if self._chance_options.enabled and not self._covariance_options.enabled:
+            raise ValueError(
+                "spherical chance constraints require covariance propagation to be enabled"
+            )
         self._covariance_propagator = HorizonCovariancePropagator(
             self._covariance_options,
             self._timestep_s,
         )
+        self._last_nominal_states: np.ndarray | None = None
+        self._last_nominal_controls: np.ndarray | None = None
 
         if cached is not None:
+            if self._chance_options.enabled:
+                raise ValueError(
+                    "a deterministic cached controller cannot be reused for enabled "
+                    "chance constraints"
+                )
             self.model, self.mpc, self._obstacle_tvp_idx, self._goal_state = cached
             self.mpc.reset_history()
         else:
@@ -122,6 +142,12 @@ class DeterministicNMPCController:
                 self._horizon_steps,
                 self._timestep_s,
                 max_iter=max_iter,
+                penalty=(
+                    self._chance_options.slack_penalty
+                    if self._chance_options.enabled
+                    else 1e4
+                ),
+                soft_obstacle_constraints=self._chance_options.soft_constraint,
             )
             self._goal_state = {
                 "pos": {"x": 0.0, "y": 0.0, "z": 1.0},
@@ -135,6 +161,7 @@ class DeterministicNMPCController:
                     self._obstacle_tvp_idx,
                     self._horizon_steps,
                     self._timestep_s,
+                    self._margin,
                 )
             )
             self.mpc.setup()
@@ -145,9 +172,49 @@ class DeterministicNMPCController:
 
     def reset(self, belief: VehicleBelief) -> None:
         self.mpc.reset_history()
-        self._goal_state.pop("obstacle_predictions", None)
+        for key in (
+            "obstacle_predictions",
+            "obstacle_projected_sigmas",
+            "obstacle_betas",
+            "obstacle_risk_allocations",
+            "obstacle_safe_distances",
+        ):
+            self._goal_state.pop(key, None)
+        self._last_nominal_states = None
+        self._last_nominal_controls = None
         self.mpc.x0 = belief.mean_state_13.reshape(-1, 1)
         self.mpc.set_initial_guess()
+
+    def _seed_nominal(
+        self,
+        belief: VehicleBelief,
+        goal: ControlGoal,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Shift the prior solution or construct a deterministic first-tick seed."""
+        steps = self._horizon_steps + 1
+        if (
+            self._last_nominal_states is not None
+            and self._last_nominal_states.shape == (steps, 13)
+            and self._last_nominal_controls is not None
+            and self._last_nominal_controls.shape == (self._horizon_steps, 4)
+        ):
+            states = np.vstack(
+                [self._last_nominal_states[1:], self._last_nominal_states[-1:]]
+            )
+            controls = np.vstack(
+                [self._last_nominal_controls[1:], self._last_nominal_controls[-1:]]
+            )
+            states[0] = belief.mean_state_13
+            return states, controls
+
+        states = np.repeat(belief.mean_state_13.reshape(1, 13), steps, axis=0)
+        interpolation = np.linspace(0.0, 1.0, steps)[:, None]
+        states[:, :3] = (
+            belief.mean_state_13[:3]
+            + interpolation * (goal.position - belief.mean_state_13[:3])
+        )
+        controls = np.zeros((self._horizon_steps, 4), dtype=float)
+        return states, controls
 
     def solve(
         self,
@@ -173,6 +240,42 @@ class DeterministicNMPCController:
         else:
             obstacle_predictions = np.empty((0, prediction_steps, 3), dtype=float)
 
+        seed_states, seed_controls = self._seed_nominal(belief, goal)
+        if self._covariance_options.enabled:
+            (
+                tightening_vehicle_covariances,
+                tightening_obstacle_covariances,
+            ) = self._covariance_propagator.propagate(
+                belief,
+                obstacles,
+                seed_states,
+                seed_controls,
+            )
+        else:
+            tightening_vehicle_covariances = np.zeros(
+                (prediction_steps, 12, 12),
+                dtype=float,
+            )
+            tightening_obstacle_covariances = np.zeros(
+                (prediction_steps, len(obstacles), 6, 6),
+                dtype=float,
+            )
+        base_safety_radii = np.asarray(
+            [
+                obstacle.shape.bounding_radius_m + self._margin + DRONE_RADIUS
+                for obstacle in obstacles
+            ],
+            dtype=float,
+        )
+        chance_profile = build_spherical_chance_profile(
+            vehicle_positions=seed_states[:, :3],
+            obstacle_positions=obstacle_predictions,
+            vehicle_covariances=tightening_vehicle_covariances,
+            obstacle_covariances=tightening_obstacle_covariances,
+            base_safety_radii_m=base_safety_radii,
+            options=self._chance_options,
+        )
+
         self._goal_state["pos"] = {
             axis: float(value) for axis, value in zip(("x", "y", "z"), goal.position)
         }
@@ -180,6 +283,20 @@ class DeterministicNMPCController:
         # quaternion -> Euler -> quaternion conversion at the interface boundary.
         self._goal_state["quaternion_wxyz"] = goal.quaternion_wxyz
         self._goal_state["obstacle_predictions"] = obstacle_predictions
+        self._goal_state["obstacle_projected_sigmas"] = (
+            chance_profile.projected_sigmas_m.T
+        )
+        self._goal_state["obstacle_betas"] = np.full(
+            (len(obstacles), prediction_steps),
+            self._chance_options.beta if self._chance_options.enabled else 0.0,
+            dtype=float,
+        )
+        self._goal_state["obstacle_risk_allocations"] = (
+            chance_profile.risk_allocations.T
+        )
+        self._goal_state["obstacle_safe_distances"] = (
+            chance_profile.safety_radii_m.T
+        )
         self._goal_state["prediction_time_s"] = float(time_s)
 
         command = np.asarray(
@@ -193,7 +310,12 @@ class DeterministicNMPCController:
             command,
             horizon_length,
         )
-        if self._covariance_options.enabled:
+        self._last_nominal_states = nominal_states.copy()
+        self._last_nominal_controls = nominal_controls.copy()
+        if (
+            self._covariance_options.enabled
+            and horizon_length != tightening_vehicle_covariances.shape[0]
+        ):
             (
                 predicted_covariances,
                 predicted_obstacle_covariances,
@@ -204,36 +326,73 @@ class DeterministicNMPCController:
                 nominal_controls,
             )
         else:
-            predicted_covariances = np.zeros(
-                (horizon_length, 12, 12),
-                dtype=float,
-            )
-            predicted_obstacle_covariances = np.zeros(
-                (horizon_length, len(obstacles), 6, 6),
-                dtype=float,
+            predicted_covariances = tightening_vehicle_covariances[:horizon_length].copy()
+            predicted_obstacle_covariances = (
+                tightening_obstacle_covariances[:horizon_length].copy()
             )
 
-        margins = np.empty((horizon_length, len(obstacles)), dtype=float)
-        for obstacle_index, obstacle in enumerate(obstacles):
-            positions = obstacle_predictions[obstacle_index]
-            if positions.shape[0] != horizon_length:
-                source = np.linspace(0.0, 1.0, positions.shape[0])
-                target = np.linspace(0.0, 1.0, horizon_length)
-                positions = np.column_stack(
-                    [np.interp(target, source, positions[:, axis]) for axis in range(3)]
-                )
-            safe_distance = obstacle.shape.bounding_radius_m + self._margin + DRONE_RADIUS
-            margins[:, obstacle_index] = (
-                np.linalg.norm(nominal_states[:, :3] - positions, axis=1) - safe_distance
+        used_obstacle_predictions = obstacle_predictions
+        used_sigmas = chance_profile.projected_sigmas_m
+        used_risks = chance_profile.risk_allocations
+        used_safety_radii = chance_profile.safety_radii_m
+        if horizon_length != prediction_steps:
+            target = np.linspace(0.0, 1.0, horizon_length)
+            source = np.linspace(0.0, 1.0, prediction_steps)
+            used_obstacle_predictions = np.asarray(
+                [
+                    np.column_stack(
+                        [
+                            np.interp(target, source, positions[:, axis])
+                            for axis in range(3)
+                        ]
+                    )
+                    for positions in obstacle_predictions
+                ],
+                dtype=float,
             )
+            used_sigmas = np.column_stack(
+                [
+                    np.interp(target, source, chance_profile.projected_sigmas_m[:, index])
+                    for index in range(len(obstacles))
+                ]
+            )
+            used_risks = np.column_stack(
+                [
+                    np.interp(target, source, chance_profile.risk_allocations[:, index])
+                    for index in range(len(obstacles))
+                ]
+            )
+            used_safety_radii = np.column_stack(
+                [
+                    np.interp(target, source, chance_profile.safety_radii_m[:, index])
+                    for index in range(len(obstacles))
+                ]
+            )
+        margins, slacks = evaluate_spherical_constraints(
+            vehicle_positions=nominal_states[:, :3],
+            obstacle_positions=used_obstacle_predictions,
+            safety_radii_m=used_safety_radii,
+            distance_smoothing_m2=self._chance_options.distance_smoothing_m2,
+        )
+        if self._chance_options.enabled:
+            solver_status = (
+                "SOLVED_SAFE"
+                if not slacks.size
+                or float(np.max(slacks)) <= self._chance_options.slack_tolerance_m
+                else "SOLVED_WITH_SLACK"
+            )
+        else:
+            solver_status = "SOLVED_DETERMINISTIC"
 
         return ControlSolution(
             command=command,
             nominal_states=nominal_states,
             predicted_covariances=predicted_covariances,
             chance_margins=margins,
-            risk_allocations=np.zeros_like(margins),
-            slacks=np.maximum(0.0, -margins),
-            solver_status="SOLVED_DETERMINISTIC",
+            risk_allocations=used_risks,
+            slacks=slacks,
+            solver_status=solver_status,
             predicted_obstacle_covariances=predicted_obstacle_covariances,
+            projected_uncertainties=used_sigmas,
+            tightened_safety_radii=used_safety_radii,
         )

@@ -249,7 +249,15 @@ def _panel_main(
                     f"<b style='color:{color}'>{state}</b> &nbsp; "
                     f"t={latest['time_s']:.2f}s &nbsp; goal={latest['goal_distance_m']:.3f}m &nbsp; "
                     f"clearance={latest['min_clearance_m']:.3f}m &nbsp; "
-                    f"solve={latest['solver_time_ms']:.1f}ms"
+                    f"solve={latest['solver_time_ms']:.1f}ms &nbsp; "
+                    f"solver={latest.get('solver_status', '')}"
+                    + (
+                        f" &nbsp; chance-res={latest['minimum_chance_residual_m']:.3f}m"
+                        f" &nbsp; slack={latest['maximum_slack_m']:.3f}m"
+                        if latest.get("minimum_chance_residual_m") is not None
+                        and latest.get("maximum_slack_m") is not None
+                        else ""
+                    )
                     + (
                         f" &nbsp; reason={latest.get('completion_reason', 'completed')}"
                         if latest.get("completed")

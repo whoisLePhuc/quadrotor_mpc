@@ -20,6 +20,9 @@ Validation is layered:
 10. Horizon covariance validation: initial-belief agreement, local-error
     linearization, vehicle/obstacle horizon dimensions, symmetry, PSD, open-loop
     growth, feedback-aware behavior and numeric recording round-trip.
+11. Native spherical chance constraints: Gaussian quantile, relative covariance
+    projection, TVP tightening, risk/slack shape agreement, status semantics and
+    deterministic-versus-CC-MPC paired regression.
 
 For a native release, run both `config/mujoco_native.yaml` and
 `config/mujoco_native_dynamic.yaml`. Check that the reported current obstacle
@@ -77,3 +80,19 @@ Run `config/mujoco_native_estimation.yaml` and verify:
 The `feedback_lqr` mode is checked as a propagation approximation, not as a
 replacement controller. No chance-constraint guarantee may be claimed until
 Stage 4 makes the propagated uncertainty change the optimization constraint.
+
+## Stage 4 spherical chance-constraint checks
+
+Run `config/mujoco_native_estimation.yaml` and
+`config/mujoco_native_ccmpc.yaml` with the same seed. Verify:
+
+- the deterministic run preserves the Stage 3 final error and clearance;
+- `tightened_safety_radius >= nominal_safety_radius`;
+- `tightening == Phi^-1(1-epsilon) * projected_sigma`;
+- `chance_residual + slack >= 0` within solver tolerance;
+- positive slack is classified as `SOLVED_WITH_SLACK`;
+- a run containing positive slack is not reported as satisfying the chance
+  guarantee;
+- CC-MPC produces a measurably different constraint/clearance from the paired
+  deterministic run;
+- no covariance, residual, control or state contains NaN.

@@ -27,6 +27,13 @@ controller:
     obstacle_acceleration_process_std_mps2: 0.50
     finite_difference_epsilon: 1.0e-6
     minimum_covariance_eigenvalue: 1.0e-12
+  chance_constraints:
+    enabled: false
+    type: spherical
+    individual_epsilon: 0.05
+    soft_constraint: true
+    slack_penalty: 1000000.0
+    slack_tolerance_m: 1.0e-6
 
 simulation:
   duration_s: 10.0

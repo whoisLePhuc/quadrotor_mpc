@@ -89,6 +89,18 @@ def step_to_sample(step: Any) -> dict[str, Any]:
             None if not np.all(np.isfinite(position)) else position.tolist()
             for position in np.asarray(obstacle_measurements, dtype=float)
         ]
+    def optional_array(field: str) -> np.ndarray:
+        value = getattr(step, field, None)
+        return (
+            np.empty((0, 0), dtype=float)
+            if value is None
+            else np.asarray(value, dtype=float)
+        )
+
+    chance_residuals = optional_array("chance_margins")
+    slacks = optional_array("slacks")
+    projected_uncertainties = optional_array("projected_uncertainties")
+    tightened_safety_radii = optional_array("tightened_safety_radii")
     return {
         "step_index": int(step.step_index),
         "time_s": float(step.time_s),
@@ -120,6 +132,21 @@ def step_to_sample(step: Any) -> dict[str, Any]:
             else np.asarray(step.vehicle_measurement_state_13, dtype=float).tolist()
         ),
         "obstacle_measurement_positions": (serialized_obstacle_measurements),
+        "solver_status": str(getattr(step, "solver_status", "")),
+        "minimum_chance_residual_m": (
+            None if chance_residuals.size == 0 else float(np.min(chance_residuals))
+        ),
+        "maximum_slack_m": None if slacks.size == 0 else float(np.max(slacks)),
+        "maximum_projected_uncertainty_m": (
+            None
+            if projected_uncertainties.size == 0
+            else float(np.max(projected_uncertainties))
+        ),
+        "maximum_tightened_safety_radius_m": (
+            None
+            if tightened_safety_radii.size == 0
+            else float(np.max(tightened_safety_radii))
+        ),
     }
 
 
@@ -160,6 +187,11 @@ class NativeRunRecorder:
         self.obstacle_measurements: list[np.ndarray] = []
         self.predicted_error_covariance_horizons: list[np.ndarray] = []
         self.predicted_obstacle_covariance_horizons: list[np.ndarray] = []
+        self.chance_residual_horizons: list[np.ndarray] = []
+        self.risk_allocation_horizons: list[np.ndarray] = []
+        self.slack_horizons: list[np.ndarray] = []
+        self.projected_uncertainty_horizons: list[np.ndarray] = []
+        self.tightened_safety_radius_horizons: list[np.ndarray] = []
         self._finalized = False
 
     def record_step(self, step: Any, sample: Mapping[str, Any]) -> None:
@@ -229,6 +261,19 @@ class NativeRunRecorder:
             if predicted_obstacle_covariance is None
             else np.asarray(predicted_obstacle_covariance, dtype=float).copy()
         )
+        for collection, field in (
+            (self.chance_residual_horizons, "chance_margins"),
+            (self.risk_allocation_horizons, "risk_allocations"),
+            (self.slack_horizons, "slacks"),
+            (self.projected_uncertainty_horizons, "projected_uncertainties"),
+            (self.tightened_safety_radius_horizons, "tightened_safety_radii"),
+        ):
+            value = getattr(step, field, None)
+            collection.append(
+                np.empty((0, 0), dtype=float)
+                if value is None
+                else np.asarray(value, dtype=float).copy()
+            )
 
     def record_event(
         self, name: str, time_s: float, *, source: str = "runtime", payload: Any = None
@@ -258,6 +303,11 @@ class NativeRunRecorder:
         self.obstacle_measurements.clear()
         self.predicted_error_covariance_horizons.clear()
         self.predicted_obstacle_covariance_horizons.clear()
+        self.chance_residual_horizons.clear()
+        self.risk_allocation_horizons.clear()
+        self.slack_horizons.clear()
+        self.projected_uncertainty_horizons.clear()
+        self.tightened_safety_radius_horizons.clear()
 
     def write_snapshot(self, sample: Mapping[str, Any] | None) -> Path | None:
         if not self.options.enabled or sample is None:
@@ -307,6 +357,23 @@ class NativeRunRecorder:
                 self.predicted_obstacle_covariance_horizons,
                 trailing_rank=4,
             ),
+            chance_residual_horizon=_stack_or_empty(
+                self.chance_residual_horizons,
+                trailing_rank=2,
+            ),
+            risk_allocation_horizon=_stack_or_empty(
+                self.risk_allocation_horizons,
+                trailing_rank=2,
+            ),
+            slack_horizon=_stack_or_empty(self.slack_horizons, trailing_rank=2),
+            projected_uncertainty_horizon=_stack_or_empty(
+                self.projected_uncertainty_horizons,
+                trailing_rank=2,
+            ),
+            tightened_safety_radius_horizon=_stack_or_empty(
+                self.tightened_safety_radius_horizons,
+                trailing_rank=2,
+            ),
         )
         summary = {
             "scenario": self.scenario_name,
@@ -348,6 +415,11 @@ class NativeRunRecorder:
             "goal_distance_m",
             "min_clearance_m",
             "solver_time_ms",
+            "solver_status",
+            "minimum_chance_residual_m",
+            "maximum_slack_m",
+            "maximum_projected_uncertainty_m",
+            "maximum_tightened_safety_radius_m",
             "collided",
         ]
         with path.open("w", encoding="utf-8", newline="") as stream:
@@ -383,6 +455,17 @@ class NativeRunRecorder:
                         "goal_distance_m": sample["goal_distance_m"],
                         "min_clearance_m": sample["min_clearance_m"],
                         "solver_time_ms": sample["solver_time_ms"],
+                        "solver_status": sample.get("solver_status", ""),
+                        "minimum_chance_residual_m": sample.get(
+                            "minimum_chance_residual_m"
+                        ),
+                        "maximum_slack_m": sample.get("maximum_slack_m"),
+                        "maximum_projected_uncertainty_m": sample.get(
+                            "maximum_projected_uncertainty_m"
+                        ),
+                        "maximum_tightened_safety_radius_m": sample.get(
+                            "maximum_tightened_safety_radius_m"
+                        ),
                         "collided": int(sample["collided"]),
                     }
                 )
@@ -442,6 +525,31 @@ def load_native_recording(run_dir: str | Path) -> dict[str, Any]:
             if "predicted_obstacle_covariance_horizon" in arrays
             else np.empty((len(states), 0, 0, 6, 6), dtype=float)
         )
+        chance_residual_horizons = (
+            arrays["chance_residual_horizon"].copy()
+            if "chance_residual_horizon" in arrays
+            else np.empty((len(states), 0, 0), dtype=float)
+        )
+        risk_allocation_horizons = (
+            arrays["risk_allocation_horizon"].copy()
+            if "risk_allocation_horizon" in arrays
+            else np.empty((len(states), 0, 0), dtype=float)
+        )
+        slack_horizons = (
+            arrays["slack_horizon"].copy()
+            if "slack_horizon" in arrays
+            else np.empty((len(states), 0, 0), dtype=float)
+        )
+        projected_uncertainty_horizons = (
+            arrays["projected_uncertainty_horizon"].copy()
+            if "projected_uncertainty_horizon" in arrays
+            else np.empty((len(states), 0, 0), dtype=float)
+        )
+        tightened_safety_radius_horizons = (
+            arrays["tightened_safety_radius_horizon"].copy()
+            if "tightened_safety_radius_horizon" in arrays
+            else np.empty((len(states), 0, 0), dtype=float)
+        )
     return {
         "directory": source,
         "scenario": scenario,
@@ -456,6 +564,11 @@ def load_native_recording(run_dir: str | Path) -> dict[str, Any]:
         "obstacle_measurements": obstacle_measurements,
         "predicted_error_covariance_horizons": (predicted_error_covariance_horizons),
         "predicted_obstacle_covariance_horizons": (predicted_obstacle_covariance_horizons),
+        "chance_residual_horizons": chance_residual_horizons,
+        "risk_allocation_horizons": risk_allocation_horizons,
+        "slack_horizons": slack_horizons,
+        "projected_uncertainty_horizons": projected_uncertainty_horizons,
+        "tightened_safety_radius_horizons": tightened_safety_radius_horizons,
     }
 
 

@@ -151,6 +151,12 @@ class NativeRecordingTests(unittest.TestCase):
                 3,
                 axis=0,
             ),
+            chance_margins=np.array([[0.2], [0.1], [-0.01]]),
+            risk_allocations=np.full((3, 1), 0.05),
+            slacks=np.array([[0.0], [0.0], [0.01]]),
+            projected_uncertainties=np.full((3, 1), 0.12),
+            tightened_safety_radii=np.full((3, 1), 0.85),
+            solver_status="SOLVED_WITH_SLACK",
         )
         sample = step_to_sample(step)
         with tempfile.TemporaryDirectory() as directory:
@@ -183,6 +189,20 @@ class NativeRecordingTests(unittest.TestCase):
                 loaded["predicted_obstacle_covariance_horizons"].shape,
                 (1, 3, 1, 6, 6),
             )
+            self.assertEqual(loaded["chance_residual_horizons"].shape, (1, 3, 1))
+            self.assertEqual(loaded["risk_allocation_horizons"].shape, (1, 3, 1))
+            self.assertEqual(loaded["slack_horizons"].shape, (1, 3, 1))
+            self.assertEqual(
+                loaded["projected_uncertainty_horizons"].shape,
+                (1, 3, 1),
+            )
+            self.assertEqual(
+                loaded["tightened_safety_radius_horizons"].shape,
+                (1, 3, 1),
+            )
+            self.assertEqual(sample["solver_status"], "SOLVED_WITH_SLACK")
+            self.assertAlmostEqual(sample["minimum_chance_residual_m"], -0.01)
+            self.assertAlmostEqual(sample["maximum_slack_m"], 0.01)
             self.assertIsNotNone(sample["horizon_terminal_position_sigma"])
             self.assertTrue((run_dir / "snapshot-001.json").is_file())
 
@@ -192,6 +212,44 @@ class NativeRecordingTests(unittest.TestCase):
     "optional NMPC/MuJoCo dependencies are not installed",
 )
 class InteractiveLoopTests(unittest.TestCase):
+    def test_spherical_chance_constraint_reaches_native_solver(self):
+        from run_coupled import run_coupled_simulation
+
+        config = load_native_mujoco_config(CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml")
+        result = run_coupled_simulation(
+            x0_vals=config.start,
+            goal_pos=config.goal_position,
+            goal_euler=config.goal_euler,
+            bounds=config.bounds,
+            obstacles=[dict(item) for item in config.obstacles],
+            margin=config.safety_margin,
+            sim_seconds=0.10,
+            mpc_dt=config.mpc_timestep_s,
+            n_horizon=4,
+            max_iter=30,
+            mj_dt=config.mujoco_timestep_s,
+            estimation_options=config.estimation,
+            covariance_options=config.covariance_propagation,
+            chance_options=config.chance_constraints,
+        )
+        self.assertEqual(len(result["t"]), 2)
+        np.testing.assert_allclose(result["risk_allocation_horizon"], 0.05)
+        nominal_radii = np.asarray(
+            [
+                obstacle["radius"] + config.safety_margin + 0.03
+                for obstacle in config.obstacles
+            ]
+        )
+        self.assertTrue(
+            np.all(result["tightened_safety_radius_horizon"] >= nominal_radii)
+        )
+        self.assertGreater(float(np.max(result["projected_uncertainty_horizon"])), 0.0)
+        self.assertTrue(
+            set(result["solver_status"]).issubset(
+                {"SOLVED_SAFE", "SOLVED_WITH_SLACK"}
+            )
+        )
+
     def test_reset_pause_step_and_stop_commands(self):
         from run_coupled import run_coupled_simulation
 

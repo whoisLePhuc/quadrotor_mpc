@@ -172,6 +172,34 @@ def replay_native_recording(config: Any, recording: dict[str, Any], runtime: Any
                         == len(rows)
                         else None
                     ),
+                    chance_margins=(
+                        recording["chance_residual_horizons"][index]
+                        if len(recording.get("chance_residual_horizons", [])) == len(rows)
+                        else None
+                    ),
+                    risk_allocations=(
+                        recording["risk_allocation_horizons"][index]
+                        if len(recording.get("risk_allocation_horizons", [])) == len(rows)
+                        else None
+                    ),
+                    slacks=(
+                        recording["slack_horizons"][index]
+                        if len(recording.get("slack_horizons", [])) == len(rows)
+                        else None
+                    ),
+                    solver_status=str(row.get("solver_status", "")),
+                    projected_uncertainties=(
+                        recording["projected_uncertainty_horizons"][index]
+                        if len(recording.get("projected_uncertainty_horizons", []))
+                        == len(rows)
+                        else None
+                    ),
+                    tightened_safety_radii=(
+                        recording["tightened_safety_radius_horizons"][index]
+                        if len(recording.get("tightened_safety_radius_horizons", []))
+                        == len(rows)
+                        else None
+                    ),
                 )
             )
             if not keep_running:
