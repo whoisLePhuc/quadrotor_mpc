@@ -74,25 +74,38 @@ def Omega_matrix(
 ) -> npt.NDArray[np.float64]:
     r"""Compute the ellipsoidal collision matrix :math:`\Omega`.
 
+    ``R_o`` is the obstacle-to-world rotation (``yaw_to_rotation(yaw)``): it
+    maps a vector expressed in the obstacle's local (principal-axis) frame
+    into the world frame. A world-frame point ``p`` is expressed in the
+    obstacle's local frame as ``R_o^T @ p``, so the ellipsoid quadratic form
+    ``local_p^T @ diag(...) @ local_p <= 1`` becomes, in world coordinates,
+
     .. math::
 
-        \Omega = R_o^T \cdot
+        \Omega = R_o \cdot
             \operatorname{diag}\!\left(
                 \frac{1}{(a+r)^2},\;
                 \frac{1}{(b+r)^2},\;
                 \frac{1}{(c+r)^2}
-            \right) \cdot R_o
+            \right) \cdot R_o^T
+
+    Using ``R_o^T @ diag(...) @ R_o`` instead (the previous implementation)
+    rotates the collision ellipsoid by ``-yaw`` rather than ``+yaw``: for
+    ``axes=(2, 0.5, 0.5)`` and ``yaw=0.65`` it scores the true +yaw long-axis
+    point at metric 14.93 instead of 1.0, and only the mirrored -yaw point at
+    1.0. This form has been verified to give metric 1.0 exactly at the
+    world-frame point that actually lies on the rotated long axis.
 
     Args:
         axes: Semi-principal axes (a, b, c) of the obstacle ellipsoid.
         mav_radius: MAV collision radius r.
-        R_o: Rotation matrix of the obstacle (3x3).
+        R_o: Obstacle-to-world rotation matrix (3x3).
 
     Returns:
         Omega matrix (3x3).
     """
     inv_sq = 1.0 / (axes + mav_radius) ** 2
-    return R_o.T @ np.diag(inv_sq) @ R_o
+    return R_o @ np.diag(inv_sq) @ R_o.T
 
 
 def Omega_half(Omega: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:

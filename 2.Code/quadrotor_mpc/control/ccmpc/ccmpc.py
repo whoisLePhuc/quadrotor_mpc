@@ -23,6 +23,7 @@ from .obstacle import ObstacleManager
 from .uncertainty import UncertaintyPropagator
 from .utils import (
     Omega_half,
+    Omega_matrix,
     chance_constraint_rhs,
 )
 
@@ -639,9 +640,12 @@ class CCMPC:
                 for i_obs, obs in enumerate(obstacle_manager.obstacles):
                     if i_obs >= self._max_obs:
                         break
-                    # Pre-compute Omega^{1/2} for this obstacle (constant size/orientation)
-                    inv_sq = 1.0 / (obs.axes + self.mav_radius) ** 2
-                    Omega = obs.R_o.T @ np.diag(inv_sq) @ obs.R_o
+                    # Pre-compute Omega^{1/2} for this obstacle (constant size/orientation).
+                    # Delegates to utils.Omega_matrix so this stays in lockstep with the
+                    # single fixed rotation convention (R_o @ diag(...) @ R_o.T, since
+                    # R_o is the obstacle-to-world rotation) instead of re-deriving it
+                    # inline with a divergent (and previously incorrect) sign.
+                    Omega = Omega_matrix(obs.axes, self.mav_radius, obs.R_o)
                     L_const = Omega_half(Omega)
 
                     pos = obs.p_hat.copy()
@@ -784,7 +788,11 @@ class CCMPC:
             yaw_err_k = (des_yaw_k - x_traj[8, k] + math.pi) % (2 * math.pi) - math.pi
             u_traj[3, k] = float(np.clip(2.0 * yaw_err_k, -self.max_yaw_rate, self.max_yaw_rate))
             if on_ground:
-                u_traj[:] = 0.0
+                # Zero only this column's command before overwriting it below.
+                # `u_traj[:] = 0.0` used to wipe the WHOLE (4, N) array here,
+                # destroying every already-computed control for k' < k the
+                # instant the rollout dipped below z=0.2 at any later step.
+                u_traj[:, k] = 0.0
                 u_traj[2, k] = self.max_vert_vel  # max climb, no tilt
                 u_traj[3, k] = float(np.clip(2.0 * yaw_err_k, -self.max_yaw_rate, self.max_yaw_rate))
             else:

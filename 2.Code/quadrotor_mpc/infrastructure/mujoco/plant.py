@@ -101,6 +101,14 @@ class MuJoCoPlant:
             mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, f"obstacle_geom_{index}")
             for index in range(len(self.obstacles))
         }
+        self.ground_geom_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, "ground")
+        # Ground is a hazard surface too: flying into the floor is a genuine
+        # safety failure and must not be silently excluded from the primary
+        # collision metric consumed by scenario termination and the Stage 8
+        # validation gates. Obstacle and ground contacts are still reported
+        # separately (see check_collision) so downstream telemetry can tell
+        # them apart.
+        self.hazard_geom_ids = self.obstacle_geom_ids | {self.ground_geom_id}
         self.dynamic_mocap_ids: dict[int, int] = {}
         for index, obstacle in enumerate(self.obstacles):
             if obstacle["type"] == "dynamic":
@@ -194,11 +202,38 @@ class MuJoCoPlant:
         return np.concatenate([position, velocity_world, quaternion, omega_body]).reshape(-1, 1)
 
     def check_collision(self) -> bool:
+        """Return true for any quadrotor contact with an obstacle or the ground.
+
+        Ground contact used to be excluded here, which meant flying into the
+        floor was never counted against the primary safety metric. That made
+        the geometric collision rate reported by scenario runs and by the
+        Stage 8 Monte Carlo validation optimistic for any episode that lost
+        altitude control. Ground contacts are now included; use
+        ``check_obstacle_collision``/``check_ground_collision`` when the two
+        need to be told apart (for example in telemetry breakdowns).
+        """
+        for index in range(self.data.ncon):
+            contact = self.data.contact[index]
+            pair = {int(contact.geom1), int(contact.geom2)}
+            if pair.intersection(self.quad_geom_ids) and pair.intersection(self.hazard_geom_ids):
+                return True
+        return False
+
+    def check_obstacle_collision(self) -> bool:
         """Return true only for quadrotor-to-obstacle contacts (ground excluded)."""
         for index in range(self.data.ncon):
             contact = self.data.contact[index]
             pair = {int(contact.geom1), int(contact.geom2)}
             if pair.intersection(self.quad_geom_ids) and pair.intersection(self.obstacle_geom_ids):
+                return True
+        return False
+
+    def check_ground_collision(self) -> bool:
+        """Return true only for quadrotor-to-ground contacts."""
+        for index in range(self.data.ncon):
+            contact = self.data.contact[index]
+            pair = {int(contact.geom1), int(contact.geom2)}
+            if pair.intersection(self.quad_geom_ids) and self.ground_geom_id in pair:
                 return True
         return False
 
