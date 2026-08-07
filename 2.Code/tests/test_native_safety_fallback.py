@@ -148,7 +148,7 @@ class SafetyFallbackConfigurationTests(unittest.TestCase):
             CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml"
         )
         self.assertTrue(config.safety_fallback.enabled)
-        self.assertTrue(config.safety_fallback.reject_on_deadline_miss)
+        self.assertFalse(config.safety_fallback.reject_on_deadline_miss)
         self.assertAlmostEqual(
             config.safety_fallback.solve_deadline_s,
             config.mpc_timestep_s,
@@ -180,6 +180,7 @@ class SafetyFallbackConfigurationTests(unittest.TestCase):
             CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml"
         )
         mapping = config.to_mapping()
+        mapping["controller"]["safety_fallback"]["reject_on_deadline_miss"] = True
         mapping["controller"]["safety_fallback"]["solve_deadline_s"] = 0.051
         with self.assertRaisesRegex(ValueError, "must not exceed"):
             type(config).from_mapping(mapping)
@@ -276,6 +277,22 @@ class SafetySupervisorTests(unittest.TestCase):
         self.assertTrue(result.deadline_missed)
         self.assertEqual(result.fallback_reason, "DEADLINE_MISSED")
         self.assertFalse(result.solution_accepted)
+
+    def test_monitor_only_deadline_does_not_freeze_valid_controller(self):
+        controller = supervisor(
+            ScriptedController([solution()], delay_s=0.01),
+            solve_deadline_s=0.001,
+            reject_on_deadline_miss=False,
+        )
+        result = controller.solve(vehicle_belief(), OBSTACLES, GOAL, 0.0)
+        self.assertTrue(result.deadline_missed)
+        self.assertTrue(result.solution_accepted)
+        self.assertFalse(result.fallback_active)
+        self.assertEqual(result.command_source, "PRIMARY_NMPC")
+        self.assertEqual(
+            result.safety_assurance_status,
+            "NOT_GUARANTEED_DEADLINE_MISS",
+        )
 
     def test_solver_exception_returns_normalized_fallback_solution(self):
         controller = supervisor(

@@ -47,10 +47,13 @@ controller:
     distance_smoothing_m2: 1.0e-6
   safety_fallback:
     enabled: true
-    # End-to-end controller deadline. A late NMPC result is rejected rather
-    # than applied after its control interval has expired.
+    # The native CC-MPC solve is not yet 20 Hz real-time on the validated
+    # hardware. Keep the 50 ms target visible in telemetry, but do not reject
+    # otherwise valid solutions in this interactive research configuration.
+    # Strict timing experiments must override this to true and are expected to
+    # fail the real-time gate until the controller is accelerated.
     solve_deadline_s: 0.05
-    reject_on_deadline_miss: true
+    reject_on_deadline_miss: false
     # Positive slack is never guarantee-eligible. The larger acceptance limit
     # permits an explicitly degraded solution before fallback is required.
     guarantee_slack_tolerance_m: 1.0e-6

@@ -301,6 +301,11 @@ def effective_native_config(
     )
 
     chance = mapping["controller"]["chance_constraints"]
+    # The desktop profile treats the 50 ms target as monitor-only so a slow
+    # research workstation does not freeze at the initial position. Monte
+    # Carlo validation is a strict timing experiment: late commands must be
+    # rejected and counted as fallback evidence.
+    mapping["controller"]["safety_fallback"]["reject_on_deadline_miss"] = True
     if normalized_mode == "deterministic":
         chance["enabled"] = False
         propagation["enabled"] = False
