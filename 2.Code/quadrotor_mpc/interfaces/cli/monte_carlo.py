@@ -70,6 +70,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="allow a non-release smoke campaign from an uncommitted source snapshot",
     )
+    parser.add_argument(
+        "--protocol",
+        choices=("algorithmic_comparison", "realtime_qualification"),
+        help="override the validation protocol",
+    )
     return parser
 
 
@@ -100,6 +105,9 @@ def _with_overrides(protocol, args):
         require_zero_fallback=protocol.require_zero_fallback,
         require_zero_budget_failures=protocol.require_zero_budget_failures,
         timing_percentile=protocol.timing_percentile,
+        protocol_type=args.protocol or protocol.protocol_type,
+        control_period_ms=protocol.control_period_ms,
+        deadline_clock=protocol.deadline_clock,
     )
 
 
@@ -119,6 +127,10 @@ def main(argv: list[str] | None = None) -> int:
     base_config = load_native_mujoco_config(protocol.base_config_path)
     expected = protocol.trials * len(protocol.modes) * len(protocol.noise_levels)
     print(f"protocol:       {protocol.name}")
+    print(f"validation protocol: {protocol.protocol_type}")
+    print(f"deadline policy: {protocol.deadline_policy}")
+    print(f"deadline clock:  {protocol.deadline_clock}")
+    print(f"control period:  {protocol.control_period_ms} ms")
     print(f"base config:    {protocol.base_config_path}")
     print(f"paired seeds:   {protocol.seeds[0]}..{protocol.seeds[-1]}")
     print(f"planned trials: {expected}")
@@ -176,7 +188,10 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     if args.workers == 1:
-        runner = NativeMonteCarloRunner(base_config)
+        runner = NativeMonteCarloRunner(
+            base_config,
+            protocol_type=protocol.protocol_type,
+        )
         for level in protocol.noise_levels:
             for seed in protocol.seeds:
                 for mode in protocol.modes:
@@ -216,6 +231,7 @@ def main(argv: list[str] | None = None) -> int:
                     noise_label=level.label,
                     covariance_scale=level.covariance_scale,
                     seeds=seeds,
+                    protocol_type=protocol.protocol_type,
                 ): (level.label, mode, seeds)
                 for level, mode, seeds in batches
             }
