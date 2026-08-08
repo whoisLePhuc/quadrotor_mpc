@@ -115,6 +115,9 @@ def trial(
         dual_residual_p50=1e-6,
         dual_residual_p95=2e-6,
         dual_residual_p99=3e-6,
+        enforced_profile_count=10 if mode != "deterministic" else 0,
+        missing_enforced_profile_count=10 if mode == "deterministic" else 0,
+        post_solve_diagnostic_profile_count=0,
     )
 
 
