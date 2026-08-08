@@ -12,10 +12,7 @@ def resource_root() -> Path:
     """Return the directory containing bundled config and model assets."""
     module_path = Path(__file__).resolve()
     for source_root in module_path.parents:
-        if (
-            (source_root / "pyproject.toml").is_file()
-            and (source_root / "config").is_dir()
-        ):
+        if (source_root / "pyproject.toml").is_file() and (source_root / "config").is_dir():
             return source_root
 
     installed_root = Path(sys.prefix) / "share" / _DISTRIBUTION_DATA_DIR

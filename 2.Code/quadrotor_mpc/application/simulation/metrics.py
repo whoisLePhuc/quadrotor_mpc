@@ -82,9 +82,9 @@ def compute_metrics(
     velocities = states[:, 3:6]
     final_error = float(np.linalg.norm(positions[-1] - goal))
     path_length = float(np.linalg.norm(np.diff(positions, axis=0), axis=1).sum())
-    tracking_errors = np.array([
-        point_to_segment_distance(point, start, goal) for point in positions
-    ])
+    tracking_errors = np.array(
+        [point_to_segment_distance(point, start, goal) for point in positions]
+    )
     success = final_error <= goal_threshold and not collision
 
     finite_clearances = clearances[np.isfinite(clearances)]
@@ -92,18 +92,12 @@ def compute_metrics(
     mean_clearance = float(finite_clearances.mean()) if finite_clearances.size else None
 
     residuals = (
-        np.asarray(chance_residuals, dtype=float)
-        if chance_residuals is not None
-        else np.empty(0)
+        np.asarray(chance_residuals, dtype=float) if chance_residuals is not None else np.empty(0)
     )
     finite_residuals = residuals[np.isfinite(residuals)]
-    chance_violation_rate = (
-        float(np.mean(finite_residuals < 0.0)) if finite_residuals.size else 0.0
-    )
+    chance_violation_rate = float(np.mean(finite_residuals < 0.0)) if finite_residuals.size else 0.0
 
-    command_array = (
-        np.asarray(controls, dtype=float) if controls is not None else np.empty((0, 4))
-    )
+    command_array = np.asarray(controls, dtype=float) if controls is not None else np.empty((0, 4))
     if len(command_array) > 1:
         dt = np.diff(times)
         effort = float(np.sum(np.sum(command_array[1:] ** 2, axis=1) * dt))
@@ -116,29 +110,33 @@ def compute_metrics(
     saturation_rate = 0.0
     if command_array.size and control_limits is not None:
         limits = np.asarray(control_limits, dtype=float)
-        saturation_rate = float(np.mean(np.any(
-            np.abs(command_array) >= 0.99 * limits,
-            axis=1,
-        )))
+        saturation_rate = float(
+            np.mean(
+                np.any(
+                    np.abs(command_array) >= 0.99 * limits,
+                    axis=1,
+                )
+            )
+        )
 
     estimation_error = 0.0
     if estimated_states is not None and len(estimated_states) == len(states):
-        estimation_error = float(np.max(np.linalg.norm(
-            np.asarray(estimated_states)[:, :3] - positions,
-            axis=1,
-        )))
+        estimation_error = float(
+            np.max(
+                np.linalg.norm(
+                    np.asarray(estimated_states)[:, :3] - positions,
+                    axis=1,
+                )
+            )
+        )
 
     solver_times = np.asarray(solver_times, dtype=float)
     solver_iterations = (
-        np.asarray(solver_iterations, dtype=float)
-        if solver_iterations is not None
-        else np.empty(0)
+        np.asarray(solver_iterations, dtype=float) if solver_iterations is not None else np.empty(0)
     )
     solver_iterations = solver_iterations[solver_iterations > 0.0]
     deadline_ms = controller_timestep * 1000.0
-    deadline_miss_rate = (
-        float(np.mean(solver_times > deadline_ms)) if solver_times.size else 0.0
-    )
+    deadline_miss_rate = float(np.mean(solver_times > deadline_ms)) if solver_times.size else 0.0
     p95_solver = _safe_percentile(solver_times, 95)
 
     speeds = np.linalg.norm(velocities, axis=1)
@@ -165,9 +163,7 @@ def compute_metrics(
         median_solver_ms=_safe_percentile(solver_times, 50),
         p95_solver_ms=p95_solver,
         max_solver_ms=float(solver_times.max()) if solver_times.size else 0.0,
-        mean_solver_iterations=(
-            float(solver_iterations.mean()) if solver_iterations.size else 0.0
-        ),
+        mean_solver_iterations=(float(solver_iterations.mean()) if solver_iterations.size else 0.0),
         p95_solver_iterations=_safe_percentile(solver_iterations, 95),
         deadline_miss_rate=deadline_miss_rate,
         real_time_feasible=p95_solver <= deadline_ms,

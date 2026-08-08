@@ -15,6 +15,7 @@ but needs a working OpenGL backend (EGL/OSMesa on headless Linux, usually set vi
 `export MUJOCO_GL=egl` before launching this app). If unavailable, the app falls
 back to the always-available Plotly 3D animation automatically.
 """
+
 import numpy as np
 import streamlit as st
 
@@ -26,8 +27,12 @@ from quadrotor_mpc.reporting.native_plots import build_figure, build_timeseries_
 st.set_page_config(page_title="Quadrotor MPC + MuJoCo", layout="wide", page_icon="🚁")
 
 
-@st.cache_resource(show_spinner="Đang dựng/biên dịch bộ điều khiển MPC (chỉ 1 lần cho mỗi cấu hình)...")
-def get_cached_controller(thrust_max, torque_rp_max, torque_yaw_max, obstacles_key, margin, use_jit):
+@st.cache_resource(
+    show_spinner="Đang dựng/biên dịch bộ điều khiển MPC (chỉ 1 lần cho mỗi cấu hình)..."
+)
+def get_cached_controller(
+    thrust_max, torque_rp_max, torque_yaw_max, obstacles_key, margin, use_jit
+):
     """
     Cached across Streamlit re-runs, keyed on (bounds, obstacles, margin, use_jit).
     Changing only start/goal sliders reuses this SAME built (and optionally
@@ -37,23 +42,28 @@ def get_cached_controller(thrust_max, torque_rp_max, torque_yaw_max, obstacles_k
     every single time even though do-mpc already supports changing the goal via a
     time-varying parameter with NO rebuild needed.
     """
-    bounds = {'thrust': thrust_max, 'torque_rp': torque_rp_max, 'torque_yaw': torque_yaw_max}
+    bounds = {"thrust": thrust_max, "torque_rp": torque_rp_max, "torque_yaw": torque_yaw_max}
     obstacles = [dict(items) for items in obstacles_key]
-    return build_cached_mpc(bounds, obstacles, margin=margin, n_horizon=20, dt=0.05,
-                             max_iter=60, use_jit=use_jit)
+    return build_cached_mpc(
+        bounds, obstacles, margin=margin, n_horizon=20, dt=0.05, max_iter=60, use_jit=use_jit
+    )
 
 
 def obstacles_to_key(obstacles):
     """Converts the obstacles list (of dicts) into a hashable key for st.cache_resource."""
     return tuple(tuple(sorted(o.items())) for o in obstacles)
 
-st.markdown("""
+
+st.markdown(
+    """
 <style>
 .stApp { background-color: #0a0d16; }
 section[data-testid="stSidebar"] { background-color: #131826; }
 h1, h2, h3, p, label, .stMarkdown { color: #e9edf5 !important; }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 st.title("🚁 Quadrotor A → B — MPC (do-mpc/IPOPT) + MuJoCo (plant thật)")
 st.caption(
@@ -85,11 +95,19 @@ with st.sidebar:
     constraints_on = st.checkbox("Bật ràng buộc actuator", value=True)
     thrust_max = st.slider("Thrust deviation max (N)", 0.005, 0.085, 0.080, 0.005)
     torque_rp_max = st.slider(
-        "Torque roll/pitch max (N·m)", 0.0001, 0.0020, 0.0015, 0.0001,
+        "Torque roll/pitch max (N·m)",
+        0.0001,
+        0.0020,
+        0.0015,
+        0.0001,
         format="%.4f",
     )
     torque_yaw_max = st.slider(
-        "Torque yaw max (N·m)", 0.00002, 0.00040, 0.00020, 0.00002,
+        "Torque yaw max (N·m)",
+        0.00002,
+        0.00040,
+        0.00020,
+        0.00002,
         format="%.5f",
     )
 
@@ -152,68 +170,99 @@ with st.sidebar:
 if run_clicked:
     obstacles = []
     if obsA_on:
-        obstacles.append({'type': 'static', 'x': obsA_x, 'y': obsA_y, 'z': obsA_z, 'radius': obsA_r})
+        obstacles.append(
+            {"type": "static", "x": obsA_x, "y": obsA_y, "z": obsA_z, "radius": obsA_r}
+        )
     if obsB_on:
-        obstacles.append({'type': 'dynamic', 'x': obsB_x, 'z': obsB_z, 'amp': obsB_amp,
-                           'period': obsB_period, 'radius': obsB_r})
+        obstacles.append(
+            {
+                "type": "dynamic",
+                "x": obsB_x,
+                "z": obsB_z,
+                "amp": obsB_amp,
+                "period": obsB_period,
+                "radius": obsB_r,
+            }
+        )
 
     if constraints_on:
-        bounds = {'thrust': thrust_max, 'torque_rp': torque_rp_max, 'torque_yaw': torque_yaw_max}
+        bounds = {"thrust": thrust_max, "torque_rp": torque_rp_max, "torque_yaw": torque_yaw_max}
     else:
         bounds = {
-            'thrust': DEFAULT_QUADROTOR.max_upward_thrust_deviation_n,
-            'torque_rp': DEFAULT_QUADROTOR.max_roll_pitch_torque_nm,
-            'torque_yaw': DEFAULT_QUADROTOR.max_yaw_torque_nm,
+            "thrust": DEFAULT_QUADROTOR.max_upward_thrust_deviation_n,
+            "torque_rp": DEFAULT_QUADROTOR.max_roll_pitch_torque_nm,
+            "torque_yaw": DEFAULT_QUADROTOR.max_yaw_torque_nm,
         }
 
-    x0_vals = {'x': x0, 'y': y0, 'z': z0,
-               'roll': np.deg2rad(roll0), 'pitch': np.deg2rad(pitch0), 'yaw': np.deg2rad(yaw0)}
-    goal_pos = {'x': xg, 'y': yg, 'z': zg}
-    goal_euler = {'roll': np.deg2rad(rollg), 'pitch': np.deg2rad(pitchg), 'yaw': np.deg2rad(yawg)}
+    x0_vals = {
+        "x": x0,
+        "y": y0,
+        "z": z0,
+        "roll": np.deg2rad(roll0),
+        "pitch": np.deg2rad(pitch0),
+        "yaw": np.deg2rad(yaw0),
+    }
+    goal_pos = {"x": xg, "y": yg, "z": zg}
+    goal_euler = {"roll": np.deg2rad(rollg), "pitch": np.deg2rad(pitchg), "yaw": np.deg2rad(yawg)}
 
     cached = get_cached_controller(
-        bounds['thrust'], bounds['torque_rp'], bounds['torque_yaw'],
-        obstacles_to_key(obstacles), margin, use_jit,
+        bounds["thrust"],
+        bounds["torque_rp"],
+        bounds["torque_yaw"],
+        obstacles_to_key(obstacles),
+        margin,
+        use_jit,
     )
 
     progress_bar = st.progress(0.0, text="Đang giải MPC + mô phỏng MuJoCo...")
 
     def progress_cb(frac):
-        progress_bar.progress(frac, text=f"Đang giải MPC + mô phỏng MuJoCo... {int(frac*100)}%")
+        progress_bar.progress(frac, text=f"Đang giải MPC + mô phỏng MuJoCo... {int(frac * 100)}%")
 
     with st.spinner("Đang chạy IPOPT + MuJoCo..."):
         result = run_coupled_simulation(
-            x0_vals=x0_vals, goal_pos=goal_pos, goal_euler=goal_euler,
-            bounds=bounds, obstacles=obstacles, margin=margin,
-            sim_seconds=sim_seconds, mpc_dt=0.05, n_horizon=20, max_iter=60,
+            x0_vals=x0_vals,
+            goal_pos=goal_pos,
+            goal_euler=goal_euler,
+            bounds=bounds,
+            obstacles=obstacles,
+            margin=margin,
+            sim_seconds=sim_seconds,
+            mpc_dt=0.05,
+            n_horizon=20,
+            max_iter=60,
             progress_cb=progress_cb,
-            capture_frames=use_mujoco_render, render_every=2,
+            capture_frames=use_mujoco_render,
+            render_every=2,
             cached=cached,
         )
     progress_bar.empty()
 
-    st.session_state['result'] = result
-    st.session_state['start'] = {'x': x0, 'y': y0, 'z': z0}
-    st.session_state['goal'] = goal_pos
-    st.session_state['obstacles'] = obstacles
+    st.session_state["result"] = result
+    st.session_state["start"] = {"x": x0, "y": y0, "z": z0}
+    st.session_state["goal"] = goal_pos
+    st.session_state["obstacles"] = obstacles
 
-if 'result' in st.session_state:
-    result = st.session_state['result']
-    start = st.session_state['start']
-    goal = st.session_state['goal']
-    obstacles = st.session_state['obstacles']
+if "result" in st.session_state:
+    result = st.session_state["result"]
+    start = st.session_state["start"]
+    goal = st.session_state["goal"]
+    obstacles = st.session_state["obstacles"]
 
-    final_pos = result['pos'][-1]
-    dist = np.linalg.norm(final_pos - np.array([goal['x'], goal['y'], goal['z']]))
-    min_clear = result['clearance'].min() if obstacles else None
+    final_pos = result["pos"][-1]
+    dist = np.linalg.norm(final_pos - np.array([goal["x"], goal["y"], goal["z"]]))
+    min_clear = result["clearance"].min() if obstacles else None
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Khoảng cách tới goal (cuối)", f"{dist:.3f} m")
-    c2.metric("Khoảng cách vật cản nhỏ nhất (mềm)", f"{min_clear:.2f} m" if min_clear is not None else "không có")
-    c3.metric("Va chạm thật (MuJoCo contact)", "🔴 CÓ" if result['collided'] else "🟢 Không")
+    c2.metric(
+        "Khoảng cách vật cản nhỏ nhất (mềm)",
+        f"{min_clear:.2f} m" if min_clear is not None else "không có",
+    )
+    c3.metric("Va chạm thật (MuJoCo contact)", "🔴 CÓ" if result["collided"] else "🟢 Không")
     c4.metric("Thời gian mô phỏng", f"{result['t'][-1]:.1f} s")
 
-    if result['collided']:
+    if result["collided"]:
         st.error(
             "MuJoCo phát hiện **va chạm tiếp xúc thật** giữa drone và vật cản trong quá trình bay — "
             "ràng buộc mềm của MPC không đủ để tránh hoàn toàn trong tình huống này. "
@@ -223,13 +272,13 @@ if 'result' in st.session_state:
     tabs = st.tabs(["🎥 Bay 3D (Plotly)", "🖼️ Render MuJoCo", "📈 Đồ thị theo thời gian"])
     with tabs[0]:
         fig = build_figure(result, start, goal, obstacles)
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, width="stretch")
         st.caption("Kéo thanh trượt hoặc bấm ▶ Play để xem lại toàn bộ chuyến bay.")
     with tabs[1]:
-        if result['frames']:
-            idx = st.slider("Khung hình", 0, len(result['frames'])-1, 0, key="mj_frame_slider")
-            st.image(result['frames'][idx], width='stretch')
-            st.caption(f"Khung {idx+1}/{len(result['frames'])} — render trực tiếp bằng MuJoCo.")
+        if result["frames"]:
+            idx = st.slider("Khung hình", 0, len(result["frames"]) - 1, 0, key="mj_frame_slider")
+            st.image(result["frames"][idx], width="stretch")
+            st.caption(f"Khung {idx + 1}/{len(result['frames'])} — render trực tiếp bằng MuJoCo.")
         else:
             st.warning(
                 "Không render được bằng MuJoCo trên máy này "
@@ -240,6 +289,6 @@ if 'result' in st.session_state:
             )
     with tabs[2]:
         fig2 = build_timeseries_figure(result, goal)
-        st.plotly_chart(fig2, width='stretch')
+        st.plotly_chart(fig2, width="stretch")
 else:
     st.info("Chỉnh các thông số ở thanh bên trái rồi bấm **▶ Chạy mô phỏng** để bắt đầu.")

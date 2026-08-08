@@ -48,6 +48,10 @@ jobs:
         working-directory: 2.Code
         run: uv run ruff check .
 
+      - name: Check formatting
+        working-directory: 2.Code
+        run: uv run ruff format --check .
+
       - name: Test
         working-directory: 2.Code
         run: uv run pytest

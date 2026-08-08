@@ -13,7 +13,11 @@ from quadrotor_mpc.interfaces.dashboard.common import ROOT
 st.set_page_config(page_title="Experiment Explorer", page_icon="🗂️", layout="wide")
 st.title("Experiment Explorer")
 runs_root = ROOT / "outputs/runs"
-runs = sorted((path for path in runs_root.glob("*") if path.is_dir()), reverse=True) if runs_root.exists() else []
+runs = (
+    sorted((path for path in runs_root.glob("*") if path.is_dir()), reverse=True)
+    if runs_root.exists()
+    else []
+)
 if not runs:
     st.info("No tracked experiments yet. Run `quadrotor-mpc-run --compare` first.")
     st.stop()

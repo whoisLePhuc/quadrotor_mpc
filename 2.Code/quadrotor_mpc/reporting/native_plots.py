@@ -25,27 +25,46 @@ def build_figure(result, start, goal, obstacles):
     times = np.asarray(result["t"])
     traces = [
         go.Scatter3d(
-            x=positions[:, 0], y=positions[:, 1], z=positions[:, 2],
-            mode="lines", line=dict(color="#58a6ff", width=5), name="trajectory",
+            x=positions[:, 0],
+            y=positions[:, 1],
+            z=positions[:, 2],
+            mode="lines",
+            line=dict(color="#58a6ff", width=5),
+            name="trajectory",
         ),
         go.Scatter3d(
-            x=[start["x"]], y=[start["y"]], z=[start["z"]],
-            mode="markers", marker=dict(size=5, color="#8b949e"), name="start",
+            x=[start["x"]],
+            y=[start["y"]],
+            z=[start["z"]],
+            mode="markers",
+            marker=dict(size=5, color="#8b949e"),
+            name="start",
         ),
         go.Scatter3d(
-            x=[goal["x"]], y=[goal["y"]], z=[goal["z"]],
-            mode="markers", marker=dict(size=8, color="#f2cc60", symbol="diamond"), name="goal",
+            x=[goal["x"]],
+            y=[goal["y"]],
+            z=[goal["z"]],
+            mode="markers",
+            marker=dict(size=8, color="#f2cc60", symbol="diamond"),
+            name="goal",
         ),
         go.Scatter3d(
-            x=[positions[0, 0]], y=[positions[0, 1]], z=[positions[0, 2]],
-            mode="markers", marker=dict(size=8, color="#2f81f7"), name="quadrotor",
+            x=[positions[0, 0]],
+            y=[positions[0, 1]],
+            z=[positions[0, 2]],
+            mode="markers",
+            marker=dict(size=8, color="#2f81f7"),
+            name="quadrotor",
         ),
     ]
     for index, obstacle in enumerate(obstacles):
         x, y, z = _obstacle_position(obstacle, 0.0)
         traces.append(
             go.Scatter3d(
-                x=[x], y=[y], z=[z], mode="markers",
+                x=[x],
+                y=[y],
+                z=[z],
+                mode="markers",
                 marker=dict(size=max(8, 32 * obstacle["radius"]), color="#f85149", opacity=0.55),
                 name=f"obstacle {index + 1}",
             )
@@ -56,8 +75,10 @@ def build_figure(result, start, goal, obstacles):
     for frame_index in range(0, len(times), frame_stride):
         frame_data = [
             go.Scatter3d(
-                x=[positions[frame_index, 0]], y=[positions[frame_index, 1]],
-                z=[positions[frame_index, 2]], mode="markers",
+                x=[positions[frame_index, 0]],
+                y=[positions[frame_index, 1]],
+                z=[positions[frame_index, 2]],
+                mode="markers",
                 marker=dict(size=8, color="#2f81f7"),
             )
         ]
@@ -72,17 +93,28 @@ def build_figure(result, start, goal, obstacles):
     figure.update_layout(
         template="plotly_dark",
         scene=dict(
-            xaxis_title="x [m]", yaxis_title="y [m]", zaxis_title="z [m]",
+            xaxis_title="x [m]",
+            yaxis_title="y [m]",
+            zaxis_title="z [m]",
             aspectmode="data",
         ),
         margin=dict(l=0, r=0, t=40, b=0),
-        updatemenus=[dict(
-            type="buttons", showactive=False,
-            buttons=[dict(
-                label="▶ Play", method="animate",
-                args=[None, {"frame": {"duration": 45, "redraw": True}, "fromcurrent": True}],
-            )],
-        )],
+        updatemenus=[
+            dict(
+                type="buttons",
+                showactive=False,
+                buttons=[
+                    dict(
+                        label="▶ Play",
+                        method="animate",
+                        args=[
+                            None,
+                            {"frame": {"duration": 45, "redraw": True}, "fromcurrent": True},
+                        ],
+                    )
+                ],
+            )
+        ],
     )
     return figure
 
@@ -97,12 +129,16 @@ def build_timeseries_figure(result, goal):
     euler = np.asarray(result["euler"])
     controls = np.asarray(result["u"])
     clearance = np.asarray(result["clearance"])
-    figure = make_subplots(rows=2, cols=2, subplot_titles=("Position", "Euler angles", "Control", "Clearance"))
+    figure = make_subplots(
+        rows=2, cols=2, subplot_titles=("Position", "Euler angles", "Control", "Clearance")
+    )
     for index, label in enumerate(("x", "y", "z")):
         figure.add_trace(go.Scatter(x=times, y=positions[:, index], name=label), row=1, col=1)
         figure.add_hline(y=goal[label], line_dash="dot", row=1, col=1)
     for index, label in enumerate(("roll", "pitch", "yaw")):
-        figure.add_trace(go.Scatter(x=times, y=np.degrees(euler[:, index]), name=label), row=1, col=2)
+        figure.add_trace(
+            go.Scatter(x=times, y=np.degrees(euler[:, index]), name=label), row=1, col=2
+        )
     for index, label in enumerate(("Tdev", "tau_x", "tau_y", "tau_z")):
         figure.add_trace(go.Scatter(x=times, y=controls[:, index], name=label), row=2, col=1)
     figure.add_trace(go.Scatter(x=times, y=clearance, name="clearance"), row=2, col=2)

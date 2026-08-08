@@ -59,26 +59,14 @@ class HorizonAssuranceStatus(str, Enum):
     """Explicit assurance status for one prediction-horizon solution."""
 
     NOT_APPLICABLE_DETERMINISTIC = "NOT_APPLICABLE_DETERMINISTIC"
-    NOT_JOINT_GUARANTEE_INDIVIDUAL_RISK = (
-        "NOT_JOINT_GUARANTEE_INDIVIDUAL_RISK"
-    )
-    NOT_GUARANTEED_UNKNOWN_RISK_SEMANTICS = (
-        "NOT_GUARANTEED_UNKNOWN_RISK_SEMANTICS"
-    )
+    NOT_JOINT_GUARANTEE_INDIVIDUAL_RISK = "NOT_JOINT_GUARANTEE_INDIVIDUAL_RISK"
+    NOT_GUARANTEED_UNKNOWN_RISK_SEMANTICS = "NOT_GUARANTEED_UNKNOWN_RISK_SEMANTICS"
     HORIZON_GUARANTEE_ELIGIBLE = "HORIZON_GUARANTEE_ELIGIBLE"
-    NOT_GUARANTEED_RISK_BUDGET_INVALID = (
-        "NOT_GUARANTEED_RISK_BUDGET_INVALID"
-    )
-    NOT_GUARANTEED_PRIMARY_SOLVER_FAILURE = (
-        "NOT_GUARANTEED_PRIMARY_SOLVER_FAILURE"
-    )
-    NOT_GUARANTEED_RESIDUAL_UNAVAILABLE = (
-        "NOT_GUARANTEED_RESIDUAL_UNAVAILABLE"
-    )
+    NOT_GUARANTEED_RISK_BUDGET_INVALID = "NOT_GUARANTEED_RISK_BUDGET_INVALID"
+    NOT_GUARANTEED_PRIMARY_SOLVER_FAILURE = "NOT_GUARANTEED_PRIMARY_SOLVER_FAILURE"
+    NOT_GUARANTEED_RESIDUAL_UNAVAILABLE = "NOT_GUARANTEED_RESIDUAL_UNAVAILABLE"
     NOT_GUARANTEED_RESIDUAL_INVALID = "NOT_GUARANTEED_RESIDUAL_INVALID"
-    NOT_GUARANTEED_RESIDUAL_THRESHOLD_EXCEEDED = (
-        "NOT_GUARANTEED_RESIDUAL_THRESHOLD_EXCEEDED"
-    )
+    NOT_GUARANTEED_RESIDUAL_THRESHOLD_EXCEEDED = "NOT_GUARANTEED_RESIDUAL_THRESHOLD_EXCEEDED"
     NOT_GUARANTEED_POSITIVE_SLACK = "NOT_GUARANTEED_POSITIVE_SLACK"
     NOT_GUARANTEED_DEADLINE_MISS = "NOT_GUARANTEED_DEADLINE_MISS"
     NOT_GUARANTEED_FALLBACK_ACTIVE = "NOT_GUARANTEED_FALLBACK_ACTIVE"
@@ -98,7 +86,10 @@ _PRECEDENCE: tuple[tuple[HorizonAssuranceStatus, str], ...] = (
     (HorizonAssuranceStatus.NOT_GUARANTEED_PRIMARY_SOLVER_FAILURE, "primary_solver_failure"),
     (HorizonAssuranceStatus.NOT_GUARANTEED_RESIDUAL_UNAVAILABLE, "residual_unavailable"),
     (HorizonAssuranceStatus.NOT_GUARANTEED_RESIDUAL_INVALID, "residual_invalid"),
-    (HorizonAssuranceStatus.NOT_GUARANTEED_RESIDUAL_THRESHOLD_EXCEEDED, "residual_threshold_exceeded"),
+    (
+        HorizonAssuranceStatus.NOT_GUARANTEED_RESIDUAL_THRESHOLD_EXCEEDED,
+        "residual_threshold_exceeded",
+    ),
     (HorizonAssuranceStatus.NOT_GUARANTEED_POSITIVE_SLACK, "positive_slack"),
     (HorizonAssuranceStatus.NOT_GUARANTEED_DEADLINE_MISS, "deadline_miss"),
     (HorizonAssuranceStatus.NOT_GUARANTEED_FALLBACK_ACTIVE, "fallback_active"),
@@ -133,9 +124,7 @@ class HorizonAssuranceDecision:
 
     def __post_init__(self) -> None:
         if self.eligible != (self.status == _ELIGIBLE_STATUS):
-            raise ValueError(
-                "eligible must equal (status == HORIZON_GUARANTEE_ELIGIBLE)"
-            )
+            raise ValueError("eligible must equal (status == HORIZON_GUARANTEE_ELIGIBLE)")
 
     def to_mapping(self) -> dict[str, Any]:
         return {
@@ -227,8 +216,7 @@ def classify_horizon_assurance(
 
     numeric_values = (data.maximum_slack, data.slack_tolerance)
     if not all(
-        isinstance(value, (int, float)) and math.isfinite(value)
-        for value in numeric_values
+        isinstance(value, (int, float)) and math.isfinite(value) for value in numeric_values
     ):
         failed.append("invalid_numerics")
 

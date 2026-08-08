@@ -37,9 +37,7 @@ class LayerArchitectureTests(unittest.TestCase):
     @unittest.skipIf(tomllib is None, "tomllib requires Python 3.11+")
     def test_console_scripts_target_packaged_cli_adapters(self):
         assert tomllib is not None
-        project = tomllib.loads(
-            (CODE_ROOT / "pyproject.toml").read_text(encoding="utf-8")
-        )
+        project = tomllib.loads((CODE_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         for target in project["project"]["scripts"].values():
             self.assertTrue(
                 target.startswith("quadrotor_mpc.interfaces.cli."),
@@ -79,9 +77,7 @@ class LayerArchitectureTests(unittest.TestCase):
             for path in (PACKAGE_ROOT / layer).rglob("*.py"):
                 for imported in local_imports(path):
                     if imported.startswith(forbidden_prefixes):
-                        violations.append(
-                            f"{path.relative_to(CODE_ROOT)} imports {imported}"
-                        )
+                        violations.append(f"{path.relative_to(CODE_ROOT)} imports {imported}")
         self.assertEqual(violations, [])
 
 
@@ -124,9 +120,9 @@ class PackageBoundaryTests(unittest.TestCase):
         self.assertTrue(callable(symmetric_matrix_sqrt))
 
     def test_monte_carlo_factory_builds_from_canonical_nmpc(self):
-        source = (
-            PACKAGE_ROOT / "application" / "validation" / "monte_carlo.py"
-        ).read_text(encoding="utf-8")
+        source = (PACKAGE_ROOT / "application" / "validation" / "monte_carlo.py").read_text(
+            encoding="utf-8"
+        )
         factory = source.split("def _build_controller")[1].split("\n\n")[0]
         self.assertIn("quadrotor_mpc.control.nmpc.chance_constrained", factory)
         self.assertIn("quadrotor_mpc.control.nmpc.deterministic", factory)
@@ -135,9 +131,7 @@ class PackageBoundaryTests(unittest.TestCase):
 
     def test_adaptive_config_does_not_point_to_reference_package(self):
         for path in (CODE_ROOT / "config").glob("*.yaml"):
-            if "adaptive" not in path.name and "adaptive" not in path.read_text(
-                encoding="utf-8"
-            ):
+            if "adaptive" not in path.name and "adaptive" not in path.read_text(encoding="utf-8"):
                 continue
             self.fail(f"adaptive config must not exist yet: {path.name}")
 

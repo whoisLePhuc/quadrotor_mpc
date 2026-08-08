@@ -71,9 +71,7 @@ class ScipyMPCController:
         runtime = config.get("runtime", {})
         self.dt = float(runtime.get("timestep", 0.12))
         self.horizon = int(runtime.get("horizon_steps", 10))
-        self.control_blocks = min(
-            self.horizon, int(runtime.get("control_blocks", self.horizon))
-        )
+        self.control_blocks = min(self.horizon, int(runtime.get("control_blocks", self.horizon)))
         self.max_iter = int(runtime.get("scipy_max_iter", 24))
         self.ftol = float(runtime.get("scipy_ftol", 1e-4))
 
@@ -148,13 +146,22 @@ class ScipyMPCController:
         error_body_y = -s * error[0] + c * error[1]
         velocity_body_x = c * state[3] + s * state[4]
         velocity_body_y = -s * state[3] + c * state[4]
-        command = np.array([
-            np.clip(0.10 * error_body_y - 0.04 * velocity_body_y, -self.max_roll, self.max_roll),
-            np.clip(0.10 * error_body_x - 0.04 * velocity_body_x, -self.max_pitch, self.max_pitch),
-            np.clip(0.7 * error[2] - 0.2 * state[5], -self.max_vert_vel, self.max_vert_vel),
-            np.clip(1.2 * _wrap_angle(math.atan2(error[1], error[0]) - state[8]),
-                    -self.max_yaw_rate, self.max_yaw_rate),
-        ])
+        command = np.array(
+            [
+                np.clip(
+                    0.10 * error_body_y - 0.04 * velocity_body_y, -self.max_roll, self.max_roll
+                ),
+                np.clip(
+                    0.10 * error_body_x - 0.04 * velocity_body_x, -self.max_pitch, self.max_pitch
+                ),
+                np.clip(0.7 * error[2] - 0.2 * state[5], -self.max_vert_vel, self.max_vert_vel),
+                np.clip(
+                    1.2 * _wrap_angle(math.atan2(error[1], error[0]) - state[8]),
+                    -self.max_yaw_rate,
+                    self.max_yaw_rate,
+                ),
+            ]
+        )
         return np.tile(command, (self.control_blocks, 1))
 
     def _rollout(self, state: Array, controls: Array) -> Array:
@@ -204,9 +211,10 @@ class ScipyMPCController:
         obstacles: ObstacleManager,
         covariance_horizon: list[Array],
     ) -> list[float]:
-        return [max(0.0, -value) for value in self._risk_residuals(
-            trajectory, obstacles, covariance_horizon
-        )]
+        return [
+            max(0.0, -value)
+            for value in self._risk_residuals(trajectory, obstacles, covariance_horizon)
+        ]
 
     def _cost_diagnostics(
         self,
@@ -228,43 +236,36 @@ class ScipyMPCController:
             reference = state[:3] + fraction * (goal - state[:3])
             error = trajectory[k, :3] - reference
             tracking += 0.7 * float(error @ np.diag([1.0, 1.0, 3.0]) @ error)
-            yaw_reference = math.atan2(
-                goal[1] - trajectory[k, 1], goal[0] - trajectory[k, 0]
-            )
-            yaw += 0.1 * self.yaw_weight * _wrap_angle(
-                trajectory[k, 8] - yaw_reference
-            ) ** 2
+            yaw_reference = math.atan2(goal[1] - trajectory[k, 1], goal[0] - trajectory[k, 0])
+            yaw += 0.1 * self.yaw_weight * _wrap_angle(trajectory[k, 8] - yaw_reference) ** 2
             speed_xy = float(np.linalg.norm(trajectory[k, 3:5]))
             state_limits += 200.0 * max(0.0, speed_xy - self.max_speed) ** 2
-            state_limits += 5000.0 * max(
-                0.0, self.min_altitude - trajectory[k, 2]
-            ) ** 2
+            state_limits += 5000.0 * max(0.0, self.min_altitude - trajectory[k, 2]) ** 2
 
             if self.logistic_weight > 0.0:
                 elapsed = k * self.dt
-                for obstacle in obstacles.get_closest(
-                    trajectory[k, :3], self.max_obstacles
-                ):
-                    distance = float(np.linalg.norm(
-                        trajectory[k, :3]
-                        - (obstacle.p_hat + obstacle.v_hat * elapsed)
-                    ))
+                for obstacle in obstacles.get_closest(trajectory[k, :3], self.max_obstacles):
+                    distance = float(
+                        np.linalg.norm(
+                            trajectory[k, :3] - (obstacle.p_hat + obstacle.v_hat * elapsed)
+                        )
+                    )
                     exponent = np.clip(
                         self.logistic_lambda * (distance - self.logistic_radius),
                         -50,
                         50,
                     )
-                    logistic += self.logistic_weight / (
-                        1.0 + math.exp(float(exponent))
-                    )
+                    logistic += self.logistic_weight / (1.0 + math.exp(float(exponent)))
 
         terminal_error = trajectory[-1, :3] - goal
         terminal = float(np.sum(self.terminal_weight * terminal_error**2))
         control = float(np.sum(self.control_weight * controls**2))
-        deltas = np.vstack([
-            controls[0] - previous_command,
-            np.diff(controls, axis=0),
-        ])
+        deltas = np.vstack(
+            [
+                controls[0] - previous_command,
+                np.diff(controls, axis=0),
+            ]
+        )
         smoothness = 0.4 * float(np.sum(deltas**2))
         slacks = self._risk_slacks(trajectory, obstacles, covariance_horizon)
         risk = self.slack_penalty * float(np.dot(slacks, slacks)) if slacks else 0.0
@@ -351,10 +352,14 @@ class ScipyMPCController:
                 for k in range(1, self.horizon + 1):
                     elapsed = k * self.dt
                     for obstacle in obstacles.get_closest(trajectory[k, :3], self.max_obstacles):
-                        distance = float(np.linalg.norm(
-                            trajectory[k, :3] - (obstacle.p_hat + obstacle.v_hat * elapsed)
-                        ))
-                        exponent = np.clip(self.logistic_lambda * (distance - self.logistic_radius), -50, 50)
+                        distance = float(
+                            np.linalg.norm(
+                                trajectory[k, :3] - (obstacle.p_hat + obstacle.v_hat * elapsed)
+                            )
+                        )
+                        exponent = np.clip(
+                            self.logistic_lambda * (distance - self.logistic_radius), -50, 50
+                        )
                         cost += self.logistic_weight / (1.0 + math.exp(float(exponent)))
             return cost + self._fov_cost(trajectory)
 
@@ -425,7 +430,9 @@ class CVXPYController:
         self._controller._previous_controls = None
         self._controller._previous_covariance = None
 
-    def solve(self, state: Array, goal: Array, obstacles: ObstacleManager, covariance: Array) -> ControlResult:
+    def solve(
+        self, state: Array, goal: Array, obstacles: ObstacleManager, covariance: Array
+    ) -> ControlResult:
         started = time.perf_counter()
         trajectory, controls = self._controller.solve(
             state,
@@ -435,7 +442,8 @@ class CVXPYController:
         )
         solve_time_ms = (time.perf_counter() - started) * 1000.0
         slack_values = [
-            float(variable.value) for variable in self._controller._cc_slack
+            float(variable.value)
+            for variable in self._controller._cc_slack
             if variable.value is not None
         ]
         status = str(self._controller._problem.status)
@@ -448,9 +456,7 @@ class CVXPYController:
             solve_time_ms=solve_time_ms,
             status=status,
             max_slack=max(slack_values, default=0.0),
-            min_chance_residual=(
-                -max(slack_values, default=0.0) if obstacles.obstacles else None
-            ),
+            min_chance_residual=(-max(slack_values, default=0.0) if obstacles.obstacles else None),
             iterations=int(getattr(stats, "num_iters", 0) or 0),
             cost_terms={
                 "total": float(objective_value)

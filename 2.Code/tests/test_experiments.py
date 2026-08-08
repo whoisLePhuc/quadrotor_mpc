@@ -23,9 +23,7 @@ class ExperimentTests(unittest.TestCase):
 
     def test_run_serializes_prediction_diagnostics(self) -> None:
         scenario = self._short_hover()
-        result = SimulationRunner(
-            scenario, ROOT / "config/controller.yaml", seed=77
-        ).run()
+        result = SimulationRunner(scenario, ROOT / "config/controller.yaml", seed=77).run()
         self.assertEqual(result.covariances.shape[1:], (9, 9))
         self.assertEqual(result.predicted_trajectories.shape[2], 9)
         self.assertEqual(result.predicted_controls.shape[2], 4)
@@ -63,9 +61,7 @@ class ExperimentTests(unittest.TestCase):
 
     def test_aggregate_confidence_intervals_are_bounded(self) -> None:
         scenario = self._short_hover()
-        result = SimulationRunner(
-            scenario, ROOT / "config/controller.yaml", seed=12
-        ).run()
+        result = SimulationRunner(scenario, ROOT / "config/controller.yaml", seed=12).run()
         summary = aggregate_results([result])["ccmpc"]
         low, high = summary["success_rate_ci95"]
         self.assertGreaterEqual(low, 0.0)

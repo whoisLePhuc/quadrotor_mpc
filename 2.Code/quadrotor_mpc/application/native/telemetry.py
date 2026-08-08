@@ -1,4 +1,4 @@
-﻿"""Bounded native telemetry, deterministic recording and replay loading."""
+"""Bounded native telemetry, deterministic recording and replay loading."""
 
 from __future__ import annotations
 
@@ -89,13 +89,10 @@ def step_to_sample(step: Any) -> dict[str, Any]:
             None if not np.all(np.isfinite(position)) else position.tolist()
             for position in np.asarray(obstacle_measurements, dtype=float)
         ]
+
     def optional_array(field: str) -> np.ndarray:
         value = getattr(step, field, None)
-        return (
-            np.empty((0, 0), dtype=float)
-            if value is None
-            else np.asarray(value, dtype=float)
-        )
+        return np.empty((0, 0), dtype=float) if value is None else np.asarray(value, dtype=float)
 
     chance_residuals = optional_array("chance_margins")
     slacks = optional_array("slacks")
@@ -113,12 +110,8 @@ def step_to_sample(step: Any) -> dict[str, Any]:
         "min_clearance_m": float(step.min_clearance_m),
         "solver_time_ms": float(step.solver_time_ms),
         "collided": bool(step.collided),
-        "obstacle_collision_detected": bool(
-            getattr(step, "obstacle_collision_detected", False)
-        ),
-        "ground_collision_detected": bool(
-            getattr(step, "ground_collision_detected", False)
-        ),
+        "obstacle_collision_detected": bool(getattr(step, "obstacle_collision_detected", False)),
+        "ground_collision_detected": bool(getattr(step, "ground_collision_detected", False)),
         "minimum_obstacle_clearance_m": (
             None
             if getattr(step, "minimum_obstacle_clearance_m", None) is None
@@ -154,15 +147,9 @@ def step_to_sample(step: Any) -> dict[str, Any]:
         ),
         "obstacle_measurement_positions": (serialized_obstacle_measurements),
         "solver_status": str(getattr(step, "solver_status", "")),
-        "primary_solver_status": str(
-            getattr(step, "primary_solver_status", "")
-        ),
-        "primary_solver_success": bool(
-            getattr(step, "primary_solver_success", True)
-        ),
-        "primary_solver_iterations": int(
-            getattr(step, "primary_solver_iterations", 0)
-        ),
+        "primary_solver_status": str(getattr(step, "primary_solver_status", "")),
+        "primary_solver_success": bool(getattr(step, "primary_solver_success", True)),
+        "primary_solver_iterations": int(getattr(step, "primary_solver_iterations", 0)),
         "primary_solver_primal_residual": (
             None
             if getattr(step, "primary_solver_primal_residual", None) is None
@@ -182,63 +169,35 @@ def step_to_sample(step: Any) -> dict[str, Any]:
         "primary_solver_residual_gate_status": str(
             getattr(step, "primary_solver_residual_gate_status", "UNKNOWN_UNAVAILABLE")
         ),
-        "primary_solver_residual_source": str(
-            getattr(step, "primary_solver_residual_source", "")
-        ),
+        "primary_solver_residual_source": str(getattr(step, "primary_solver_residual_source", "")),
         "primary_solver_residual_required_for_acceptance": bool(
             getattr(step, "primary_solver_residual_required_for_acceptance", False)
         ),
         "primary_solver_residual_required_for_assurance": bool(
             getattr(step, "primary_solver_residual_required_for_assurance", True)
         ),
-        "command_source": str(
-            getattr(step, "command_source", "PRIMARY_NMPC")
-        ),
-        "solution_accepted": bool(
-            getattr(step, "solution_accepted", True)
-        ),
+        "command_source": str(getattr(step, "command_source", "PRIMARY_NMPC")),
+        "solution_accepted": bool(getattr(step, "solution_accepted", True)),
         "fallback_active": bool(getattr(step, "fallback_active", False)),
         "fallback_level": int(getattr(step, "fallback_level", 0)),
         "fallback_reason": str(getattr(step, "fallback_reason", "")),
-        "consecutive_rejections": int(
-            getattr(step, "consecutive_rejections", 0)
-        ),
+        "consecutive_rejections": int(getattr(step, "consecutive_rejections", 0)),
         "deadline_missed": bool(getattr(step, "deadline_missed", False)),
-        "applied_command_source": str(
-            getattr(step, "applied_command_source", "")
-        ),
-        "primary_disposition": str(
-            getattr(step, "primary_disposition", "")
-        ),
-        "rejection_reasons": list(
-            getattr(step, "rejection_reasons", ())
-        ),
-        "deadline_overrun_ms": float(
-            getattr(step, "deadline_overrun_ms", 0.0)
-        ),
-        "total_controller_time_ms": float(
-            getattr(step, "total_controller_time_ms", 0.0)
-        ),
-        "safety_assurance_status": str(
-            getattr(step, "safety_assurance_status", "")
-        ),
+        "applied_command_source": str(getattr(step, "applied_command_source", "")),
+        "primary_disposition": str(getattr(step, "primary_disposition", "")),
+        "rejection_reasons": list(getattr(step, "rejection_reasons", ())),
+        "deadline_overrun_ms": float(getattr(step, "deadline_overrun_ms", 0.0)),
+        "total_controller_time_ms": float(getattr(step, "total_controller_time_ms", 0.0)),
+        "safety_assurance_status": str(getattr(step, "safety_assurance_status", "")),
         "residual_status": str(getattr(step, "residual_status", "UNAVAILABLE")),
-        "horizon_assurance_status": str(
-            getattr(step, "horizon_assurance_status", "")
-        ),
-        "horizon_assurance_eligible": bool(
-            getattr(step, "horizon_assurance_eligible", False)
-        ),
-        "horizon_assurance_reason": str(
-            getattr(step, "horizon_assurance_reason", "")
-        ),
+        "horizon_assurance_status": str(getattr(step, "horizon_assurance_status", "")),
+        "horizon_assurance_eligible": bool(getattr(step, "horizon_assurance_eligible", False)),
+        "horizon_assurance_reason": str(getattr(step, "horizon_assurance_reason", "")),
         "horizon_assurance_failed_checks": list(
             getattr(step, "horizon_assurance_failed_checks", ())
         ),
         "assurance_schema_version": int(getattr(step, "assurance_schema_version", 3)),
-        "chance_profile_schema_version": int(
-            getattr(step, "chance_profile_schema_version", 1)
-        ),
+        "chance_profile_schema_version": int(getattr(step, "chance_profile_schema_version", 1)),
         "enforced_chance_profile": _profile_to_mapping(
             getattr(step, "enforced_chance_profile", None)
         ),
@@ -255,37 +214,25 @@ def step_to_sample(step: Any) -> dict[str, Any]:
             getattr(step, "chance_profile_solve_attempt_id", "")
         ),
         "risk_semantics": str(getattr(step, "risk_semantics", "")),
-        "risk_allocation_method": str(
-            getattr(step, "risk_allocation_method", "")
-        ),
+        "risk_allocation_method": str(getattr(step, "risk_allocation_method", "")),
         "risk_budget_total": getattr(step, "risk_budget_total", None),
-        "risk_budget_allocated": float(
-            getattr(step, "risk_budget_allocated", 0.0)
-        ),
+        "risk_budget_allocated": float(getattr(step, "risk_budget_allocated", 0.0)),
         "risk_budget_remaining": getattr(
             step,
             "risk_budget_remaining",
             None,
         ),
-        "risk_constraint_count": int(
-            getattr(step, "risk_constraint_count", 0)
-        ),
-        "risk_budget_status": str(
-            getattr(step, "risk_budget_status", "")
-        ),
+        "risk_constraint_count": int(getattr(step, "risk_constraint_count", 0)),
+        "risk_budget_status": str(getattr(step, "risk_budget_status", "")),
         "minimum_chance_residual_m": (
             None if chance_residuals.size == 0 else float(np.min(chance_residuals))
         ),
         "maximum_slack_m": None if slacks.size == 0 else float(np.max(slacks)),
         "maximum_projected_uncertainty_m": (
-            None
-            if projected_uncertainties.size == 0
-            else float(np.max(projected_uncertainties))
+            None if projected_uncertainties.size == 0 else float(np.max(projected_uncertainties))
         ),
         "maximum_tightened_safety_radius_m": (
-            None
-            if tightened_safety_radii.size == 0
-            else float(np.max(tightened_safety_radii))
+            None if tightened_safety_radii.size == 0 else float(np.max(tightened_safety_radii))
         ),
     }
 
@@ -557,38 +504,22 @@ class NativeRunRecorder:
             "obstacle_collided": bool(result.get("obstacle_collided", False)),
             "ground_collided": bool(result.get("ground_collided", False)),
             "first_collision_time_s": result.get("first_collision_time_s"),
-            "first_obstacle_collision_time_s": result.get(
-                "first_obstacle_collision_time_s"
-            ),
-            "first_ground_collision_time_s": result.get(
-                "first_ground_collision_time_s"
-            ),
-            "minimum_obstacle_clearance_m": result.get(
-                "minimum_obstacle_clearance_m"
-            ),
+            "first_obstacle_collision_time_s": result.get("first_obstacle_collision_time_s"),
+            "first_ground_collision_time_s": result.get("first_ground_collision_time_s"),
+            "minimum_obstacle_clearance_m": result.get("minimum_obstacle_clearance_m"),
             "minimum_ground_clearance_m": result.get("minimum_ground_clearance_m"),
             "min_clearance_m": (
                 float(np.min(result["clearance"])) if len(result.get("clearance", [])) else None
             ),
-            "risk_semantics": (
-                self.samples[-1].get("risk_semantics", "")
-                if self.samples
-                else ""
-            ),
+            "risk_semantics": (self.samples[-1].get("risk_semantics", "") if self.samples else ""),
             "risk_allocation_method": (
-                self.samples[-1].get("risk_allocation_method", "")
-                if self.samples
-                else ""
+                self.samples[-1].get("risk_allocation_method", "") if self.samples else ""
             ),
             "risk_budget_total": (
-                self.samples[-1].get("risk_budget_total")
-                if self.samples
-                else None
+                self.samples[-1].get("risk_budget_total") if self.samples else None
             ),
             "risk_budget_status": (
-                self.samples[-1].get("risk_budget_status", "")
-                if self.samples
-                else ""
+                self.samples[-1].get("risk_budget_status", "") if self.samples else ""
             ),
             "maximum_slack_m": (
                 max(
@@ -601,48 +532,31 @@ class NativeRunRecorder:
                 )
             ),
             "fallback_activations": sum(
-                1
-                for sample in self.samples
-                if sample.get("fallback_active", False)
+                1 for sample in self.samples if sample.get("fallback_active", False)
             ),
             "deadline_misses": sum(
-                1
-                for sample in self.samples
-                if sample.get("deadline_missed", False)
+                1 for sample in self.samples if sample.get("deadline_missed", False)
             ),
             "rejected_primary_solutions": sum(
-                1
-                for sample in self.samples
-                if not sample.get("solution_accepted", True)
+                1 for sample in self.samples if not sample.get("solution_accepted", True)
             ),
             "horizon_eligible_tick_count": sum(
-                1
-                for sample in self.samples
-                if sample.get("horizon_assurance_eligible", False)
+                1 for sample in self.samples if sample.get("horizon_assurance_eligible", False)
             ),
             "horizon_eligible_tick_rate": (
-                sum(
-                    1
-                    for sample in self.samples
-                    if sample.get("horizon_assurance_eligible", False)
-                )
+                sum(1 for sample in self.samples if sample.get("horizon_assurance_eligible", False))
                 / len(self.samples)
                 if self.samples
                 else 0.0
             ),
-            "horizon_ineligible_reason_counts": _reason_counts(
-                self.samples
-            ),
+            "horizon_ineligible_reason_counts": _reason_counts(self.samples),
             "enforced_profile_count": sum(
-                1
-                for sample in self.samples
-                if sample.get("enforced_chance_profile") is not None
+                1 for sample in self.samples if sample.get("enforced_chance_profile") is not None
             ),
             "missing_enforced_profile_count": sum(
                 1
                 for sample in self.samples
-                if sample.get("chance_profile_application_status")
-                == "NOT_APPLICABLE_DETERMINISTIC"
+                if sample.get("chance_profile_application_status") == "NOT_APPLICABLE_DETERMINISTIC"
             ),
             "post_solve_diagnostic_profile_count": sum(
                 1
@@ -651,18 +565,14 @@ class NativeRunRecorder:
             ),
             "episode_all_ticks_horizon_eligible": bool(
                 self.samples
-                and all(
-                    sample.get("horizon_assurance_eligible", False)
-                    for sample in self.samples
-                )
+                and all(sample.get("horizon_assurance_eligible", False) for sample in self.samples)
             ),
             "episode_any_fallback": any(
                 sample.get("fallback_active", False) for sample in self.samples
             ),
             "episode_any_positive_slack": any(
                 sample.get("maximum_slack_m") is not None
-                and float(sample["maximum_slack_m"])
-                > float(sample.get("slack_tolerance_m", 0.0))
+                and float(sample["maximum_slack_m"]) > float(sample.get("slack_tolerance_m", 0.0))
                 for sample in self.samples
             ),
             "episode_any_deadline_miss": any(
@@ -671,27 +581,23 @@ class NativeRunRecorder:
             "residual_available_count": sum(
                 1
                 for sample in self.samples
-                if sample.get("primary_solver_primal_residual_status", "")
-                == "AVAILABLE"
+                if sample.get("primary_solver_primal_residual_status", "") == "AVAILABLE"
             ),
             "residual_unavailable_count": sum(
                 1
                 for sample in self.samples
-                if sample.get("primary_solver_primal_residual_status", "")
-                == "UNAVAILABLE"
+                if sample.get("primary_solver_primal_residual_status", "") == "UNAVAILABLE"
             ),
             "residual_invalid_count": sum(
                 1
                 for sample in self.samples
-                if sample.get("primary_solver_primal_residual_status", "")
-                == "INVALID"
+                if sample.get("primary_solver_primal_residual_status", "") == "INVALID"
             ),
             "residual_gate_pass_rate": (
                 sum(
                     1
                     for sample in self.samples
-                    if sample.get("primary_solver_residual_gate_status")
-                    == "PASS"
+                    if sample.get("primary_solver_residual_gate_status") == "PASS"
                 )
                 / len(self.samples)
                 if self.samples
@@ -701,8 +607,7 @@ class NativeRunRecorder:
                 sum(
                     1
                     for sample in self.samples
-                    if sample.get("primary_solver_residual_gate_status")
-                    == "UNKNOWN_UNAVAILABLE"
+                    if sample.get("primary_solver_residual_gate_status") == "UNKNOWN_UNAVAILABLE"
                 )
                 / len(self.samples)
                 if self.samples
@@ -713,8 +618,7 @@ class NativeRunRecorder:
                     float(sample["primary_solver_primal_residual"])
                     for sample in self.samples
                     if sample.get("primary_solver_primal_residual") is not None
-                    and sample.get("primary_solver_primal_residual_status")
-                    == "AVAILABLE"
+                    and sample.get("primary_solver_primal_residual_status") == "AVAILABLE"
                 ),
                 default=None,
             ),
@@ -723,8 +627,7 @@ class NativeRunRecorder:
                     float(sample["primary_solver_dual_residual"])
                     for sample in self.samples
                     if sample.get("primary_solver_dual_residual") is not None
-                    and sample.get("primary_solver_dual_residual_status")
-                    == "AVAILABLE"
+                    and sample.get("primary_solver_dual_residual_status") == "AVAILABLE"
                 ),
                 default=None,
             ),
@@ -867,12 +770,8 @@ class NativeRunRecorder:
                         "ground_collision_detected": int(
                             sample.get("ground_collision_detected", False)
                         ),
-                        "minimum_obstacle_clearance_m": sample.get(
-                            "minimum_obstacle_clearance_m"
-                        ),
-                        "minimum_ground_clearance_m": sample.get(
-                            "minimum_ground_clearance_m"
-                        ),
+                        "minimum_obstacle_clearance_m": sample.get("minimum_obstacle_clearance_m"),
+                        "minimum_ground_clearance_m": sample.get("minimum_ground_clearance_m"),
                         "seed_trajectory_time_ms": self._timing_value(
                             sample, "seed_trajectory_time_ms"
                         ),
@@ -885,18 +784,12 @@ class NativeRunRecorder:
                         "risk_allocation_time_ms": self._timing_value(
                             sample, "risk_allocation_time_ms"
                         ),
-                        "tightening_time_ms": self._timing_value(
-                            sample, "tightening_time_ms"
-                        ),
+                        "tightening_time_ms": self._timing_value(sample, "tightening_time_ms"),
                         "chance_profile_time_ms": self._timing_value(
                             sample, "chance_profile_time_ms"
                         ),
-                        "tvp_update_time_ms": self._timing_value(
-                            sample, "tvp_update_time_ms"
-                        ),
-                        "nlp_solve_time_ms": self._timing_value(
-                            sample, "nlp_solve_time_ms"
-                        ),
+                        "tvp_update_time_ms": self._timing_value(sample, "tvp_update_time_ms"),
+                        "nlp_solve_time_ms": self._timing_value(sample, "nlp_solve_time_ms"),
                         "post_solve_diagnostic_time_ms": self._timing_value(
                             sample, "post_solve_diagnostic_time_ms"
                         ),
@@ -909,9 +802,7 @@ class NativeRunRecorder:
                             "primary_solver_status",
                             "",
                         ),
-                        "primary_solver_success": int(
-                            sample.get("primary_solver_success", True)
-                        ),
+                        "primary_solver_success": int(sample.get("primary_solver_success", True)),
                         "primary_solver_iterations": sample.get(
                             "primary_solver_iterations",
                             0,
@@ -946,33 +837,19 @@ class NativeRunRecorder:
                             "command_source",
                             "PRIMARY_NMPC",
                         ),
-                        "solution_accepted": int(
-                            sample.get("solution_accepted", True)
-                        ),
-                        "fallback_active": int(
-                            sample.get("fallback_active", False)
-                        ),
+                        "solution_accepted": int(sample.get("solution_accepted", True)),
+                        "fallback_active": int(sample.get("fallback_active", False)),
                         "fallback_level": sample.get("fallback_level", 0),
                         "fallback_reason": sample.get("fallback_reason", ""),
                         "consecutive_rejections": sample.get(
                             "consecutive_rejections",
                             0,
                         ),
-                        "deadline_missed": int(
-                            sample.get("deadline_missed", False)
-                        ),
-                        "applied_command_source": sample.get(
-                            "applied_command_source", ""
-                        ),
-                        "primary_disposition": sample.get(
-                            "primary_disposition", ""
-                        ),
-                        "rejection_reasons": ";".join(
-                            sample.get("rejection_reasons", ())
-                        ),
-                        "deadline_overrun_ms": float(
-                            sample.get("deadline_overrun_ms", 0.0)
-                        ),
+                        "deadline_missed": int(sample.get("deadline_missed", False)),
+                        "applied_command_source": sample.get("applied_command_source", ""),
+                        "primary_disposition": sample.get("primary_disposition", ""),
+                        "rejection_reasons": ";".join(sample.get("rejection_reasons", ())),
+                        "deadline_overrun_ms": float(sample.get("deadline_overrun_ms", 0.0)),
                         "total_controller_time_ms": float(
                             sample.get("total_controller_time_ms", 0.0)
                         ),
@@ -998,9 +875,7 @@ class NativeRunRecorder:
                         "horizon_assurance_failed_checks": ";".join(
                             sample.get("horizon_assurance_failed_checks", ())
                         ),
-                        "assurance_schema_version": int(
-                            sample.get("assurance_schema_version", 3)
-                        ),
+                        "assurance_schema_version": int(sample.get("assurance_schema_version", 3)),
                         "chance_profile_schema_version": int(
                             sample.get("chance_profile_schema_version", 1)
                         ),
@@ -1026,9 +901,7 @@ class NativeRunRecorder:
                             "risk_budget_allocated",
                             0.0,
                         ),
-                        "risk_budget_remaining": sample.get(
-                            "risk_budget_remaining"
-                        ),
+                        "risk_budget_remaining": sample.get("risk_budget_remaining"),
                         "risk_constraint_count": sample.get(
                             "risk_constraint_count",
                             0,
@@ -1037,9 +910,7 @@ class NativeRunRecorder:
                             "risk_budget_status",
                             "",
                         ),
-                        "minimum_chance_residual_m": sample.get(
-                            "minimum_chance_residual_m"
-                        ),
+                        "minimum_chance_residual_m": sample.get("minimum_chance_residual_m"),
                         "maximum_slack_m": sample.get("maximum_slack_m"),
                         "maximum_projected_uncertainty_m": sample.get(
                             "maximum_projected_uncertainty_m"
@@ -1160,4 +1031,3 @@ def _stack_or_empty(items: list[np.ndarray], *, trailing_rank: int) -> np.ndarra
     if any(item.shape != shape for item in items):
         return np.empty((len(items),) + (0,) * trailing_rank, dtype=float)
     return np.stack(items).astype(float, copy=False)
-

@@ -37,10 +37,7 @@ class ExtendedKalmanEstimator:
         jacobian = self.dynamics.jacobian_state(self.state, command)
         transition = np.eye(9) + dt * jacobian
         self.state = self.dynamics.discrete(self.state, command, dt)
-        self.covariance = (
-            transition @ self.covariance @ transition.T
-            + self.process_covariance * dt
-        )
+        self.covariance = transition @ self.covariance @ transition.T + self.process_covariance * dt
         self._symmetrize()
 
     def update(self, measurement: Array) -> None:
@@ -57,8 +54,7 @@ class ExtendedKalmanEstimator:
         identity = np.eye(9)
         remainder = identity - gain
         self.covariance = (
-            remainder @ self.covariance @ remainder.T
-            + gain @ self.measurement_covariance @ gain.T
+            remainder @ self.covariance @ remainder.T + gain @ self.measurement_covariance @ gain.T
         )
         self._symmetrize()
 
@@ -67,6 +63,4 @@ class ExtendedKalmanEstimator:
         self.covariance = 0.5 * (self.covariance + self.covariance.T)
         eigenvalues, eigenvectors = np.linalg.eigh(self.covariance)
         if eigenvalues.min() < 0.0:
-            self.covariance = (
-                eigenvectors * np.maximum(eigenvalues, 0.0)
-            ) @ eigenvectors.T
+            self.covariance = (eigenvectors * np.maximum(eigenvalues, 0.0)) @ eigenvectors.T

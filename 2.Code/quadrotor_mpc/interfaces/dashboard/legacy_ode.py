@@ -5,6 +5,7 @@ Run with:  streamlit run app.py
 
 Requires: streamlit, casadi, do-mpc, plotly, numpy  (see requirements.txt)
 """
+
 import numpy as np
 import streamlit as st
 
@@ -15,27 +16,36 @@ from quadrotor_mpc.reporting.native_plots import build_figure, build_timeseries_
 st.set_page_config(page_title="Quadrotor MPC", layout="wide", page_icon="🚁")
 
 
-@st.cache_resource(show_spinner="Đang dựng/biên dịch bộ điều khiển MPC (chỉ 1 lần cho mỗi cấu hình)...")
-def get_cached_controller(thrust_max, torque_rp_max, torque_yaw_max, obstacles_key, margin, use_jit):
+@st.cache_resource(
+    show_spinner="Đang dựng/biên dịch bộ điều khiển MPC (chỉ 1 lần cho mỗi cấu hình)..."
+)
+def get_cached_controller(
+    thrust_max, torque_rp_max, torque_yaw_max, obstacles_key, margin, use_jit
+):
     """Cached across Streamlit re-runs, keyed on (bounds, obstacles, margin, use_jit)
     so changing only start/goal sliders reuses the same built controller instead
     of rebuilding the whole NLP every "Run" click."""
-    bounds = {'thrust': thrust_max, 'torque_rp': torque_rp_max, 'torque_yaw': torque_yaw_max}
+    bounds = {"thrust": thrust_max, "torque_rp": torque_rp_max, "torque_yaw": torque_yaw_max}
     obstacles = [dict(items) for items in obstacles_key]
-    return build_cached_mpc(bounds, obstacles, margin=margin, n_horizon=20, dt=0.05,
-                             max_iter=60, use_jit=use_jit)
+    return build_cached_mpc(
+        bounds, obstacles, margin=margin, n_horizon=20, dt=0.05, max_iter=60, use_jit=use_jit
+    )
 
 
 def obstacles_to_key(obstacles):
     return tuple(tuple(sorted(o.items())) for o in obstacles)
 
-st.markdown("""
+
+st.markdown(
+    """
 <style>
 .stApp { background-color: #0a0d16; }
 section[data-testid="stSidebar"] { background-color: #131826; }
 h1, h2, h3, p, label, .stMarkdown { color: #e9edf5 !important; }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 st.title("🚁 Quadrotor A → B — Nonlinear MPC (CasADi / do-mpc)")
 st.caption(
@@ -68,11 +78,19 @@ with st.sidebar:
     constraints_on = st.checkbox("Bật ràng buộc actuator", value=True)
     thrust_max = st.slider("Thrust deviation max (N)", 0.005, 0.085, 0.080, 0.005)
     torque_rp_max = st.slider(
-        "Torque roll/pitch max (N·m)", 0.0001, 0.0020, 0.0015, 0.0001,
+        "Torque roll/pitch max (N·m)",
+        0.0001,
+        0.0020,
+        0.0015,
+        0.0001,
         format="%.4f",
     )
     torque_yaw_max = st.slider(
-        "Torque yaw max (N·m)", 0.00002, 0.00040, 0.00020, 0.00002,
+        "Torque yaw max (N·m)",
+        0.00002,
+        0.00040,
+        0.00020,
+        0.00002,
         format="%.5f",
     )
 
@@ -122,77 +140,108 @@ with st.sidebar:
 if run_clicked:
     obstacles = []
     if obsA_on:
-        obstacles.append({'type': 'static', 'x': obsA_x, 'y': obsA_y, 'z': obsA_z, 'radius': obsA_r})
+        obstacles.append(
+            {"type": "static", "x": obsA_x, "y": obsA_y, "z": obsA_z, "radius": obsA_r}
+        )
     if obsB_on:
-        obstacles.append({'type': 'dynamic', 'x': obsB_x, 'z': obsB_z, 'amp': obsB_amp,
-                           'period': obsB_period, 'radius': obsB_r})
+        obstacles.append(
+            {
+                "type": "dynamic",
+                "x": obsB_x,
+                "z": obsB_z,
+                "amp": obsB_amp,
+                "period": obsB_period,
+                "radius": obsB_r,
+            }
+        )
 
     if constraints_on:
-        bounds = {'thrust': thrust_max, 'torque_rp': torque_rp_max, 'torque_yaw': torque_yaw_max}
+        bounds = {"thrust": thrust_max, "torque_rp": torque_rp_max, "torque_yaw": torque_yaw_max}
     else:
         # generous-but-finite bounds: a real motor never has infinite authority,
         # and the nonlinear plant genuinely cannot tolerate unbounded commands.
         bounds = {
-            'thrust': DEFAULT_QUADROTOR.max_upward_thrust_deviation_n,
-            'torque_rp': DEFAULT_QUADROTOR.max_roll_pitch_torque_nm,
-            'torque_yaw': DEFAULT_QUADROTOR.max_yaw_torque_nm,
+            "thrust": DEFAULT_QUADROTOR.max_upward_thrust_deviation_n,
+            "torque_rp": DEFAULT_QUADROTOR.max_roll_pitch_torque_nm,
+            "torque_yaw": DEFAULT_QUADROTOR.max_yaw_torque_nm,
         }
 
-    x0_vals = {'x': x0, 'y': y0, 'z': z0,
-               'roll': np.deg2rad(roll0), 'pitch': np.deg2rad(pitch0), 'yaw': np.deg2rad(yaw0)}
-    goal_pos = {'x': xg, 'y': yg, 'z': zg}
-    goal_euler = {'roll': np.deg2rad(rollg), 'pitch': np.deg2rad(pitchg), 'yaw': np.deg2rad(yawg)}
+    x0_vals = {
+        "x": x0,
+        "y": y0,
+        "z": z0,
+        "roll": np.deg2rad(roll0),
+        "pitch": np.deg2rad(pitch0),
+        "yaw": np.deg2rad(yaw0),
+    }
+    goal_pos = {"x": xg, "y": yg, "z": zg}
+    goal_euler = {"roll": np.deg2rad(rollg), "pitch": np.deg2rad(pitchg), "yaw": np.deg2rad(yawg)}
 
     cached = get_cached_controller(
-        bounds['thrust'], bounds['torque_rp'], bounds['torque_yaw'],
-        obstacles_to_key(obstacles), margin, use_jit,
+        bounds["thrust"],
+        bounds["torque_rp"],
+        bounds["torque_yaw"],
+        obstacles_to_key(obstacles),
+        margin,
+        use_jit,
     )
 
     progress_bar = st.progress(0.0, text="Đang giải MPC / mô phỏng...")
 
     def progress_cb(frac):
-        progress_bar.progress(frac, text=f"Đang giải MPC / mô phỏng... {int(frac*100)}%")
+        progress_bar.progress(frac, text=f"Đang giải MPC / mô phỏng... {int(frac * 100)}%")
 
     with st.spinner("Đang chạy IPOPT..."):
         result = run_simulation(
-            x0_vals=x0_vals, goal_pos=goal_pos, goal_euler=goal_euler,
-            bounds=bounds, obstacles=obstacles, margin=margin,
-            sim_seconds=sim_seconds, dt=0.05, n_horizon=20, max_iter=60,
-            progress_cb=progress_cb, cached=cached,
+            x0_vals=x0_vals,
+            goal_pos=goal_pos,
+            goal_euler=goal_euler,
+            bounds=bounds,
+            obstacles=obstacles,
+            margin=margin,
+            sim_seconds=sim_seconds,
+            dt=0.05,
+            n_horizon=20,
+            max_iter=60,
+            progress_cb=progress_cb,
+            cached=cached,
         )
     progress_bar.empty()
 
-    st.session_state['result'] = result
-    st.session_state['start'] = {'x': x0, 'y': y0, 'z': z0}
-    st.session_state['goal'] = goal_pos
-    st.session_state['obstacles'] = obstacles
+    st.session_state["result"] = result
+    st.session_state["start"] = {"x": x0, "y": y0, "z": z0}
+    st.session_state["goal"] = goal_pos
+    st.session_state["obstacles"] = obstacles
 
 # ---------------------------------------------------------------------------
 # Display results (persist across reruns via session_state)
 # ---------------------------------------------------------------------------
-if 'result' in st.session_state:
-    result = st.session_state['result']
-    start = st.session_state['start']
-    goal = st.session_state['goal']
-    obstacles = st.session_state['obstacles']
+if "result" in st.session_state:
+    result = st.session_state["result"]
+    start = st.session_state["start"]
+    goal = st.session_state["goal"]
+    obstacles = st.session_state["obstacles"]
 
-    final_pos = result['pos'][-1]
-    dist = np.linalg.norm(final_pos - np.array([goal['x'], goal['y'], goal['z']]))
-    min_clear = result['clearance'].min() if obstacles else None
+    final_pos = result["pos"][-1]
+    dist = np.linalg.norm(final_pos - np.array([goal["x"], goal["y"], goal["z"]]))
+    min_clear = result["clearance"].min() if obstacles else None
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Khoảng cách tới goal (cuối)", f"{dist:.3f} m")
     c2.metric("Vị trí cuối", f"({final_pos[0]:.2f}, {final_pos[1]:.2f}, {final_pos[2]:.2f})")
-    c3.metric("Khoảng cách vật cản nhỏ nhất", f"{min_clear:.2f} m" if min_clear is not None else "không có")
+    c3.metric(
+        "Khoảng cách vật cản nhỏ nhất",
+        f"{min_clear:.2f} m" if min_clear is not None else "không có",
+    )
     c4.metric("Thời gian mô phỏng", f"{result['t'][-1]:.1f} s")
 
     tab1, tab2 = st.tabs(["🎥 Bay 3D (animation)", "📈 Đồ thị theo thời gian"])
     with tab1:
         fig = build_figure(result, start, goal, obstacles)
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, width="stretch")
         st.caption("Kéo thanh trượt hoặc bấm ▶ Play để xem lại toàn bộ chuyến bay.")
     with tab2:
         fig2 = build_timeseries_figure(result, goal)
-        st.plotly_chart(fig2, width='stretch')
+        st.plotly_chart(fig2, width="stretch")
 else:
     st.info("Chỉnh các thông số ở thanh bên trái rồi bấm **▶ Chạy mô phỏng** để bắt đầu.")

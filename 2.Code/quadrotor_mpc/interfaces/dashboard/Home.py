@@ -11,7 +11,8 @@ st.caption("Learn · Run · Compare · Validate — deterministic MPC and chance
 left, right = st.columns([1.1, 1.0])
 with left:
     st.subheader("Closed-loop architecture")
-    st.graphviz_chart("""
+    st.graphviz_chart(
+        """
     digraph G {
       rankdir=LR; bgcolor="transparent";
       node [shape=box, style="rounded,filled", fillcolor="#172033", fontcolor="white", color="#4c6fff"];
@@ -23,7 +24,9 @@ with left:
       scenario -> estimator -> controller -> plant -> estimator;
       controller -> logger; plant -> logger; estimator -> logger;
     }
-    """, use_container_width=True)
+    """,
+        use_container_width=True,
+    )
 with right:
     st.subheader("What this workbench records")
     st.markdown("""
@@ -36,11 +39,20 @@ with right:
 
 st.subheader("Workflow")
 columns = st.columns(5)
-for column, title, body in zip(columns,
+for column, title, body in zip(
+    columns,
     ("1 · Build", "2 · Run", "3 · Inspect", "4 · Compare", "5 · Validate"),
-    ("Create or edit a scenario", "Choose controller and backend", "Replay horizon and diagnostics", "Use paired seeds and statistics", "Run sweeps and Monte Carlo"),
+    (
+        "Create or edit a scenario",
+        "Choose controller and backend",
+        "Replay horizon and diagnostics",
+        "Use paired seeds and statistics",
+        "Run sweeps and Monte Carlo",
+    ),
 ):
     column.markdown(f"**{title}**")
     column.caption(body)
 
-st.info("Start with **Live Simulation**, then use **Compare Controllers** on the static-obstacle scenario.")
+st.info(
+    "Start with **Live Simulation**, then use **Compare Controllers** on the static-obstacle scenario."
+)

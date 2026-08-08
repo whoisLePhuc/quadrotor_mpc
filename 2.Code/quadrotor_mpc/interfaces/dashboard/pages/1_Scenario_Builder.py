@@ -27,11 +27,25 @@ with left:
         st.number_input("Goal z", value=float(base["goal"][2]), min_value=0.0),
     ]
 with right:
-    base["max_time"] = st.number_input("Maximum time [s]", value=float(base["max_time"]), min_value=0.1)
-    base["sim_timestep"] = st.number_input("Plant timestep [s]", value=float(base["sim_timestep"]), min_value=0.001, format="%.3f")
+    base["max_time"] = st.number_input(
+        "Maximum time [s]", value=float(base["max_time"]), min_value=0.1
+    )
+    base["sim_timestep"] = st.number_input(
+        "Plant timestep [s]", value=float(base["sim_timestep"]), min_value=0.001, format="%.3f"
+    )
     base["seed"] = st.number_input("Seed", value=int(base["seed"]), min_value=0, step=1)
-    base["noise"]["measurement_pos"] = st.number_input("Position measurement noise", value=float(base["noise"]["measurement_pos"]), min_value=0.0, format="%.4f")
-    base["noise"]["process_vel"] = st.number_input("Velocity process noise", value=float(base["noise"]["process_vel"]), min_value=0.0, format="%.4f")
+    base["noise"]["measurement_pos"] = st.number_input(
+        "Position measurement noise",
+        value=float(base["noise"]["measurement_pos"]),
+        min_value=0.0,
+        format="%.4f",
+    )
+    base["noise"]["process_vel"] = st.number_input(
+        "Velocity process noise",
+        value=float(base["noise"]["process_vel"]),
+        min_value=0.0,
+        format="%.4f",
+    )
 
 st.subheader("Obstacle editor")
 obstacle_yaml = st.text_area(
@@ -44,7 +58,9 @@ try:
     validated = ScenarioConfig.from_mapping(base, base["name"])
     rendered = yaml.safe_dump(validated.to_mapping(), sort_keys=False)
     st.success("Scenario is valid.")
-    st.download_button("Download scenario YAML", rendered, file_name=f"{validated.name}.yaml", mime="text/yaml")
+    st.download_button(
+        "Download scenario YAML", rendered, file_name=f"{validated.name}.yaml", mime="text/yaml"
+    )
     st.code(rendered, language="yaml")
 except (ValueError, TypeError, KeyError, yaml.YAMLError) as exc:
     st.error(f"Invalid scenario: {exc}")

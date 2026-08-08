@@ -253,8 +253,10 @@ def box_to_ellipsoid_axes(
 def yaw_to_rotation(yaw: float) -> npt.NDArray[np.float64]:
     """Create 3D rotation matrix for a yaw angle about z-axis."""
     ct, st = math.cos(yaw), math.sin(yaw)
-    return np.array([
-        [ct, -st, 0.0],
-        [st,  ct, 0.0],
-        [0.0, 0.0, 1.0],
-    ])
+    return np.array(
+        [
+            [ct, -st, 0.0],
+            [st, ct, 0.0],
+            [0.0, 0.0, 1.0],
+        ]
+    )

@@ -57,7 +57,9 @@ if run_clicked:
 
 if "mujoco_result" in st.session_state:
     result = st.session_state["mujoco_result"]
-    start, goal, obstacles, build_figure, build_timeseries_figure = st.session_state["mujoco_context"]
+    start, goal, obstacles, build_figure, build_timeseries_figure = st.session_state[
+        "mujoco_context"
+    ]
     final_error = float(np.linalg.norm(result["pos"][-1] - np.array(list(goal.values()))))
     columns = st.columns(4)
     columns[0].metric("Final error", f"{final_error:.3f} m")

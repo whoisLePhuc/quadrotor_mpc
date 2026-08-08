@@ -349,15 +349,11 @@ class ControlSolution:
             if value is not None:
                 number = float(value)
                 if not np.isfinite(number) or number < -1e-12:
-                    raise ValueError(
-                        f"ControlSolution.{label} must be finite and nonnegative"
-                    )
+                    raise ValueError(f"ControlSolution.{label} must be finite and nonnegative")
                 object.__setattr__(self, label, max(0.0, number))
         allocated = float(self.risk_budget_allocated)
         if not np.isfinite(allocated) or allocated < -1e-12:
-            raise ValueError(
-                "ControlSolution.risk_budget_allocated must be finite and nonnegative"
-            )
+            raise ValueError("ControlSolution.risk_budget_allocated must be finite and nonnegative")
         object.__setattr__(self, "risk_budget_allocated", max(0.0, allocated))
         count = int(self.risk_constraint_count)
         if count < 0:
@@ -380,9 +376,7 @@ class ControlSolution:
         )
         primary_solver_iterations = int(self.primary_solver_iterations)
         if primary_solver_iterations < 0:
-            raise ValueError(
-                "ControlSolution.primary_solver_iterations must be >= 0"
-            )
+            raise ValueError("ControlSolution.primary_solver_iterations must be >= 0")
         object.__setattr__(
             self,
             "primary_solver_iterations",
@@ -398,9 +392,7 @@ class ControlSolution:
                 continue
             residual = float(raw)
             if not np.isfinite(residual) or residual < 0.0:
-                raise ValueError(
-                    f"ControlSolution.{label} must be finite and >= 0"
-                )
+                raise ValueError(f"ControlSolution.{label} must be finite and >= 0")
             object.__setattr__(self, label, residual)
         object.__setattr__(self, "command_source", str(self.command_source))
         object.__setattr__(
@@ -429,9 +421,7 @@ class ControlSolution:
         )
         consecutive_rejections = int(self.consecutive_rejections)
         if consecutive_rejections < 0:
-            raise ValueError(
-                "ControlSolution.consecutive_rejections must be >= 0"
-            )
+            raise ValueError("ControlSolution.consecutive_rejections must be >= 0")
         object.__setattr__(
             self,
             "consecutive_rejections",
@@ -439,9 +429,7 @@ class ControlSolution:
         )
         solve_time_ms = float(self.solve_time_ms)
         if not np.isfinite(solve_time_ms) or solve_time_ms < 0.0:
-            raise ValueError(
-                "ControlSolution.solve_time_ms must be finite and >= 0"
-            )
+            raise ValueError("ControlSolution.solve_time_ms must be finite and >= 0")
         object.__setattr__(self, "solve_time_ms", solve_time_ms)
         object.__setattr__(
             self,
@@ -451,8 +439,7 @@ class ControlSolution:
         residual_status = str(self.residual_status)
         if residual_status not in {"AVAILABLE", "UNAVAILABLE", "INVALID"}:
             raise ValueError(
-                "ControlSolution.residual_status must be "
-                "'AVAILABLE', 'UNAVAILABLE' or 'INVALID'"
+                "ControlSolution.residual_status must be 'AVAILABLE', 'UNAVAILABLE' or 'INVALID'"
             )
         object.__setattr__(self, "residual_status", residual_status)
         for label in (
@@ -462,8 +449,7 @@ class ControlSolution:
             status = str(getattr(self, label))
             if status not in {"AVAILABLE", "UNAVAILABLE", "INVALID"}:
                 raise ValueError(
-                    f"ControlSolution.{label} must be "
-                    "'AVAILABLE', 'UNAVAILABLE' or 'INVALID'"
+                    f"ControlSolution.{label} must be 'AVAILABLE', 'UNAVAILABLE' or 'INVALID'"
                 )
             object.__setattr__(self, label, status)
         object.__setattr__(
@@ -506,9 +492,7 @@ class ControlSolution:
             "horizon_assurance_reason",
             str(self.horizon_assurance_reason),
         )
-        failed_checks = tuple(
-            str(check) for check in self.horizon_assurance_failed_checks
-        )
+        failed_checks = tuple(str(check) for check in self.horizon_assurance_failed_checks)
         object.__setattr__(
             self,
             "horizon_assurance_failed_checks",
@@ -543,9 +527,7 @@ class ControlSolution:
             self.controller_timing,
             ControllerTiming,
         ):
-            raise ValueError(
-                "ControlSolution.controller_timing must be a ControllerTiming or None"
-            )
+            raise ValueError("ControlSolution.controller_timing must be a ControllerTiming or None")
 
     @property
     def predicted_positions(self) -> np.ndarray:

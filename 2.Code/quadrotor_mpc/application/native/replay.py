@@ -1,4 +1,4 @@
-﻿"""Replay a recorded native run without invoking the NMPC solver."""
+"""Replay a recorded native run without invoking the NMPC solver."""
 
 from __future__ import annotations
 
@@ -124,12 +124,8 @@ def replay_native_recording(config: Any, recording: dict[str, Any], runtime: Any
             )
             collided = collided or bool(int(row["collided"]))
             clearance = float(row["min_clearance_m"])
-            obstacle_collision_detected = bool(
-                int(row.get("obstacle_collision_detected", 0))
-            )
-            ground_collision_detected = bool(
-                int(row.get("ground_collision_detected", 0))
-            )
+            obstacle_collision_detected = bool(int(row.get("obstacle_collision_detected", 0)))
+            ground_collision_detected = bool(int(row.get("ground_collision_detected", 0)))
             minimum_obstacle_clearance_m = (
                 None
                 if row.get("minimum_obstacle_clearance_m") in (None, "")
@@ -146,27 +142,17 @@ def replay_native_recording(config: Any, recording: dict[str, Any], runtime: Any
                     "covariance_propagation_time_ms": _optional(
                         row, "covariance_propagation_time_ms"
                     ),
-                    "geometry_context_time_ms": _optional(
-                        row, "geometry_context_time_ms"
-                    ),
-                    "risk_allocation_time_ms": _optional(
-                        row, "risk_allocation_time_ms"
-                    ),
+                    "geometry_context_time_ms": _optional(row, "geometry_context_time_ms"),
+                    "risk_allocation_time_ms": _optional(row, "risk_allocation_time_ms"),
                     "tightening_time_ms": _optional(row, "tightening_time_ms"),
-                    "chance_profile_time_ms": _optional(
-                        row, "chance_profile_time_ms"
-                    ),
+                    "chance_profile_time_ms": _optional(row, "chance_profile_time_ms"),
                     "tvp_update_time_ms": _optional(row, "tvp_update_time_ms"),
                     "nlp_solve_time_ms": _optional(row, "nlp_solve_time_ms"),
                     "post_solve_diagnostic_time_ms": _optional(
                         row, "post_solve_diagnostic_time_ms"
                     ),
-                    "safety_supervisor_time_ms": _optional(
-                        row, "safety_supervisor_time_ms"
-                    ),
-                    "total_controller_time_ms": _optional(
-                        row, "total_controller_time_ms"
-                    ),
+                    "safety_supervisor_time_ms": _optional(row, "safety_supervisor_time_ms"),
+                    "total_controller_time_ms": _optional(row, "total_controller_time_ms"),
                 }
             )
             keep_running = runtime.on_step(
@@ -247,15 +233,9 @@ def replay_native_recording(config: Any, recording: dict[str, Any], runtime: Any
                         else None
                     ),
                     solver_status=str(row.get("solver_status", "")),
-                    primary_solver_status=str(
-                        row.get("primary_solver_status", "")
-                    ),
-                    primary_solver_success=bool(
-                        int(row.get("primary_solver_success", 1) or 0)
-                    ),
-                    primary_solver_iterations=int(
-                        row.get("primary_solver_iterations", 0) or 0
-                    ),
+                    primary_solver_status=str(row.get("primary_solver_status", "")),
+                    primary_solver_success=bool(int(row.get("primary_solver_success", 1) or 0)),
+                    primary_solver_iterations=int(row.get("primary_solver_iterations", 0) or 0),
                     primary_solver_primal_residual=(
                         None
                         if row.get("primary_solver_primal_residual", "") in ("", None)
@@ -291,50 +271,26 @@ def replay_native_recording(config: Any, recording: dict[str, Any], runtime: Any
                     primary_solver_residual_source=str(
                         row.get("primary_solver_residual_source", "")
                     ),
-                    command_source=str(
-                        row.get("command_source", "PRIMARY_NMPC")
-                    ),
-                    solution_accepted=bool(
-                        int(row.get("solution_accepted", 1) or 0)
-                    ),
-                    fallback_active=bool(
-                        int(row.get("fallback_active", 0) or 0)
-                    ),
-                    fallback_level=int(
-                        row.get("fallback_level", 0) or 0
-                    ),
+                    command_source=str(row.get("command_source", "PRIMARY_NMPC")),
+                    solution_accepted=bool(int(row.get("solution_accepted", 1) or 0)),
+                    fallback_active=bool(int(row.get("fallback_active", 0) or 0)),
+                    fallback_level=int(row.get("fallback_level", 0) or 0),
                     fallback_reason=str(row.get("fallback_reason", "")),
-                    consecutive_rejections=int(
-                        row.get("consecutive_rejections", 0) or 0
-                    ),
-                    deadline_missed=bool(
-                        int(row.get("deadline_missed", 0) or 0)
-                    ),
-                    safety_assurance_status=str(
-                        row.get("safety_assurance_status", "")
-                    ),
-                    residual_status=str(
-                        row.get("residual_status", "UNAVAILABLE")
-                    ),
-                    horizon_assurance_status=str(
-                        row.get("horizon_assurance_status", "")
-                    ),
+                    consecutive_rejections=int(row.get("consecutive_rejections", 0) or 0),
+                    deadline_missed=bool(int(row.get("deadline_missed", 0) or 0)),
+                    safety_assurance_status=str(row.get("safety_assurance_status", "")),
+                    residual_status=str(row.get("residual_status", "UNAVAILABLE")),
+                    horizon_assurance_status=str(row.get("horizon_assurance_status", "")),
                     horizon_assurance_eligible=bool(
                         int(row.get("horizon_assurance_eligible", 0) or 0)
                     ),
-                    horizon_assurance_reason=str(
-                        row.get("horizon_assurance_reason", "")
-                    ),
+                    horizon_assurance_reason=str(row.get("horizon_assurance_reason", "")),
                     horizon_assurance_failed_checks=tuple(
                         check
-                        for check in str(
-                            row.get("horizon_assurance_failed_checks", "")
-                        ).split(";")
+                        for check in str(row.get("horizon_assurance_failed_checks", "")).split(";")
                         if check
                     ),
-                    assurance_schema_version=int(
-                        row.get("assurance_schema_version", 3) or 3
-                    ),
+                    assurance_schema_version=int(row.get("assurance_schema_version", 3) or 3),
                     chance_profile_schema_version=int(
                         row.get("chance_profile_schema_version", 1) or 1
                     ),
@@ -349,39 +305,29 @@ def replay_native_recording(config: Any, recording: dict[str, Any], runtime: Any
                     ),
                     projected_uncertainties=(
                         recording["projected_uncertainty_horizons"][index]
-                        if len(recording.get("projected_uncertainty_horizons", []))
-                        == len(rows)
+                        if len(recording.get("projected_uncertainty_horizons", [])) == len(rows)
                         else None
                     ),
                     tightened_safety_radii=(
                         recording["tightened_safety_radius_horizons"][index]
-                        if len(recording.get("tightened_safety_radius_horizons", []))
-                        == len(rows)
+                        if len(recording.get("tightened_safety_radius_horizons", [])) == len(rows)
                         else None
                     ),
                     risk_semantics=str(row.get("risk_semantics", "")),
-                    risk_allocation_method=str(
-                        row.get("risk_allocation_method", "")
-                    ),
+                    risk_allocation_method=str(row.get("risk_allocation_method", "")),
                     risk_budget_total=(
                         None
                         if row.get("risk_budget_total", "") in ("", None)
                         else float(row["risk_budget_total"])
                     ),
-                    risk_budget_allocated=float(
-                        row.get("risk_budget_allocated", 0.0) or 0.0
-                    ),
+                    risk_budget_allocated=float(row.get("risk_budget_allocated", 0.0) or 0.0),
                     risk_budget_remaining=(
                         None
                         if row.get("risk_budget_remaining", "") in ("", None)
                         else float(row["risk_budget_remaining"])
                     ),
-                    risk_constraint_count=int(
-                        row.get("risk_constraint_count", 0) or 0
-                    ),
-                    risk_budget_status=str(
-                        row.get("risk_budget_status", "")
-                    ),
+                    risk_constraint_count=int(row.get("risk_constraint_count", 0) or 0),
+                    risk_budget_status=str(row.get("risk_budget_status", "")),
                 )
             )
             if not keep_running:
@@ -402,4 +348,3 @@ def replay_native_recording(config: Any, recording: dict[str, Any], runtime: Any
         "termination_reason": termination,
         "replay": True,
     }
-

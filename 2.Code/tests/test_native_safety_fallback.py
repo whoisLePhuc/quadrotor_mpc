@@ -104,12 +104,8 @@ def solution(
         risk_budget_status=risk_status,
         primary_solver_status="Solve_Succeeded",
         primary_solver_success=primary_success,
-        primary_solver_primal_residual=(
-            1e-7 if residual_status == "AVAILABLE" else None
-        ),
-        primary_solver_dual_residual=(
-            1e-7 if residual_status == "AVAILABLE" else None
-        ),
+        primary_solver_primal_residual=(1e-7 if residual_status == "AVAILABLE" else None),
+        primary_solver_dual_residual=(1e-7 if residual_status == "AVAILABLE" else None),
         primary_solver_primal_residual_status=residual_status,
         primary_solver_dual_residual_status=residual_status,
         residual_status=residual_status,
@@ -154,9 +150,7 @@ OBSTACLES = [obstacle_belief()]
 
 class SafetyFallbackConfigurationTests(unittest.TestCase):
     def test_ccmpc_config_enables_stage6_policy_and_round_trips(self):
-        config = load_native_mujoco_config(
-            CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml"
-        )
+        config = load_native_mujoco_config(CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml")
         self.assertTrue(config.safety_fallback.enabled)
         self.assertFalse(config.safety_fallback.reject_on_deadline_miss)
         self.assertAlmostEqual(
@@ -170,9 +164,7 @@ class SafetyFallbackConfigurationTests(unittest.TestCase):
         self.assertEqual(type(config).from_mapping(config.to_mapping()), config)
 
     def test_legacy_config_defaults_to_disabled(self):
-        config = load_native_mujoco_config(
-            CODE_ROOT / "config" / "mujoco_native.yaml"
-        )
+        config = load_native_mujoco_config(CODE_ROOT / "config" / "mujoco_native.yaml")
         mapping = config.to_mapping()
         mapping["controller"].pop("safety_fallback")
         loaded = type(config).from_mapping(mapping)
@@ -186,9 +178,7 @@ class SafetyFallbackConfigurationTests(unittest.TestCase):
             )
 
     def test_rejection_deadline_cannot_exceed_controller_period(self):
-        config = load_native_mujoco_config(
-            CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml"
-        )
+        config = load_native_mujoco_config(CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml")
         mapping = config.to_mapping()
         mapping["controller"]["safety_fallback"]["reject_on_deadline_miss"] = True
         mapping["controller"]["safety_fallback"]["solve_deadline_s"] = 0.051
@@ -328,9 +318,7 @@ class SafetySupervisorTests(unittest.TestCase):
 
     def test_repeated_failures_escalate_to_emergency_hover(self):
         controller = supervisor(
-            ScriptedController(
-                [solution(primary_success=False), solution(primary_success=False)]
-            ),
+            ScriptedController([solution(primary_success=False), solution(primary_success=False)]),
             hold_last_command_steps=0,
             emergency_after_consecutive_rejections=2,
         )
@@ -384,9 +372,7 @@ class SafetyFallbackClosedLoopTests(unittest.TestCase):
             hold_last_command_steps=1,
             emergency_after_consecutive_rejections=10,
         )
-        config = load_native_mujoco_config(
-            CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml"
-        )
+        config = load_native_mujoco_config(CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml")
         result = run_coupled_simulation(
             x0_vals=config.start,
             goal_pos=config.goal_position,

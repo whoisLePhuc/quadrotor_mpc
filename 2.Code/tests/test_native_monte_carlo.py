@@ -56,6 +56,12 @@ def trial(
     fallback: bool = False,
     p99: float = 40.0,
 ) -> NativeTrialResult:
+    risk_semantics = (
+        "disabled"
+        if mode == "deterministic"
+        else ("individual" if mode == "individual" else "joint")
+    )
+    risk_allocation_method = "none" if mode == "deterministic" else "uniform"
     return NativeTrialResult(
         noise_label="nominal",
         covariance_scale=1.0,
@@ -93,9 +99,7 @@ def trial(
         horizon_eligible_tick_count=9 if slack else 10,
         horizon_eligible_tick_rate=0.9 if slack else 1.0,
         horizon_ineligible_reason_counts={},
-        episode_all_ticks_horizon_eligible=(
-            mode != "deterministic" and not slack and not fallback
-        ),
+        episode_all_ticks_horizon_eligible=(mode != "deterministic" and not slack and not fallback),
         episode_any_fallback=fallback,
         episode_any_positive_slack=slack,
         episode_any_deadline_miss=fallback,
@@ -118,18 +122,19 @@ def trial(
         enforced_profile_count=10 if mode != "deterministic" else 0,
         missing_enforced_profile_count=10 if mode == "deterministic" else 0,
         post_solve_diagnostic_profile_count=0,
+        requested_mode=mode,
+        risk_semantics=risk_semantics,
+        risk_allocation_method=risk_allocation_method,
+        allocator_config_hash=None if mode == "deterministic" else "a" * 64,
+        risk_provenance_status="AVAILABLE",
     )
 
 
 class NativeMonteCarloConfigurationTests(unittest.TestCase):
     def test_repository_protocol_is_valid_and_resolves_base_config(self):
-        loaded = load_native_monte_carlo_protocol(
-            ROOT / "config" / "native_monte_carlo.yaml"
-        )
+        loaded = load_native_monte_carlo_protocol(ROOT / "config" / "native_monte_carlo.yaml")
         self.assertEqual(loaded.trials, 50)
-        self.assertEqual(
-            loaded.modes, ("deterministic", "individual", "joint_uniform")
-        )
+        self.assertEqual(loaded.modes, ("deterministic", "individual", "joint_uniform"))
         self.assertEqual(
             loaded.requested_modes,
             ("deterministic", "individual", "joint_uniform"),
@@ -142,9 +147,7 @@ class NativeMonteCarloConfigurationTests(unittest.TestCase):
         self.assertTrue(loaded.base_config_path.exists())
 
     def test_covariance_scale_uses_square_root_for_standard_deviation(self):
-        base = load_native_mujoco_config(
-            ROOT / "config" / "mujoco_native_ccmpc.yaml"
-        )
+        base = load_native_mujoco_config(ROOT / "config" / "mujoco_native_ccmpc.yaml")
         scaled = effective_native_config(
             base,
             mode="joint_uniform",
@@ -157,24 +160,17 @@ class NativeMonteCarloConfigurationTests(unittest.TestCase):
         )
         self.assertAlmostEqual(
             scaled.covariance_propagation.acceleration_process_std_mps2,
-            2.0
-            * base.covariance_propagation.acceleration_process_std_mps2,
+            2.0 * base.covariance_propagation.acceleration_process_std_mps2,
         )
         self.assertEqual(scaled.estimation.seed, 44)
 
     def test_controller_modes_preserve_explicit_risk_semantics(self):
-        base = load_native_mujoco_config(
-            ROOT / "config" / "mujoco_native_ccmpc.yaml"
-        )
+        base = load_native_mujoco_config(ROOT / "config" / "mujoco_native_ccmpc.yaml")
         deterministic = effective_native_config(
             base, mode="deterministic", covariance_scale=1.0, seed=1
         )
-        individual = effective_native_config(
-            base, mode="individual", covariance_scale=1.0, seed=1
-        )
-        joint = effective_native_config(
-            base, mode="joint_uniform", covariance_scale=1.0, seed=1
-        )
+        individual = effective_native_config(base, mode="individual", covariance_scale=1.0, seed=1)
+        joint = effective_native_config(base, mode="joint_uniform", covariance_scale=1.0, seed=1)
         self.assertFalse(deterministic.chance_constraints.enabled)
         self.assertFalse(deterministic.covariance_propagation.enabled)
         self.assertEqual(
@@ -192,12 +188,8 @@ class NativeMonteCarloMetricTests(unittest.TestCase):
         self.assertLess(high, 0.10)
 
     def test_native_result_reduction_keeps_slack_fallback_and_budget_separate(self):
-        base = load_native_mujoco_config(
-            ROOT / "config" / "mujoco_native_ccmpc.yaml"
-        )
-        config = effective_native_config(
-            base, mode="joint_uniform", covariance_scale=1.0, seed=4
-        )
+        base = load_native_mujoco_config(ROOT / "config" / "mujoco_native_ccmpc.yaml")
+        config = effective_native_config(base, mode="joint_uniform", covariance_scale=1.0, seed=4)
         steps = 2
         result = {
             "pos": np.array([[0.0, 0.0, 1.0], [3.0, 2.0, 2.5]]),
@@ -213,14 +205,14 @@ class NativeMonteCarloMetricTests(unittest.TestCase):
             ),
             "horizon_assurance_eligible": np.array([True, False]),
             "horizon_assurance_reason": np.array(["eligible", "fallback_active"]),
-            "horizon_assurance_failed_checks": np.array(
-                [[], ["fallback_active"]], dtype=object
-            ),
+            "horizon_assurance_failed_checks": np.array([[], ["fallback_active"]], dtype=object),
             "slack_horizon": np.array([[[0.0]], [[0.02]]]),
             "chance_residual_horizon": np.array([[[0.1]], [[-0.02]]]),
             "risk_budget_status": np.array(["BUDGET_OK", "BUDGET_OK"]),
             "risk_budget_total": np.array([0.1, 0.1]),
             "risk_budget_allocated": np.array([0.1, 0.1]),
+            "risk_semantics": np.array(["joint", "joint"]),
+            "risk_allocation_method": np.array(["uniform", "uniform"]),
             "estimated_state": np.column_stack(
                 [np.array([[0.0, 0.0, 1.0], [3.0, 2.0, 2.5]]), np.zeros((2, 10))]
             ),
@@ -245,12 +237,8 @@ class NativeMonteCarloMetricTests(unittest.TestCase):
         self.assertFalse(reduced.guarantee_eligible_episode)
 
     def test_positive_slack_blocks_claim_despite_zero_collisions(self):
-        items = [
-            trial("deterministic", seed)
-            for seed in range(10, 60)
-        ] + [
-            trial("joint_uniform", seed, slack=True)
-            for seed in range(10, 60)
+        items = [trial("deterministic", seed) for seed in range(10, 60)] + [
+            trial("joint_uniform", seed, slack=True) for seed in range(10, 60)
         ]
         aggregate = aggregate_native_trials(
             items,
@@ -266,12 +254,8 @@ class NativeMonteCarloMetricTests(unittest.TestCase):
         )
 
     def test_paired_delta_uses_only_matching_seeds(self):
-        items = [
-            trial("deterministic", seed)
-            for seed in range(10, 40)
-        ] + [
-            trial("joint_uniform", seed)
-            for seed in range(10, 39)
+        items = [trial("deterministic", seed) for seed in range(10, 40)] + [
+            trial("joint_uniform", seed) for seed in range(10, 39)
         ]
         aggregate = aggregate_native_trials(
             items,
@@ -290,9 +274,7 @@ class NativeMonteCarloMetricTests(unittest.TestCase):
 
 class NativeMonteCarloArtifactTests(unittest.TestCase):
     def test_release_campaign_refuses_dirty_source(self):
-        base = load_native_mujoco_config(
-            ROOT / "config" / "mujoco_native_ccmpc.yaml"
-        )
+        base = load_native_mujoco_config(ROOT / "config" / "mujoco_native_ccmpc.yaml")
         configured = protocol(trials=1)
         dirty = {
             "status": "DIRTY_GIT_SNAPSHOT",
@@ -314,7 +296,10 @@ class NativeMonteCarloArtifactTests(unittest.TestCase):
                 }
             )
             with (
-                patch("quadrotor_mpc.application.validation.monte_carlo.source_provenance", return_value=dirty),
+                patch(
+                    "quadrotor_mpc.application.validation.monte_carlo.source_provenance",
+                    return_value=dirty,
+                ),
                 self.assertRaisesRegex(RuntimeError, "clean Git source"),
             ):
                 create_validation_directory(configured, base, run_id="dirty")
@@ -336,9 +321,7 @@ class NativeMonteCarloArtifactTests(unittest.TestCase):
         self.assertIn("git_clean", provenance)
 
     def test_release_campaign_refuses_editable_distribution(self):
-        base = load_native_mujoco_config(
-            ROOT / "config" / "mujoco_native_ccmpc.yaml"
-        )
+        base = load_native_mujoco_config(ROOT / "config" / "mujoco_native_ccmpc.yaml")
         configured = protocol(trials=1)
         editable = {
             "status": "EDITABLE_DISTRIBUTION",
@@ -360,15 +343,16 @@ class NativeMonteCarloArtifactTests(unittest.TestCase):
                 }
             )
             with (
-                patch("quadrotor_mpc.application.validation.monte_carlo.source_provenance", return_value=editable),
+                patch(
+                    "quadrotor_mpc.application.validation.monte_carlo.source_provenance",
+                    return_value=editable,
+                ),
                 self.assertRaisesRegex(RuntimeError, "non-editable distribution"),
             ):
                 create_validation_directory(configured, base, run_id="editable")
 
     def test_checkpoint_round_trip_and_complete_bundle(self):
-        base = load_native_mujoco_config(
-            ROOT / "config" / "mujoco_native_ccmpc.yaml"
-        )
+        base = load_native_mujoco_config(ROOT / "config" / "mujoco_native_ccmpc.yaml")
         configured = protocol(trials=1)
         items = [trial("deterministic", 10), trial("joint_uniform", 10)]
         with tempfile.TemporaryDirectory() as temporary:
@@ -390,7 +374,10 @@ class NativeMonteCarloArtifactTests(unittest.TestCase):
                 "source_file_count": 12,
                 "distribution_version": None,
             }
-            with patch("quadrotor_mpc.application.validation.monte_carlo.source_provenance", return_value=dirty):
+            with patch(
+                "quadrotor_mpc.application.validation.monte_carlo.source_provenance",
+                return_value=dirty,
+            ):
                 directory = create_validation_directory(
                     configured,
                     base,
@@ -407,9 +394,7 @@ class NativeMonteCarloArtifactTests(unittest.TestCase):
                 base,
             )
             self.assertEqual(load_trial_checkpoint(directory), items)
-            aggregate = json.loads(
-                artifacts["aggregate"].read_text(encoding="utf-8")
-            )
+            aggregate = json.loads(artifacts["aggregate"].read_text(encoding="utf-8"))
             self.assertEqual(aggregate["overall"]["sample_size"], "INSUFFICIENT")
             self.assertEqual(
                 aggregate["overall"]["release_provenance"],

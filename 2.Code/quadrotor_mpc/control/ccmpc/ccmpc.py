@@ -46,7 +46,7 @@ class CCMPC:
         terminal_cost: list[float] | None = None,
         control_cost: list[float] | None = None,
         yaw_cost: float | None = None,
-        solver: str | None = None,   # FIX #22: allow CLI to override solver
+        solver: str | None = None,  # FIX #22: allow CLI to override solver
     ) -> None:
         if isinstance(config, (str, pathlib.Path)):
             path = pathlib.Path(config)
@@ -142,10 +142,10 @@ class CCMPC:
             # Depth:  x ≤ d_max  ⇒   x ≤ d_max       →  n=[  1,  0, 0], m=d_max
             self._fov_n_body: list[np.ndarray] = [
                 np.array([-th, -1.0, 0.0]),
-                np.array([-th,  1.0, 0.0]),
-                np.array([-tv,  0.0,-1.0]),
-                np.array([-tv,  0.0, 1.0]),
-                np.array([ 1.0, 0.0, 0.0]),
+                np.array([-th, 1.0, 0.0]),
+                np.array([-tv, 0.0, -1.0]),
+                np.array([-tv, 0.0, 1.0]),
+                np.array([1.0, 0.0, 0.0]),
             ]
             self._fov_m: list[float] = [0.0, 0.0, 0.0, 0.0, d_max]
             self._fov_slack_penalty: float = fov_cfg.get("slack_penalty", 10000.0)
@@ -166,9 +166,7 @@ class CCMPC:
         )
 
         # CVXPY parameters
-        self._initial_state: opt.Parameter = opt.Parameter(
-            self._state_dim, name="x0"
-        )
+        self._initial_state: opt.Parameter = opt.Parameter(self._state_dim, name="x0")
         # DPP FIX: Instead of storing goal as a 3D Parameter and building
         # quad_form(x - goal_param, Qg), which is NOT DPP when multiplied by
         # another Parameter (dist_scale), we pre-expand the terminal cost:
@@ -184,9 +182,7 @@ class CCMPC:
         # Keep _goal for backward compat (used in _emergency_hover distance calc)
         self._goal_np: npt.NDArray[np.float64] = np.zeros(3)
 
-        self._last_command: opt.Parameter = opt.Parameter(
-            self._control_dim, name="last_cmd"
-        )
+        self._last_command: opt.Parameter = opt.Parameter(self._control_dim, name="last_cmd")
 
         # Linearized dynamics params
         self._A_params: list[opt.Parameter] = [
@@ -198,8 +194,7 @@ class CCMPC:
             for k in range(self.control_horizon)
         ]
         self._C_params: list[opt.Parameter] = [
-            opt.Parameter(self._state_dim, name=f"C_{k}")
-            for k in range(self.control_horizon)
+            opt.Parameter(self._state_dim, name=f"C_{k}") for k in range(self.control_horizon)
         ]
 
         # Chance constraint params — built in _build_problem()
@@ -242,8 +237,8 @@ class CCMPC:
         self._lg_grad: list[opt.Parameter] = []
 
         # FOV constraint params (5 half-spaces per step)
-        self._fov_a: list[opt.Parameter] = []   # normals in world frame (3,)
-        self._fov_b: list[opt.Parameter] = []   # RHS scalars
+        self._fov_a: list[opt.Parameter] = []  # normals in world frame (3,)
+        self._fov_b: list[opt.Parameter] = []  # RHS scalars
         self._fov_slack: list[opt.Variable] = []  # slack variables
 
         for k in range(self.control_horizon):
@@ -264,9 +259,7 @@ class CCMPC:
                 self._cc_slack.append(slack_k_i)
 
                 p_k1 = self._states[:3, k + 1]
-                constraints += [
-                    a_k_i @ p_k1 - 1.0 + slack_k_i >= rhs_k_i
-                ]
+                constraints += [a_k_i @ p_k1 - 1.0 + slack_k_i >= rhs_k_i]
                 cost += self._slack_penalty * slack_k_i
 
             # Logistic obstacle cost (Eq 12) — linearized: grad^T · p_k
@@ -289,8 +282,8 @@ class CCMPC:
                     step_fov_a.append(a_j)
                     step_fov_b.append(b_j)
                 s_obs = opt.Variable(nonneg=True, name=f"fov_s_{k}")
-                self._fov_a.append(step_fov_a)   # list of 5 Parameter(3)
-                self._fov_b.append(step_fov_b)   # list of 5 Parameter
+                self._fov_a.append(step_fov_a)  # list of 5 Parameter(3)
+                self._fov_b.append(step_fov_b)  # list of 5 Parameter
                 self._fov_slack.append(s_obs)
                 for j in range(5):
                     constraints += [
@@ -298,7 +291,7 @@ class CCMPC:
                     ]
                 cost += self._fov_slack_penalty * s_obs
 
-            # Per-step reference tracking (mpc_python pattern): 
+            # Per-step reference tracking (mpc_python pattern):
             # follow a straight line from current to goal.
             ref_x_k = opt.Parameter(name=f"ref_x_{k}")
             ref_y_k = opt.Parameter(name=f"ref_y_{k}")
@@ -311,14 +304,16 @@ class CCMPC:
             # 1. z has separate dynamics (vz_c channel) not coupled to xy speed
             # 2. At large tilt angles, gravity reduces z-lift — need aggressive correction
             # 3. The altitude floor penalty (soft) needs support from the tracking cost
-            _w_xy = 0.5   # weight for x, y tracking
-            _w_z  = 5.0   # weight for z tracking (much higher than x,y)
-            pos_err_xy = opt.vstack([
-                self._states[0, k + 1] - ref_x_k,
-                self._states[1, k + 1] - ref_y_k,
-            ])
+            _w_xy = 0.5  # weight for x, y tracking
+            _w_z = 5.0  # weight for z tracking (much higher than x,y)
+            pos_err_xy = opt.vstack(
+                [
+                    self._states[0, k + 1] - ref_x_k,
+                    self._states[1, k + 1] - ref_y_k,
+                ]
+            )
             cost += _w_xy * opt.sum_squares(pos_err_xy)
-            cost += _w_z  * (self._states[2, k + 1] - ref_z_k) ** 2
+            cost += _w_z * (self._states[2, k + 1] - ref_z_k) ** 2
 
             cost += opt.sum_squares(self.R @ self._controls[:, k])
             cost += self.Q_psi * (self._states[8, k] - self._yaw_ref[k]) ** 2
@@ -329,8 +324,10 @@ class CCMPC:
         # This is DPP because each Parameter (_goal_scale, _goal_Qg_vec) appears
         # in exactly one atom and each is affine in Variables.
         x_terminal_pos = self._states[:3, -1]
-        cost += (self._goal_scale * opt.quad_form(x_terminal_pos, self.Qg)
-                 - 2.0 * self._goal_Qg_vec @ x_terminal_pos)
+        cost += (
+            self._goal_scale * opt.quad_form(x_terminal_pos, self.Qg)
+            - 2.0 * self._goal_Qg_vec @ x_terminal_pos
+        )
         # Strong terminal yaw cost
         cost += self.Q_psi * 10.0 * (self._states[8, -1] - self._yaw_ref[-1]) ** 2
 
@@ -345,10 +342,10 @@ class CCMPC:
         # The slack_penalty is large enough to make violations expensive but
         # the problem always remains feasible.
         N_ctrl = self.control_horizon
-        _SPalt  = 5000.0   # altitude floor — very expensive to violate
-        _SPvz   = 2000.0   # vertical velocity
-        _SPatt  = 500.0    # roll/pitch angles (safety critical)
-        _SPspd  = 200.0    # horizontal speed
+        _SPalt = 5000.0  # altitude floor — very expensive to violate
+        _SPvz = 2000.0  # vertical velocity
+        _SPatt = 500.0  # roll/pitch angles (safety critical)
+        _SPspd = 200.0  # horizontal speed
 
         # Altitude floor (FIX #1)
         slack_z = opt.Variable(N_ctrl, nonneg=True, name="slack_z")
@@ -358,45 +355,53 @@ class CCMPC:
         # vz state bound (FIX #2)
         slack_vz_hi = opt.Variable(N_ctrl, nonneg=True, name="slack_vz_hi")
         slack_vz_lo = opt.Variable(N_ctrl, nonneg=True, name="slack_vz_lo")
-        constraints += [self._states[5, 1:] <= self.max_vert_vel  + slack_vz_hi]
+        constraints += [self._states[5, 1:] <= self.max_vert_vel + slack_vz_hi]
         constraints += [self._states[5, 1:] >= -self.max_vert_vel - slack_vz_lo]
         cost += _SPvz * opt.sum(slack_vz_hi + slack_vz_lo)
 
         # Roll/pitch state bounds (FIX #3)
         slack_phi_hi = opt.Variable(N_ctrl, nonneg=True, name="slack_phi_hi")
         slack_phi_lo = opt.Variable(N_ctrl, nonneg=True, name="slack_phi_lo")
-        constraints += [self._states[6, 1:] <= self.max_roll  + slack_phi_hi]
+        constraints += [self._states[6, 1:] <= self.max_roll + slack_phi_hi]
         constraints += [self._states[6, 1:] >= -self.max_roll - slack_phi_lo]
         cost += _SPatt * opt.sum(slack_phi_hi + slack_phi_lo)
 
         slack_tht_hi = opt.Variable(N_ctrl, nonneg=True, name="slack_tht_hi")
         slack_tht_lo = opt.Variable(N_ctrl, nonneg=True, name="slack_tht_lo")
-        constraints += [self._states[7, 1:] <= self.max_pitch  + slack_tht_hi]
+        constraints += [self._states[7, 1:] <= self.max_pitch + slack_tht_hi]
         constraints += [self._states[7, 1:] >= -self.max_pitch - slack_tht_lo]
         cost += _SPatt * opt.sum(slack_tht_hi + slack_tht_lo)
 
         # Horizontal speed bounds (FIX: soft constraint to prevent infeasibility at high speed)
         slack_vx_hi = opt.Variable(N_ctrl, nonneg=True, name="slack_vx_hi")
         slack_vx_lo = opt.Variable(N_ctrl, nonneg=True, name="slack_vx_lo")
-        constraints += [self._states[3, 1:] <= self.max_speed  + slack_vx_hi]
+        constraints += [self._states[3, 1:] <= self.max_speed + slack_vx_hi]
         constraints += [self._states[3, 1:] >= -self.max_speed - slack_vx_lo]
         cost += _SPspd * opt.sum(slack_vx_hi + slack_vx_lo)
 
         slack_vy_hi = opt.Variable(N_ctrl, nonneg=True, name="slack_vy_hi")
         slack_vy_lo = opt.Variable(N_ctrl, nonneg=True, name="slack_vy_lo")
-        constraints += [self._states[4, 1:] <= self.max_speed  + slack_vy_hi]
+        constraints += [self._states[4, 1:] <= self.max_speed + slack_vy_hi]
         constraints += [self._states[4, 1:] >= -self.max_speed - slack_vy_lo]
         cost += _SPspd * opt.sum(slack_vy_hi + slack_vy_lo)
 
         # Control bounds (HARD — actuator limits never change)
-        constraints += [self._controls[0, :] <= self.max_roll,
-                         self._controls[0, :] >= -self.max_roll]
-        constraints += [self._controls[1, :] <= self.max_pitch,
-                         self._controls[1, :] >= -self.max_pitch]
-        constraints += [self._controls[2, :] <= self.max_vert_vel,
-                         self._controls[2, :] >= -self.max_vert_vel]
-        constraints += [self._controls[3, :] <= self.max_yaw_rate,
-                         self._controls[3, :] >= -self.max_yaw_rate]
+        constraints += [
+            self._controls[0, :] <= self.max_roll,
+            self._controls[0, :] >= -self.max_roll,
+        ]
+        constraints += [
+            self._controls[1, :] <= self.max_pitch,
+            self._controls[1, :] >= -self.max_pitch,
+        ]
+        constraints += [
+            self._controls[2, :] <= self.max_vert_vel,
+            self._controls[2, :] >= -self.max_vert_vel,
+        ]
+        constraints += [
+            self._controls[3, :] <= self.max_yaw_rate,
+            self._controls[3, :] >= -self.max_yaw_rate,
+        ]
 
         self._problem = opt.Problem(opt.Minimize(cost), constraints)
 
@@ -495,11 +500,13 @@ class CCMPC:
         for k in range(self.control_horizon):
             yaw_k = x_guess[8, k]
             ct, st = math.cos(yaw_k), math.sin(yaw_k)
-            R_yaw = np.array([
-                [ct, -st, 0.0],
-                [st,  ct, 0.0],
-                [0.0, 0.0, 1.0],
-            ])
+            R_yaw = np.array(
+                [
+                    [ct, -st, 0.0],
+                    [st, ct, 0.0],
+                    [0.0, 0.0, 1.0],
+                ]
+            )
             p_k = x_guess[:3, k]
 
             # Fill all 5 half-space constraints for this step
@@ -583,14 +590,12 @@ class CCMPC:
         # ---- Pre-compute uncertainty propagation (Eq 19) ----
         if Gamma_0 is None:
             Gamma_0 = self.uncertainty.Gamma_0.copy()
-        Gamma_list = self.uncertainty.propagate(
-            Gamma_0, x_guess, u_guess, self.dynamics
-        )
+        Gamma_list = self.uncertainty.propagate(Gamma_0, x_guess, u_guess, self.dynamics)
 
         # ---- iMPC loop ----
         converged = False
-        fresh_attempts = 0      # FIX #4: track how many fresh restarts we've done
-        _max_fresh = 2          # allow up to 2 independent fresh restarts
+        fresh_attempts = 0  # FIX #4: track how many fresh restarts we've done
+        _max_fresh = 2  # allow up to 2 independent fresh restarts
         for iteration in range(self._max_iter):
             # 1. Set initial state, goal, and last command
             self._initial_state.value = initial_state
@@ -653,11 +658,13 @@ class CCMPC:
                     Sigma = obs.Sigma.copy()
                     for k in range(N):
                         p_mav_guess_k = x_guess[:3, k + 1]
-                        obs_predictions[k].append(dict(
-                            pos=pos.copy(),
-                            Sigma=Sigma.copy(),
-                            L=L_const,
-                        ))
+                        obs_predictions[k].append(
+                            dict(
+                                pos=pos.copy(),
+                                Sigma=Sigma.copy(),
+                                L=L_const,
+                            )
+                        )
                         pos = pos + vel * self.dt
                         Sigma = Sigma + obs.Sigma_v * self.dt**2
 
@@ -669,9 +676,13 @@ class CCMPC:
                     if i_obs < len(obs_predictions[k]):
                         pred = obs_predictions[k][i_obs]
                         self._set_chance_constraint_params(
-                            k, i_obs,
-                            p_mav_guess_k, pred["pos"], pred["L"],
-                            Sigma_mav, pred["Sigma"],
+                            k,
+                            i_obs,
+                            p_mav_guess_k,
+                            pred["pos"],
+                            pred["L"],
+                            Sigma_mav,
+                            pred["Sigma"],
                         )
                     else:
                         self._dummy_chance_constraint(k, i_obs)
@@ -688,11 +699,11 @@ class CCMPC:
                 solver_instance = getattr(opt, solver_name)
                 # Solver-specific options
                 sopts = dict(solver_opts)
-                if solver_name == 'CLARABEL':
-                    sopts.setdefault('max_iter', 100)
-                    sopts.setdefault('tol_gap_abs', 1e-5)
-                    sopts.setdefault('tol_gap_rel', 1e-5)
-                    sopts.setdefault('tol_feas', 1e-5)
+                if solver_name == "CLARABEL":
+                    sopts.setdefault("max_iter", 100)
+                    sopts.setdefault("tol_gap_abs", 1e-5)
+                    sopts.setdefault("tol_gap_rel", 1e-5)
+                    sopts.setdefault("tol_feas", 1e-5)
                 self._problem.solve(
                     solver=solver_instance,
                     verbose=verbose,
@@ -711,8 +722,10 @@ class CCMPC:
                 # New logic: up to _max_fresh restarts, each re-entering the full loop.
                 if fresh_attempts < _max_fresh:
                     fresh_attempts += 1
-                    print(f"  [CCMPC] Solver fail (iter {iteration}), "
-                          f"fresh restart {fresh_attempts}/{_max_fresh}...")
+                    print(
+                        f"  [CCMPC] Solver fail (iter {iteration}), "
+                        f"fresh restart {fresh_attempts}/{_max_fresh}..."
+                    )
                     N = self.control_horizon
                     # Build a new straight-line guess toward goal
                     x_guess = np.tile(initial_state, (N + 1, 1)).T
@@ -757,13 +770,14 @@ class CCMPC:
 
         if verbose:
             status = "converged" if converged else f"max_iter ({self._max_iter})"
-            print(f"  [CCMPC] Solved: {status}, "
-                  f"cost={self._problem.value:.2f}")
+            print(f"  [CCMPC] Solved: {status}, cost={self._problem.value:.2f}")
 
         return x_guess, u_guess
 
     def _emergency_hover(
-        self, state: npt.NDArray[np.float64], goal: npt.NDArray[np.float64] | None = None,
+        self,
+        state: npt.NDArray[np.float64],
+        goal: npt.NDArray[np.float64] | None = None,
     ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
         """PID go-to-goal fallback when MPC solver fails.
 
@@ -794,13 +808,19 @@ class CCMPC:
                 # instant the rollout dipped below z=0.2 at any later step.
                 u_traj[:, k] = 0.0
                 u_traj[2, k] = self.max_vert_vel  # max climb, no tilt
-                u_traj[3, k] = float(np.clip(2.0 * yaw_err_k, -self.max_yaw_rate, self.max_yaw_rate))
+                u_traj[3, k] = float(
+                    np.clip(2.0 * yaw_err_k, -self.max_yaw_rate, self.max_yaw_rate)
+                )
             else:
                 # Speed regulation: 2 m/s max, decelerate when close
                 speed_target = np.clip(dist_to_goal * 0.5, 0.0, 2.0)
-                pitch_cmd = np.clip((speed_target - speed) * 0.3, -self.max_pitch * 0.3, self.max_pitch * 0.3)
+                pitch_cmd = np.clip(
+                    (speed_target - speed) * 0.3, -self.max_pitch * 0.3, self.max_pitch * 0.3
+                )
                 u_traj[1, k] = float(pitch_cmd)
-                u_traj[0, k] = float(np.clip(-yaw_err_k * 0.1, -self.max_roll * 0.3, self.max_roll * 0.3))
+                u_traj[0, k] = float(
+                    np.clip(-yaw_err_k * 0.1, -self.max_roll * 0.3, self.max_roll * 0.3)
+                )
                 z_err = g[2] - p_k[2]
                 u_traj[2, k] = float(np.clip(2.0 * z_err, -self.max_vert_vel, self.max_vert_vel))
             x_traj[:, k + 1] = self.dynamics.discrete(x_traj[:, k], u_traj[:, k], dt)

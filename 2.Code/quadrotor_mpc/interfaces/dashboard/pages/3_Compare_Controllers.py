@@ -18,7 +18,9 @@ st.title("Compare Controllers")
 st.caption("Both controllers use the same plant, initial state, disturbance sequence and seed.")
 
 with st.sidebar:
-    scenario_name = st.selectbox("Scenario", list(scenario_files()), index=min(2, len(scenario_files()) - 1))
+    scenario_name = st.selectbox(
+        "Scenario", list(scenario_files()), index=min(2, len(scenario_files()) - 1)
+    )
     backend = st.selectbox("Backend", ("scipy", "cvxpy"))
     seed = st.number_input("First seed", value=1, min_value=0, step=1)
     trials = st.slider("Paired trials", 1, 30, 1)
@@ -28,7 +30,11 @@ if run_clicked:
     scenario = load_named_scenario(scenario_name)
     bar = st.progress(0.0)
     results = run_many(
-        scenario, ["deterministic", "ccmpc"], backend, trials, int(seed),
+        scenario,
+        ["deterministic", "ccmpc"],
+        backend,
+        trials,
+        int(seed),
         progress=lambda done, total: bar.progress(done / total),
     )
     bar.empty()
@@ -40,7 +46,9 @@ if "compare_results" in st.session_state:
     scenario = st.session_state["compare_scenario"]
     st.subheader("Aggregate metrics")
     st.dataframe(aggregate_frame(results), use_container_width=True)
-    representatives = [next(item for item in results if item.mode == mode) for mode in ("deterministic", "ccmpc")]
+    representatives = [
+        next(item for item in results if item.mode == mode) for mode in ("deterministic", "ccmpc")
+    ]
     st.plotly_chart(trajectory_3d(representatives, scenario), use_container_width=True)
     st.plotly_chart(comparison_metrics(representatives), use_container_width=True)
     with st.expander("All paired runs"):

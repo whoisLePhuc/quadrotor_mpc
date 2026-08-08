@@ -105,13 +105,10 @@ class SafetyFallbackOptions:
         hold_steps = int(self.hold_last_command_steps)
         emergency_steps = int(self.emergency_after_consecutive_rejections)
         if hold_steps < 0:
-            raise ValueError(
-                "controller.safety_fallback.hold_last_command_steps must be >= 0"
-            )
+            raise ValueError("controller.safety_fallback.hold_last_command_steps must be >= 0")
         if emergency_steps < 1:
             raise ValueError(
-                "controller.safety_fallback.emergency_after_consecutive_rejections "
-                "must be >= 1"
+                "controller.safety_fallback.emergency_after_consecutive_rejections must be >= 1"
             )
         if emergency_steps <= hold_steps:
             raise ValueError(
@@ -135,9 +132,7 @@ class SafetyFallbackOptions:
         return cls(
             enabled=bool(raw.get("enabled", False)),
             solve_deadline_s=raw.get("solve_deadline_s", 0.05),
-            reject_on_deadline_miss=bool(
-                raw.get("reject_on_deadline_miss", True)
-            ),
+            reject_on_deadline_miss=bool(raw.get("reject_on_deadline_miss", True)),
             guarantee_slack_tolerance_m=raw.get(
                 "guarantee_slack_tolerance_m",
                 1e-6,
@@ -171,10 +166,7 @@ class SafetyFallbackOptions:
         )
 
     def to_mapping(self) -> dict[str, Any]:
-        return {
-            field: getattr(self, field)
-            for field in self.__dataclass_fields__
-        }
+        return {field: getattr(self, field) for field in self.__dataclass_fields__}
 
 
 def _quaternion_to_euler(quaternion_wxyz: np.ndarray) -> tuple[float, float, float]:
@@ -183,9 +175,7 @@ def _quaternion_to_euler(quaternion_wxyz: np.ndarray) -> tuple[float, float, flo
         2.0 * (qw * qx + qy * qz),
         1.0 - 2.0 * (qx * qx + qy * qy),
     )
-    pitch = math.asin(
-        float(np.clip(2.0 * (qw * qy - qz * qx), -1.0, 1.0))
-    )
+    pitch = math.asin(float(np.clip(2.0 * (qw * qy - qz * qx), -1.0, 1.0)))
     yaw = math.atan2(
         2.0 * (qw * qz + qx * qy),
         1.0 - 2.0 * (qy * qy + qz * qz),
@@ -273,15 +263,11 @@ class SafeFallbackController:
         return evaluate_residual_gate(
             SolverResidualDiagnostics(
                 primal=SolverResidual(
-                    status=ResidualStatus(
-                        solution.primary_solver_primal_residual_status
-                    ),
+                    status=ResidualStatus(solution.primary_solver_primal_residual_status),
                     value=solution.primary_solver_primal_residual,
                 ),
                 dual=SolverResidual(
-                    status=ResidualStatus(
-                        solution.primary_solver_dual_residual_status
-                    ),
+                    status=ResidualStatus(solution.primary_solver_dual_residual_status),
                     value=solution.primary_solver_dual_residual,
                 ),
             ),
@@ -301,10 +287,7 @@ class SafeFallbackController:
             return "SOLVER_RESIDUAL_EXCEEDED"
         if self._residual_gate(solution).value == "FAIL_INVALID":
             return "SOLVER_RESIDUAL_INVALID"
-        if (
-            solution.risk_semantics == "joint"
-            and solution.risk_budget_status != "BUDGET_OK"
-        ):
+        if solution.risk_semantics == "joint" and solution.risk_budget_status != "BUDGET_OK":
             return "RISK_BUDGET_INVALID"
         tolerance = self.options.command_bound_tolerance
         if np.any(solution.command < self._limits_lower - tolerance) or np.any(
@@ -317,11 +300,7 @@ class SafeFallbackController:
             compensated = solution.chance_margins + solution.slacks
             if float(np.min(compensated)) < -self.options.constraint_tolerance_m:
                 return "NONLINEAR_RESIDUAL_INVALID"
-        maximum_slack = (
-            0.0
-            if not solution.slacks.size
-            else float(np.max(solution.slacks))
-        )
+        maximum_slack = 0.0 if not solution.slacks.size else float(np.max(solution.slacks))
         if maximum_slack > self.options.maximum_acceptable_slack_m:
             return "SLACK_LIMIT_EXCEEDED"
         if (
@@ -335,9 +314,7 @@ class SafeFallbackController:
     def _latch_fallback_reference(self, belief: VehicleBelief) -> None:
         if self._fallback_position is None:
             self._fallback_position = belief.mean_state_13[:3].copy()
-            self._fallback_yaw = _quaternion_to_euler(
-                belief.mean_state_13[6:10]
-            )[2]
+            self._fallback_yaw = _quaternion_to_euler(belief.mean_state_13[6:10])[2]
 
     def _position_hold_command(self, belief: VehicleBelief) -> np.ndarray:
         self._latch_fallback_reference(belief)
@@ -352,12 +329,10 @@ class SafeFallbackController:
         )
         _, _, yaw = _quaternion_to_euler(state[6:10])
         desired_roll = (
-            desired_acceleration_xy[0] * math.sin(yaw)
-            - desired_acceleration_xy[1] * math.cos(yaw)
+            desired_acceleration_xy[0] * math.sin(yaw) - desired_acceleration_xy[1] * math.cos(yaw)
         ) / 9.81
         desired_pitch = (
-            desired_acceleration_xy[0] * math.cos(yaw)
-            + desired_acceleration_xy[1] * math.sin(yaw)
+            desired_acceleration_xy[0] * math.cos(yaw) + desired_acceleration_xy[1] * math.sin(yaw)
         ) / 9.81
         desired_roll = float(
             np.clip(
@@ -383,22 +358,17 @@ class SafeFallbackController:
             dtype=float,
         )
         torques = (
-            self.options.attitude_kp * attitude_error
-            - self.options.attitude_kd * state[10:13]
+            self.options.attitude_kp * attitude_error - self.options.attitude_kd * state[10:13]
         )
         thrust_deviation = DEFAULT_QUADROTOR.mass_kg * (
-            self.options.vertical_kp * position_error[2]
-            - self.options.vertical_kd * velocity[2]
+            self.options.vertical_kp * position_error[2] - self.options.vertical_kd * velocity[2]
         )
         command = np.concatenate(([thrust_deviation], torques))
         return np.clip(command, self._limits_lower, self._limits_upper)
 
     def _emergency_hover_command(self, belief: VehicleBelief) -> np.ndarray:
         command = np.zeros(4, dtype=float)
-        command[1:] = (
-            -self.options.emergency_rate_damping
-            * belief.mean_state_13[10:13]
-        )
+        command[1:] = -self.options.emergency_rate_damping * belief.mean_state_13[10:13]
         return np.clip(command, self._limits_lower, self._limits_upper)
 
     def _fallback_command(
@@ -407,14 +377,10 @@ class SafeFallbackController:
     ) -> tuple[np.ndarray, int, str]:
         if (
             self._last_accepted_command is not None
-            and self._consecutive_rejections
-            <= self.options.hold_last_command_steps
+            and self._consecutive_rejections <= self.options.hold_last_command_steps
         ):
             return self._last_accepted_command.copy(), 1, "HOLD_LAST_ACCEPTED"
-        if (
-            self._consecutive_rejections
-            < self.options.emergency_after_consecutive_rejections
-        ):
+        if self._consecutive_rejections < self.options.emergency_after_consecutive_rejections:
             try:
                 return self._position_hold_command(belief), 2, "POSITION_HOLD_PD"
             except (ArithmeticError, FloatingPointError, ValueError):
@@ -501,13 +467,10 @@ class SafeFallbackController:
         supervisor_recorder = TimingRecorder()
         with supervisor_recorder.measure("safety_supervisor_time_ms"):
             deadline_missed = (
-                self.options.solve_deadline_s > 0.0
-                and elapsed_s > self.options.solve_deadline_s
+                self.options.solve_deadline_s > 0.0 and elapsed_s > self.options.solve_deadline_s
             )
             maximum_slack = (
-                0.0
-                if not primary_solution.slacks.size
-                else float(np.max(primary_solution.slacks))
+                0.0 if not primary_solution.slacks.size else float(np.max(primary_solution.slacks))
             )
 
             if not self.options.enabled:
@@ -519,9 +482,7 @@ class SafeFallbackController:
                     fallback_active=False,
                     fallback_level=0,
                     fallback_reason="",
-                    consecutive_rejections=(
-                        primary_solution.consecutive_rejections
-                    ),
+                    consecutive_rejections=(primary_solution.consecutive_rejections),
                 )
             elif rejection_reason is None:
                 self._last_accepted_command = primary_solution.command.copy()
@@ -545,9 +506,7 @@ class SafeFallbackController:
             else:
                 self._consecutive_rejections += 1
                 self._latch_fallback_reference(belief)
-                fallback_command, fallback_level, command_source = (
-                    self._fallback_command(belief)
-                )
+                fallback_command, fallback_level, command_source = self._fallback_command(belief)
                 decision_values: dict[str, Any] = dict(
                     command=fallback_command,
                     solver_status=f"FALLBACK_{command_source}",
@@ -559,9 +518,7 @@ class SafeFallbackController:
                     consecutive_rejections=self._consecutive_rejections,
                 )
 
-        supervisor_time_ms = (
-            supervisor_recorder.snapshot().safety_supervisor_time_ms
-        )
+        supervisor_time_ms = supervisor_recorder.snapshot().safety_supervisor_time_ms
         return self._assured_solution(
             primary_solution,
             command=decision_values["command"],

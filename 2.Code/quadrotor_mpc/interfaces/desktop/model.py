@@ -60,9 +60,7 @@ class PanelRuntimeContext:
         if self.mpc_period_ms <= 0.0:
             raise ValueError("panel context mpc_period_ms must be > 0")
         if self.guarantee_slack_tolerance_m > self.maximum_acceptable_slack_m:
-            raise ValueError(
-                "panel guarantee slack tolerance must not exceed the acceptance limit"
-            )
+            raise ValueError("panel guarantee slack tolerance must not exceed the acceptance limit")
         object.__setattr__(
             self,
             "configured_risk_semantics",
@@ -80,12 +78,8 @@ class PanelRuntimeContext:
             scenario_name=raw.get("scenario_name", "native-mujoco"),
             mpc_period_ms=raw.get("mpc_period_ms", 50.0),
             estimation_enabled=bool(raw.get("estimation_enabled", False)),
-            chance_constraints_enabled=bool(
-                raw.get("chance_constraints_enabled", False)
-            ),
-            covariance_propagation_enabled=bool(
-                raw.get("covariance_propagation_enabled", False)
-            ),
+            chance_constraints_enabled=bool(raw.get("chance_constraints_enabled", False)),
+            covariance_propagation_enabled=bool(raw.get("covariance_propagation_enabled", False)),
             supervisor_enabled=bool(raw.get("supervisor_enabled", False)),
             solve_deadline_ms=raw.get("solve_deadline_ms", 0.0),
             guarantee_slack_tolerance_m=raw.get(
@@ -108,10 +102,7 @@ class PanelRuntimeContext:
         )
 
     def to_mapping(self) -> dict[str, Any]:
-        return {
-            field: getattr(self, field)
-            for field in self.__dataclass_fields__
-        }
+        return {field: getattr(self, field) for field in self.__dataclass_fields__}
 
     @property
     def mode_label(self) -> str:
@@ -204,9 +195,7 @@ def _controller_card(sample: Mapping[str, Any]) -> StatusCard:
         for value in (raw_primal, raw_dual)
         if isinstance(value, (int, float)) and math.isfinite(value)
     ]
-    residual_text = (
-        f"{max(available_residuals):.2e}" if available_residuals else "n/a"
-    )
+    residual_text = f"{max(available_residuals):.2e}" if available_residuals else "n/a"
     if fallback_active:
         level = int(sample.get("fallback_level", 0))
         value = f"FALLBACK L{level}"
@@ -215,10 +204,7 @@ def _controller_card(sample: Mapping[str, Any]) -> StatusCard:
         value, tone = "PRIMARY NMPC", OK
     else:
         value, tone = "REJECTED", DANGER
-    detail = (
-        f"{source} · {status or 'unknown'} · iter={iterations} · "
-        f"res={residual_text}"
-    )
+    detail = f"{source} · {status or 'unknown'} · iter={iterations} · res={residual_text}"
     return StatusCard("controller", "Applied control", value, detail, tone)
 
 
@@ -274,12 +260,8 @@ def _assurance_short_label(status: str, reason: str) -> str:
 
 
 def _risk_card(sample: Mapping[str, Any], context: PanelRuntimeContext) -> StatusCard:
-    semantics = str(
-        sample.get("risk_semantics", context.configured_risk_semantics)
-    )
-    allocation = str(
-        sample.get("risk_allocation_method", context.configured_risk_allocation)
-    )
+    semantics = str(sample.get("risk_semantics", context.configured_risk_semantics))
+    allocation = str(sample.get("risk_allocation_method", context.configured_risk_allocation))
     status = str(sample.get("risk_budget_status", ""))
     total = _optional_float(sample, "risk_budget_total")
     allocated = float(sample.get("risk_budget_allocated", 0.0))
@@ -386,9 +368,7 @@ def build_panel_view(
         deadline_missed=bool(sample.get("deadline_missed", False)),
         solution_accepted=bool(sample.get("solution_accepted", True)),
         safety_assurance_status=str(sample.get("safety_assurance_status", "")),
-        horizon_assurance_eligible=bool(
-            sample.get("horizon_assurance_eligible", False)
-        ),
+        horizon_assurance_eligible=bool(sample.get("horizon_assurance_eligible", False)),
         risk_budget_status=str(sample.get("risk_budget_status", "")),
         collided=bool(sample.get("collided", False)),
         completed=bool(sample.get("completed", False)),
@@ -404,9 +384,7 @@ def panel_transition_alerts(
 
     alerts: list[PanelAlert] = []
     if current.collided and (previous is None or not previous.collided):
-        alerts.append(
-            PanelAlert("collision", current.time_s, DANGER, "Collision detected")
-        )
+        alerts.append(PanelAlert("collision", current.time_s, DANGER, "Collision detected"))
     previous_level = 0 if previous is None else previous.fallback_level
     if current.fallback_level != previous_level:
         if current.fallback_level > 0:
@@ -422,22 +400,18 @@ def panel_transition_alerts(
             alerts.append(
                 PanelAlert("fallback_recovered", current.time_s, OK, "Primary NMPC recovered")
             )
-    if current.deadline_missed and (
-        previous is None or not previous.deadline_missed
-    ):
+    if current.deadline_missed and (previous is None or not previous.deadline_missed):
         alerts.append(
             PanelAlert("deadline_missed", current.time_s, DANGER, "Solver deadline missed")
         )
     if current.risk_budget_status == "BUDGET_EXCEEDED" and (
-        previous is None
-        or previous.risk_budget_status != current.risk_budget_status
+        previous is None or previous.risk_budget_status != current.risk_budget_status
     ):
         alerts.append(
             PanelAlert("risk_budget", current.time_s, DANGER, "Joint risk budget exceeded")
         )
     if previous is not None and (
-        previous.horizon_assurance_eligible
-        and not current.horizon_assurance_eligible
+        previous.horizon_assurance_eligible and not current.horizon_assurance_eligible
     ):
         alerts.append(
             PanelAlert(
@@ -448,7 +422,5 @@ def panel_transition_alerts(
             )
         )
     if current.completed and (previous is None or not previous.completed):
-        alerts.append(
-            PanelAlert("completed", current.time_s, INFO, "Episode completed")
-        )
+        alerts.append(PanelAlert("completed", current.time_s, INFO, "Episode completed"))
     return tuple(alerts)

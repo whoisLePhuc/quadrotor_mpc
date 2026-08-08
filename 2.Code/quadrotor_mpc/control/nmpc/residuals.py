@@ -170,22 +170,13 @@ def evaluate_residual_gate(
     if exceeds(primal, primal_tolerance) or exceeds(dual, dual_tolerance):
         return ResidualGateStatus.FAIL_THRESHOLD
 
-    if (
-        primal.status is ResidualStatus.INVALID
-        or dual.status is ResidualStatus.INVALID
-    ):
+    if primal.status is ResidualStatus.INVALID or dual.status is ResidualStatus.INVALID:
         return ResidualGateStatus.FAIL_INVALID
 
-    if (
-        primal.status is ResidualStatus.UNAVAILABLE
-        or dual.status is ResidualStatus.UNAVAILABLE
-    ):
+    if primal.status is ResidualStatus.UNAVAILABLE or dual.status is ResidualStatus.UNAVAILABLE:
         return ResidualGateStatus.UNKNOWN_UNAVAILABLE
 
-    if (
-        primal.status is ResidualStatus.AVAILABLE
-        and dual.status is ResidualStatus.AVAILABLE
-    ):
+    if primal.status is ResidualStatus.AVAILABLE and dual.status is ResidualStatus.AVAILABLE:
         return ResidualGateStatus.PASS
 
     return ResidualGateStatus.UNKNOWN_UNAVAILABLE

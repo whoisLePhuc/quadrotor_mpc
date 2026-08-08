@@ -266,13 +266,16 @@ class MonteCarloProtocolIntegrationTests(unittest.TestCase):
         )
         from quadrotor_mpc.core.contracts import VehicleBelief
 
-        belief = VehicleBelief.exact(
-            np.array([0.0, 0.0, 1.0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0])
+        belief = VehicleBelief.exact(np.array([0.0, 0.0, 1.0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0]))
+        return controller.solve(
+            belief,
+            [],
+            ControlGoal(
+                position=np.array([1.0, 0.0, 1.0]),
+                quaternion_wxyz=np.array([1.0, 0.0, 0.0, 0.0]),
+            ),
+            0.0,
         )
-        return controller.solve(belief, [], ControlGoal(
-            position=np.array([1.0, 0.0, 1.0]),
-            quaternion_wxyz=np.array([1.0, 0.0, 0.0, 0.0]),
-        ), 0.0)
 
     def test_algorithmic_protocol_applies_late_primary_in_loop(self):
         result = self._supervised(reject_on_deadline_miss=False)

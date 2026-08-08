@@ -17,7 +17,9 @@ st.title("Monte Carlo Robustness")
 
 with st.sidebar:
     scenario_name = st.selectbox("Scenario", list(scenario_files()))
-    controllers = st.multiselect("Controllers", ("deterministic", "ccmpc"), default=("deterministic", "ccmpc"))
+    controllers = st.multiselect(
+        "Controllers", ("deterministic", "ccmpc"), default=("deterministic", "ccmpc")
+    )
     trials = st.slider("Trials", 2, 100, 10)
     seed = st.number_input("First seed", value=1, min_value=0, step=1)
     backend = st.selectbox("Backend", ("scipy", "cvxpy"))
@@ -27,7 +29,11 @@ if run_clicked and controllers:
     scenario = load_named_scenario(scenario_name)
     bar = st.progress(0.0)
     results = run_many(
-        scenario, list(controllers), backend, trials, int(seed),
+        scenario,
+        list(controllers),
+        backend,
+        trials,
+        int(seed),
         progress=lambda done, total: bar.progress(done / total),
     )
     bar.empty()

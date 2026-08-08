@@ -15,10 +15,7 @@ DATA_ROOT = resource_root()
 
 
 def scenario_files() -> dict[str, Path]:
-    return {
-        path.stem: path
-        for path in sorted((DATA_ROOT / "config/scenarios").glob("*.yaml"))
-    }
+    return {path.stem: path for path in sorted((DATA_ROOT / "config/scenarios").glob("*.yaml"))}
 
 
 def load_named_scenario(name: str) -> ScenarioConfig:
@@ -45,14 +42,16 @@ def run_many(
     done = 0
     for trial in range(trials):
         for mode in modes:
-            results.append(SimulationRunner(
-                scenario,
-                DATA_ROOT / "config/controller.yaml",
-                mode=mode,
-                backend=backend,
-                seed=seed + trial,
-                controller_override=override,
-            ).run())
+            results.append(
+                SimulationRunner(
+                    scenario,
+                    DATA_ROOT / "config/controller.yaml",
+                    mode=mode,
+                    backend=backend,
+                    seed=seed + trial,
+                    controller_override=override,
+                ).run()
+            )
             done += 1
             if progress is not None:
                 progress(done, total)

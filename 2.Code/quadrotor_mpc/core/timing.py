@@ -71,9 +71,7 @@ class ControllerTiming:
                 continue
             number = float(value)
             if not math.isfinite(number) or number < 0.0:
-                raise ValueError(
-                    f"ControllerTiming.{name} must be finite and >= 0 or None"
-                )
+                raise ValueError(f"ControllerTiming.{name} must be finite and >= 0 or None")
             object.__setattr__(self, name, number)
 
     def to_mapping(self) -> dict[str, float | None]:
@@ -83,12 +81,7 @@ class ControllerTiming:
     def from_mapping(cls, mapping: dict | None) -> ControllerTiming | None:
         if not mapping:
             return None
-        return cls(
-            **{
-                name: mapping.get(name)
-                for name in TIMING_FIELD_NAMES
-            }
-        )
+        return cls(**{name: mapping.get(name) for name in TIMING_FIELD_NAMES})
 
 
 def merge_controller_timing(
@@ -97,9 +90,7 @@ def merge_controller_timing(
 ) -> ControllerTiming:
     """Return a timing with ``updates`` applied over ``base``."""
     values: dict[str, float | None] = (
-        base.to_mapping()
-        if base is not None
-        else {name: None for name in TIMING_FIELD_NAMES}
+        base.to_mapping() if base is not None else {name: None for name in TIMING_FIELD_NAMES}
     )
     values.update(updates)
     return ControllerTiming(**values)
@@ -202,7 +193,5 @@ class TimingRecorder:
         known = {field.name for field in fields(ControllerTiming)}
         unknown = set(self._values_ms) - known
         if unknown:
-            raise ValueError(
-                f"unrecognized timing scope names: {sorted(unknown)}"
-            )
+            raise ValueError(f"unrecognized timing scope names: {sorted(unknown)}")
         return ControllerTiming(**self._values_ms)

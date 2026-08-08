@@ -45,8 +45,7 @@ class EllipsoidalObstacle:
         # Position and velocity
         self.p_hat: npt.NDArray[np.float64] = np.array(position, dtype=np.float64)
         self.v_hat: npt.NDArray[np.float64] = (
-            np.array(velocity, dtype=np.float64) if velocity is not None
-            else np.zeros(3)
+            np.array(velocity, dtype=np.float64) if velocity is not None else np.zeros(3)
         )
 
         # Size (l, w, h) and ellipsoidal axes (a, b, c) per Eq 7
@@ -72,9 +71,7 @@ class EllipsoidalObstacle:
         self.p_hat += self.v_hat * dt
         self.Sigma += self.Sigma_v * dt**2
 
-    def get_normal(
-        self, p_mav: npt.NDArray[np.float64]
-    ) -> npt.NDArray[np.float64]:
+    def get_normal(self, p_mav: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
         r"""Unit normal vector from obstacle to MAV.
 
         .. math::
@@ -98,15 +95,11 @@ class EllipsoidalObstacle:
         r"""Symmetric matrix square root :math:`\Omega^{1/2}`."""
         return Omega_half(self.get_omega(mav_radius))
 
-    def distance_to(
-        self, p_mav: npt.NDArray[np.float64]
-    ) -> float:
+    def distance_to(self, p_mav: npt.NDArray[np.float64]) -> float:
         """Euclidean distance from MAV to obstacle center."""
         return float(np.linalg.norm(p_mav - self.p_hat))
 
-    def gaussian_pdf(
-        self, measurement: npt.NDArray[np.float64]
-    ) -> float:
+    def gaussian_pdf(self, measurement: npt.NDArray[np.float64]) -> float:
         """Gaussian PDF for data association (Eq 5).
 
         Evaluates p(measurement | predicted_state, predicted_cov).
@@ -195,15 +188,14 @@ class ObstacleManager:
     """
 
     def __init__(self, obstacles: list[EllipsoidalObstacle] | None = None):
-        self.obstacles: list[EllipsoidalObstacle] = (
-            obstacles if obstacles is not None else []
-        )
+        self.obstacles: list[EllipsoidalObstacle] = obstacles if obstacles is not None else []
 
     @classmethod
     def from_config(cls, config: str | dict) -> ObstacleManager:
         """Create obstacles from YAML simulation config."""
         if isinstance(config, str):
             import yaml as _yaml
+
             with open(config) as f:
                 config_data = _yaml.safe_load(f)
         else:
@@ -211,12 +203,14 @@ class ObstacleManager:
 
         obs_list: list[EllipsoidalObstacle] = []
         for obs_cfg in config_data.get("obstacles", []):
-            obs_list.append(EllipsoidalObstacle(
-                position=obs_cfg["position"],
-                size=obs_cfg["size"],
-                yaw=obs_cfg.get("yaw", 0.0),
-                velocity=obs_cfg.get("velocity", [0.0, 0.0, 0.0]),
-            ))
+            obs_list.append(
+                EllipsoidalObstacle(
+                    position=obs_cfg["position"],
+                    size=obs_cfg["size"],
+                    yaw=obs_cfg.get("yaw", 0.0),
+                    velocity=obs_cfg.get("velocity", [0.0, 0.0, 0.0]),
+                )
+            )
         return cls(obs_list)
 
     def update(self, dt: float) -> None:
@@ -261,9 +255,7 @@ class ObstacleManager:
         horizon_data: list[list[HorizonObstacleData]] = []
         # Work on copies
         obs_copy = [
-            EllipsoidalObstacle(
-                o.p_hat.copy(), o.size.copy(), o.yaw, o.v_hat.copy()
-            )
+            EllipsoidalObstacle(o.p_hat.copy(), o.size.copy(), o.yaw, o.v_hat.copy())
             for o in self.obstacles
         ]
 
@@ -278,14 +270,16 @@ class ObstacleManager:
 
             for obs in closest:
                 L = obs.get_omega_half(0.4)  # default mav_radius
-                step_data.append(HorizonObstacleData(
-                    position=obs.p_hat.copy(),
-                    velocity=obs.v_hat.copy(),
-                    axes=obs.axes.copy(),
-                    R_o=obs.R_o.copy(),
-                    Sigma=obs.Sigma.copy(),
-                    L=L,
-                ))
+                step_data.append(
+                    HorizonObstacleData(
+                        position=obs.p_hat.copy(),
+                        velocity=obs.v_hat.copy(),
+                        axes=obs.axes.copy(),
+                        R_o=obs.R_o.copy(),
+                        Sigma=obs.Sigma.copy(),
+                        L=L,
+                    )
+                )
 
             horizon_data.append(step_data)
 

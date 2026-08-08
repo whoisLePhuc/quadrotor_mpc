@@ -20,9 +20,7 @@ class ReleaseStabilizationTests(unittest.TestCase):
     @unittest.skipIf(tomllib is None, "tomllib requires Python 3.11+")
     def test_version_console_scripts_ci_and_license_are_present(self):
         assert tomllib is not None
-        project = tomllib.loads(
-            (CODE_ROOT / "pyproject.toml").read_text(encoding="utf-8")
-        )
+        project = tomllib.loads((CODE_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         self.assertEqual(project["project"]["version"], "2.0.1")
         self.assertGreaterEqual(len(project["project"]["scripts"]), 6)
         self.assertTrue((REPOSITORY_ROOT / ".github/workflows/ci.yml").is_file())
@@ -40,9 +38,7 @@ class ReleaseStabilizationTests(unittest.TestCase):
             self.assertTrue(resolve_input_path(relative).is_file(), relative)
 
     def test_release_deadline_matches_control_period(self):
-        config = load_native_mujoco_config(
-            CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml"
-        )
+        config = load_native_mujoco_config(CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml")
         self.assertAlmostEqual(
             config.safety_fallback.solve_deadline_s,
             config.mpc_timestep_s,

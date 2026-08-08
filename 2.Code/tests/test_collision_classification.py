@@ -550,6 +550,8 @@ class LegacyCollisionMigrationTests(unittest.TestCase):
             "u": np.zeros((2, 4)),
             "clearance": np.array([-0.01, -0.02]),
             "solver_time_ms": np.array([30.0, 31.0]),
+            "risk_semantics": np.array(["joint", "joint"]),
+            "risk_allocation_method": np.array(["uniform", "uniform"]),
             "collided": True,
             "termination_reason": "collision",
         }

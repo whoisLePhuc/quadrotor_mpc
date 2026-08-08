@@ -39,6 +39,12 @@ from quadrotor_mpc.core.timing import (
 from quadrotor_mpc.interfaces.desktop.viewer import NativeMuJoCoConfig
 
 SUPPORTED_MODES = CANONICAL_MODES
+RISK_PROVENANCE_SCHEMA_VERSION = 1
+_EXPECTED_RISK_PROVENANCE = {
+    "deterministic": ("disabled", "none"),
+    "individual": ("individual", "uniform"),
+    "joint_uniform": ("joint", "uniform"),
+}
 _SENSOR_STD_FIELDS = (
     "position_std_m",
     "velocity_std_mps",
@@ -149,10 +155,7 @@ class NativeMonteCarloProtocol:
             "validation.empirical_collision_rate_limit",
         )
         _probability(self.timing_percentile, "validation.timing_percentile")
-        if not any(
-            math.isclose(self.timing_percentile, supported)
-            for supported in (0.95, 0.99)
-        ):
+        if not any(math.isclose(self.timing_percentile, supported) for supported in (0.95, 0.99)):
             raise ValueError("validation.timing_percentile must be 0.95 or 0.99")
         if not self.modes:
             raise ValueError("modes must contain at least one controller")
@@ -162,9 +165,21 @@ class NativeMonteCarloProtocol:
         if len(set(self.modes)) != len(self.modes):
             raise ValueError("modes must not contain duplicates")
         if self.requested_modes and len(self.requested_modes) != len(self.modes):
-            raise ValueError(
-                "requested_modes must match the number of canonical modes"
-            )
+            raise ValueError("requested_modes must match the number of canonical modes")
+        requested_modes = self.requested_modes or self.modes
+        for canonical, requested in zip(self.modes, requested_modes):
+            provenance = canonicalize_mode(requested)
+            if provenance.canonical_mode != canonical:
+                raise ValueError(
+                    "requested_modes must canonicalize to the corresponding modes: "
+                    f"{requested!r} maps to {provenance.canonical_mode!r}, not "
+                    f"{canonical!r}"
+                )
+        aliases_used = any(
+            canonicalize_mode(requested).legacy_alias_used for requested in requested_modes
+        )
+        if bool(self.mode_aliases_used) != aliases_used:
+            raise ValueError("mode_aliases_used must match requested_modes provenance")
         if not self.noise_levels:
             raise ValueError("noise_levels must contain at least one level")
         labels = [level.label for level in self.noise_levels]
@@ -206,12 +221,20 @@ class NativeMonteCarloProtocol:
     def seeds(self) -> tuple[int, ...]:
         return tuple(range(self.first_seed, self.first_seed + self.trials))
 
+    @property
+    def mode_requests(self) -> tuple[tuple[str, str], ...]:
+        """Return canonical/requested mode pairs in protocol order."""
+        requested = self.requested_modes or self.modes
+        return tuple(zip(self.modes, requested))
+
     def to_mapping(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "base_config": str(self.base_config_path),
             "output_dir": str(self.output_dir),
-            "modes": list(self.modes),
+            "modes": list(self.requested_modes) or list(self.modes),
+            "canonical_modes": list(self.modes),
+            "mode_aliases_used": bool(self.mode_aliases_used),
             "noise_levels": [
                 {
                     "label": level.label,
@@ -226,9 +249,7 @@ class NativeMonteCarloProtocol:
                 "minimum_trials_for_claim": self.minimum_trials_for_claim,
             },
             "validation": {
-                "empirical_collision_rate_limit": (
-                    self.empirical_collision_rate_limit
-                ),
+                "empirical_collision_rate_limit": (self.empirical_collision_rate_limit),
                 "require_zero_positive_slack": self.require_zero_positive_slack,
                 "require_zero_fallback": self.require_zero_fallback,
                 "require_zero_budget_failures": self.require_zero_budget_failures,
@@ -257,9 +278,7 @@ def load_native_monte_carlo_protocol(
     levels = tuple(
         NoiseLevel(
             label=str(_mapping(item, f"noise_levels[{index}]")["label"]),
-            covariance_scale=float(
-                _mapping(item, f"noise_levels[{index}]")["covariance_scale"]
-            ),
+            covariance_scale=float(_mapping(item, f"noise_levels[{index}]")["covariance_scale"]),
         )
         for index, item in enumerate(raw_levels)
     )
@@ -272,20 +291,22 @@ def load_native_monte_carlo_protocol(
 
     def resolve_input(value: Any) -> Path:
         candidate = Path(str(value)).expanduser()
-        return candidate.resolve() if candidate.is_absolute() else (source.parent / candidate).resolve()
+        return (
+            candidate.resolve()
+            if candidate.is_absolute()
+            else (source.parent / candidate).resolve()
+        )
 
     def resolve_output(value: Any) -> Path:
         candidate = Path(str(value)).expanduser()
-        return candidate.resolve() if candidate.is_absolute() else (Path.cwd() / candidate).resolve()
+        return (
+            candidate.resolve() if candidate.is_absolute() else (Path.cwd() / candidate).resolve()
+        )
 
     return NativeMonteCarloProtocol(
         name=str(root.get("name", "native-monte-carlo")),
-        base_config_path=resolve_input(
-            root.get("base_config", "mujoco_native_ccmpc.yaml")
-        ),
-        output_dir=resolve_output(
-            root.get("output_dir", "outputs/native_monte_carlo")
-        ),
+        base_config_path=resolve_input(root.get("base_config", "mujoco_native_ccmpc.yaml")),
+        output_dir=resolve_output(root.get("output_dir", "outputs/native_monte_carlo")),
         modes=tuple(mode.canonical_mode for mode in canonical_modes),
         requested_modes=tuple(mode.requested_mode for mode in canonical_modes),
         mode_aliases_used=any(mode.legacy_alias_used for mode in canonical_modes),
@@ -293,21 +314,13 @@ def load_native_monte_carlo_protocol(
         trials=int(root.get("trials", 50)),
         first_seed=int(root.get("first_seed", 1000)),
         confidence_level=float(statistics.get("confidence_level", 0.95)),
-        minimum_trials_for_claim=int(
-            statistics.get("minimum_trials_for_claim", 30)
-        ),
+        minimum_trials_for_claim=int(statistics.get("minimum_trials_for_claim", 30)),
         empirical_collision_rate_limit=float(
             validation.get("empirical_collision_rate_limit", 0.10)
         ),
-        require_zero_positive_slack=bool(
-            validation.get("require_zero_positive_slack", True)
-        ),
-        require_zero_fallback=bool(
-            validation.get("require_zero_fallback", True)
-        ),
-        require_zero_budget_failures=bool(
-            validation.get("require_zero_budget_failures", True)
-        ),
+        require_zero_positive_slack=bool(validation.get("require_zero_positive_slack", True)),
+        require_zero_fallback=bool(validation.get("require_zero_fallback", True)),
+        require_zero_budget_failures=bool(validation.get("require_zero_budget_failures", True)),
         timing_percentile=float(validation.get("timing_percentile", 0.99)),
         protocol_type=str(
             _mapping(root.get("monte_carlo", {}), "monte_carlo").get(
@@ -315,9 +328,7 @@ def load_native_monte_carlo_protocol(
             )
         ),
         control_period_ms=float(
-            _mapping(root.get("monte_carlo", {}), "monte_carlo").get(
-                "control_period_ms", 50.0
-            )
+            _mapping(root.get("monte_carlo", {}), "monte_carlo").get("control_period_ms", 50.0)
         ),
         deadline_clock=str(
             _mapping(root.get("monte_carlo", {}), "monte_carlo").get(
@@ -392,12 +403,8 @@ def effective_native_config(
     # deadline facts but applies late-but-valid primary commands so allocator
     # quality is not hidden by deadline rejection; realtime qualification
     # rejects late commands to fallback as the strict policy requires.
-    reject_on_deadline = (
-        protocol_type == "realtime_qualification"
-    )
-    mapping["controller"]["safety_fallback"]["reject_on_deadline_miss"] = (
-        reject_on_deadline
-    )
+    reject_on_deadline = protocol_type == "realtime_qualification"
+    mapping["controller"]["safety_fallback"]["reject_on_deadline_miss"] = reject_on_deadline
     if normalized_mode == "deterministic":
         chance["enabled"] = False
         propagation["enabled"] = False
@@ -552,9 +559,150 @@ class NativeTrialResult:
     risk_semantics: str = ""
     risk_allocation_method: str = ""
     allocator_config_hash: str | None = None
+    risk_provenance_status: str = "UNKNOWN_LEGACY"
+    risk_provenance_unavailable_ticks: int = 0
 
     def to_mapping(self) -> dict[str, Any]:
         return asdict(self)
+
+
+def _tick_metadata_values(
+    result: Mapping[str, Any],
+    *,
+    field: str,
+    completed_steps: int,
+) -> tuple[str, ...]:
+    """Return normalized controller metadata for every completed tick."""
+    raw = result.get(field)
+    if raw is None:
+        raise ValueError(f"native result is missing controller telemetry {field!r}")
+    values = np.asarray(raw, dtype=str).reshape(-1)
+    if len(values) != completed_steps:
+        raise ValueError(
+            f"controller telemetry {field!r} has {len(values)} values for "
+            f"{completed_steps} completed ticks"
+        )
+    normalized = tuple(str(value).strip().lower() for value in values)
+    return normalized
+
+
+def _allocator_config_hash(
+    config: NativeMuJoCoConfig,
+    *,
+    risk_semantics: str,
+    risk_allocation_method: str,
+) -> str | None:
+    """Fingerprint the effective configuration that determines risk allocation."""
+    if not config.chance_constraints.enabled:
+        return None
+    budget = config.chance_constraints.risk_budget
+    payload = {
+        "schema_version": RISK_PROVENANCE_SCHEMA_VERSION,
+        "risk_semantics": risk_semantics,
+        "risk_allocation_method": risk_allocation_method,
+        "individual_epsilon": config.chance_constraints.individual_epsilon,
+        "risk_budget": budget.to_mapping(),
+        "horizon_steps": config.horizon_steps,
+        "obstacle_count": len(config.obstacles),
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _extract_risk_provenance(
+    result: Mapping[str, Any],
+    config: NativeMuJoCoConfig,
+    *,
+    mode: str,
+    completed_steps: int,
+) -> tuple[str, str, str | None, str, int]:
+    """Validate controller-reported risk metadata against mode and config."""
+    semantics_values = _tick_metadata_values(
+        result,
+        field="risk_semantics",
+        completed_steps=completed_steps,
+    )
+    method_values = _tick_metadata_values(
+        result,
+        field="risk_allocation_method",
+        completed_steps=completed_steps,
+    )
+    semantics_available = tuple(bool(value) for value in semantics_values)
+    methods_available = tuple(bool(value) for value in method_values)
+    if semantics_available != methods_available:
+        raise ValueError(
+            "risk_semantics and risk_allocation_method availability differs "
+            "within the same controller tick"
+        )
+    available_semantics = sorted({value for value in semantics_values if value})
+    available_methods = sorted({value for value in method_values if value})
+    if len(available_semantics) > 1:
+        raise ValueError(
+            f"controller telemetry 'risk_semantics' changes between ticks: {available_semantics}"
+        )
+    if len(available_methods) > 1:
+        raise ValueError(
+            "controller telemetry 'risk_allocation_method' changes between ticks: "
+            f"{available_methods}"
+        )
+    expected_semantics, expected_method = _EXPECTED_RISK_PROVENANCE[mode]
+    risk_semantics = available_semantics[0] if available_semantics else expected_semantics
+    allocation_method = available_methods[0] if available_methods else expected_method
+    if risk_semantics != expected_semantics:
+        raise ValueError(
+            f"controller mode {mode!r} requires risk_semantics "
+            f"{expected_semantics!r}, but telemetry reported {risk_semantics!r}"
+        )
+    if allocation_method != expected_method:
+        raise ValueError(
+            f"controller mode {mode!r} requires risk_allocation_method "
+            f"{expected_method!r}, but telemetry reported {allocation_method!r}"
+        )
+    configured_semantics = (
+        config.chance_constraints.risk_budget.semantics
+        if config.chance_constraints.enabled
+        else "disabled"
+    )
+    configured_method = (
+        config.chance_constraints.risk_budget.allocation
+        if config.chance_constraints.enabled
+        else "none"
+    )
+    if (risk_semantics, allocation_method) != (
+        configured_semantics,
+        configured_method,
+    ):
+        raise ValueError(
+            "controller risk telemetry does not match the effective native config: "
+            f"telemetry={(risk_semantics, allocation_method)!r}, "
+            f"config={(configured_semantics, configured_method)!r}"
+        )
+    allocator_hash = _allocator_config_hash(
+        config,
+        risk_semantics=risk_semantics,
+        risk_allocation_method=allocation_method,
+    )
+    reported_hash = result.get("allocator_config_hash")
+    if reported_hash not in (None, "") and str(reported_hash) != allocator_hash:
+        raise ValueError(
+            "controller allocator_config_hash does not match the effective allocator configuration"
+        )
+    unavailable_ticks = sum(not available for available in semantics_available)
+    if completed_steps == 0:
+        status = "UNAVAILABLE"
+    elif unavailable_ticks == 0:
+        status = "AVAILABLE"
+    elif unavailable_ticks == completed_steps:
+        status = "UNAVAILABLE"
+    else:
+        status = "PARTIAL_UNAVAILABLE"
+    return (
+        risk_semantics,
+        allocation_method,
+        allocator_hash,
+        status,
+        unavailable_ticks,
+    )
 
 
 def summarize_native_trial(
@@ -562,12 +710,33 @@ def summarize_native_trial(
     config: NativeMuJoCoConfig,
     *,
     mode: str,
+    requested_mode: str | None = None,
     noise_label: str,
     covariance_scale: float,
     seed: int,
     protocol: str = "algorithmic_comparison",
 ) -> NativeTrialResult:
     """Reduce native time-series output to a transparent trial-level record."""
+    canonical_mode = canonicalize_mode(mode)
+    canonical = canonical_mode.canonical_mode
+    recorded_requested_mode = (
+        requested_mode
+        if requested_mode is not None
+        else result.get("requested_mode", canonical_mode.requested_mode)
+    )
+    requested_provenance = canonicalize_mode(str(recorded_requested_mode))
+    if requested_provenance.canonical_mode != canonical:
+        raise ValueError(
+            f"requested_mode {recorded_requested_mode!r} does not select "
+            f"controller mode {canonical!r}"
+        )
+    result_requested_mode = result.get("requested_mode")
+    if (
+        requested_mode is not None
+        and result_requested_mode is not None
+        and str(result_requested_mode).strip().lower() != requested_provenance.requested_mode
+    ):
+        raise ValueError("result requested_mode conflicts with runner provenance")
     positions = np.asarray(result.get("pos", []), dtype=float)
     controls = np.asarray(result.get("u", []), dtype=float)
     clearances = np.asarray(result.get("clearance", []), dtype=float)
@@ -589,23 +758,15 @@ def summarize_native_trial(
     finite_position = bool(positions.size and np.all(np.isfinite(positions)))
     finite_control = bool(not controls.size or np.all(np.isfinite(controls)))
     numerical_failure = not (finite_position and finite_control)
-    final_error = (
-        float(np.linalg.norm(positions[-1] - goal))
-        if finite_position
-        else float("inf")
-    )
+    final_error = float(np.linalg.norm(positions[-1] - goal)) if finite_position else float("inf")
     finite_clearances = clearances[np.isfinite(clearances)]
-    min_clearance = (
-        float(np.min(finite_clearances)) if finite_clearances.size else float("inf")
-    )
+    min_clearance = float(np.min(finite_clearances)) if finite_clearances.size else float("inf")
     path_length = (
         float(np.linalg.norm(np.diff(positions, axis=0), axis=1).sum())
         if len(positions) > 1 and finite_position
         else 0.0
     )
-    tracking_rmse = (
-        _line_tracking_rmse(positions, start, goal) if finite_position else float("inf")
-    )
+    tracking_rmse = _line_tracking_rmse(positions, start, goal) if finite_position else float("inf")
     control_effort = (
         float(np.sum(np.sum(controls**2, axis=1)) * config.mpc_timestep_s)
         if finite_control and controls.size
@@ -711,9 +872,7 @@ def summarize_native_trial(
         obstacle_collision = False
         ground_collision = False
         collision_type = (
-            CollisionType.UNKNOWN_LEGACY.value
-            if collision
-            else CollisionType.NONE.value
+            CollisionType.UNKNOWN_LEGACY.value if collision else CollisionType.NONE.value
         )
     first_collision_time_s = result.get("first_collision_time_s")
     first_obstacle_collision_time_s = result.get("first_obstacle_collision_time_s")
@@ -727,26 +886,23 @@ def summarize_native_trial(
     timing_series = result.get("controller_timing")
     timing_stats = (
         summarize_timing_series(
-            [
-                item if isinstance(item, dict) else None
-                for item in timing_series
-            ]
+            [item if isinstance(item, dict) else None for item in timing_series]
         )
         if isinstance(timing_series, (list, tuple))
         else None
     )
-    if mode == "deterministic":
-        risk_semantics = "deterministic"
-        risk_allocation_method = "not_applicable"
-    elif mode == "individual":
-        risk_semantics = "individual"
-        risk_allocation_method = "uniform"
-    else:
-        risk_semantics = "joint"
-        risk_allocation_method = "uniform"
-    requested_mode = str(result.get("requested_mode", mode))
-    legacy_alias_used = bool(result.get("legacy_mode_alias_used", False))
-    allocator_config_hash = result.get("allocator_config_hash")
+    (
+        risk_semantics,
+        risk_allocation_method,
+        allocator_config_hash,
+        risk_provenance_status,
+        risk_provenance_unavailable_ticks,
+    ) = _extract_risk_provenance(
+        result,
+        config,
+        mode=canonical,
+        completed_steps=completed_steps,
+    )
     success = bool(
         completed
         and not collision
@@ -778,48 +934,24 @@ def summarize_native_trial(
         dtype=float,
     )
     total_ticks = max(0, int(len(dispositions)))
-    primary_applied_on_time_count = int(
-        np.sum(dispositions == "PRIMARY_APPLIED_ON_TIME")
-    )
-    primary_applied_late_count = int(
-        np.sum(dispositions == "PRIMARY_APPLIED_LATE")
-    )
-    fallback_deadline_count = int(
-        np.sum(dispositions == "FALLBACK_APPLIED_DEADLINE_MISS")
-    )
-    fallback_primary_invalid_count = int(
-        np.sum(dispositions == "FALLBACK_APPLIED_PRIMARY_INVALID")
-    )
-    primary_applied_total = (
-        primary_applied_on_time_count + primary_applied_late_count
-    )
-    fallback_applied_total = (
-        fallback_deadline_count + fallback_primary_invalid_count
-    )
+    primary_applied_on_time_count = int(np.sum(dispositions == "PRIMARY_APPLIED_ON_TIME"))
+    primary_applied_late_count = int(np.sum(dispositions == "PRIMARY_APPLIED_LATE"))
+    fallback_deadline_count = int(np.sum(dispositions == "FALLBACK_APPLIED_DEADLINE_MISS"))
+    fallback_primary_invalid_count = int(np.sum(dispositions == "FALLBACK_APPLIED_PRIMARY_INVALID"))
+    primary_applied_total = primary_applied_on_time_count + primary_applied_late_count
+    fallback_applied_total = fallback_deadline_count + fallback_primary_invalid_count
     deadline_miss_count = int(np.sum(deadline_missed)) if deadline_missed.size else 0
-    max_deadline_overrun_ms = (
-        float(np.max(deadline_overruns))
-        if deadline_overruns.size
-        else 0.0
-    )
+    max_deadline_overrun_ms = float(np.max(deadline_overruns)) if deadline_overruns.size else 0.0
 
     profile_status = np.asarray(
         result.get("chance_profile_application_status", []),
         dtype=str,
     )
-    enforced_profile_count = int(
-        np.sum(profile_status == "APPLIED")
-    )
-    missing_enforced_profile_count = int(
-        np.sum(profile_status == "NOT_APPLICABLE_DETERMINISTIC")
-    )
-    diagnostic_profiles = result.get(
-        "post_solve_diagnostic_profile", []
-    )
+    enforced_profile_count = int(np.sum(profile_status == "APPLIED"))
+    missing_enforced_profile_count = int(np.sum(profile_status == "NOT_APPLICABLE_DETERMINISTIC"))
+    diagnostic_profiles = result.get("post_solve_diagnostic_profile", [])
     post_solve_diagnostic_profile_count = (
-        len(diagnostic_profiles)
-        if isinstance(diagnostic_profiles, (list, tuple))
-        else 0
+        len(diagnostic_profiles) if isinstance(diagnostic_profiles, (list, tuple)) else 0
     )
 
     primal_status = np.asarray(
@@ -863,13 +995,13 @@ def summarize_native_trial(
     residual_invalid_count = int(np.sum(primal_status == "INVALID"))
     tick_count = len(primal_status) if len(primal_status) else 1
     gate_pass_rate = float(np.mean(gate_status == "PASS")) if gate_status.size else 0.0
-    gate_fail_rate = float(
-        np.mean((gate_status == "FAIL_THRESHOLD") | (gate_status == "FAIL_INVALID"))
-    ) if gate_status.size else 0.0
-    gate_unknown_rate = (
-        float(np.mean(gate_status == "UNKNOWN_UNAVAILABLE"))
+    gate_fail_rate = (
+        float(np.mean((gate_status == "FAIL_THRESHOLD") | (gate_status == "FAIL_INVALID")))
         if gate_status.size
         else 0.0
+    )
+    gate_unknown_rate = (
+        float(np.mean(gate_status == "UNKNOWN_UNAVAILABLE")) if gate_status.size else 0.0
     )
 
     def available_percentile(values: np.ndarray, q: float) -> float | None:
@@ -880,7 +1012,7 @@ def summarize_native_trial(
     return NativeTrialResult(
         noise_label=noise_label,
         covariance_scale=float(covariance_scale),
-        mode=mode,
+        mode=canonical,
         seed=int(seed),
         expected_steps=expected_steps,
         completed_steps=completed_steps,
@@ -898,11 +1030,13 @@ def summarize_native_trial(
         minimum_obstacle_clearance_m=result.get("minimum_obstacle_clearance_m"),
         minimum_ground_clearance_m=result.get("minimum_ground_clearance_m"),
         timing_stats=timing_stats,
-        requested_mode=requested_mode,
-        legacy_mode_alias_used=legacy_alias_used,
+        requested_mode=requested_provenance.requested_mode,
+        legacy_mode_alias_used=requested_provenance.legacy_alias_used,
         risk_semantics=risk_semantics,
         risk_allocation_method=risk_allocation_method,
         allocator_config_hash=allocator_config_hash,
+        risk_provenance_status=risk_provenance_status,
+        risk_provenance_unavailable_ticks=risk_provenance_unavailable_ticks,
         numerical_failure=numerical_failure,
         final_error_m=final_error,
         min_clearance_m=min_clearance,
@@ -959,12 +1093,8 @@ def summarize_native_trial(
         primary_applied_late_count=primary_applied_late_count,
         fallback_deadline_count=fallback_deadline_count,
         fallback_primary_invalid_count=fallback_primary_invalid_count,
-        primary_application_rate=(
-            primary_applied_total / total_ticks if total_ticks else 0.0
-        ),
-        fallback_application_rate=(
-            fallback_applied_total / total_ticks if total_ticks else 0.0
-        ),
+        primary_application_rate=(primary_applied_total / total_ticks if total_ticks else 0.0),
+        fallback_application_rate=(fallback_applied_total / total_ticks if total_ticks else 0.0),
         max_deadline_overrun_ms=max_deadline_overrun_ms,
     )
 
@@ -986,6 +1116,7 @@ class NativeMonteCarloRunner:
         self,
         *,
         mode: str,
+        requested_mode: str | None = None,
         noise_level: NoiseLevel,
         seed: int,
     ) -> NativeTrialResult:
@@ -1028,6 +1159,7 @@ class NativeMonteCarloRunner:
             result,
             config,
             mode=mode,
+            requested_mode=requested_mode,
             noise_label=noise_level.label,
             covariance_scale=noise_level.covariance_scale,
             seed=seed,
@@ -1039,6 +1171,7 @@ def run_native_trial_batch(
     base_config_mapping: Mapping[str, Any],
     *,
     mode: str,
+    requested_mode: str | None = None,
     noise_label: str,
     covariance_scale: float,
     seeds: Sequence[int],
@@ -1059,7 +1192,12 @@ def run_native_trial_batch(
     )
     level = NoiseLevel(noise_label, covariance_scale)
     return [
-        runner.run_trial(mode=mode, noise_level=level, seed=int(seed)).to_mapping()
+        runner.run_trial(
+            mode=mode,
+            requested_mode=requested_mode,
+            noise_level=level,
+            seed=int(seed),
+        ).to_mapping()
         for seed in seeds
     ]
 
@@ -1079,10 +1217,7 @@ def wilson_interval(
     center = (proportion + z * z / (2.0 * total)) / denominator
     half = (
         z
-        * math.sqrt(
-            proportion * (1.0 - proportion) / total
-            + z * z / (4.0 * total * total)
-        )
+        * math.sqrt(proportion * (1.0 - proportion) / total + z * z / (4.0 * total * total))
         / denominator
     )
     return [max(0.0, center - half), min(1.0, center + half)]
@@ -1174,20 +1309,15 @@ def _group_gates(
     budget_ok = all(item.budget_failure_ticks == 0 for item in items)
     collision_upper = float(summary["collision_rate"]["ci"][1])
     empirical_collision_ok = (
-        enough_trials
-        and collision_upper <= protocol.empirical_collision_rate_limit
+        enough_trials and collision_upper <= protocol.empirical_collision_rate_limit
     )
     positive_slack_episodes = sum(item.positive_slack_ticks > 0 for item in items)
     fallback_episodes = sum(item.fallback_ticks > 0 for item in items)
     timing_field = (
-        "p95_solver_ms"
-        if math.isclose(protocol.timing_percentile, 0.95)
-        else "p99_solver_ms"
+        "p95_solver_ms" if math.isclose(protocol.timing_percentile, 0.95) else "p99_solver_ms"
     )
     timing_summary = summary[timing_field]
-    timing_value = (
-        float(timing_summary["p95"]) if timing_summary is not None else float("inf")
-    )
+    timing_value = float(timing_summary["p95"]) if timing_summary is not None else float("inf")
     timing_ok = timing_value <= controller_period_ms
     # A real-time qualification claim requires the realtime protocol, an
     # end-to-end deadline clock, and the timing gate.  Algorithmic runs are
@@ -1204,23 +1334,11 @@ def _group_gates(
         claim_blockers.append("NUMERICAL_OR_INCOMPLETE")
     if enough_trials and not empirical_collision_ok:
         claim_blockers.append("COLLISION_CONFIDENCE_BOUND")
-    if (
-        mode != "deterministic"
-        and protocol.require_zero_budget_failures
-        and not budget_ok
-    ):
+    if mode != "deterministic" and protocol.require_zero_budget_failures and not budget_ok:
         claim_blockers.append("RISK_BUDGET_FAILURE")
-    if (
-        mode != "deterministic"
-        and protocol.require_zero_positive_slack
-        and positive_slack_episodes
-    ):
+    if mode != "deterministic" and protocol.require_zero_positive_slack and positive_slack_episodes:
         claim_blockers.append("POSITIVE_SLACK")
-    if (
-        mode != "deterministic"
-        and protocol.require_zero_fallback
-        and fallback_episodes
-    ):
+    if mode != "deterministic" and protocol.require_zero_fallback and fallback_episodes:
         claim_blockers.append("FALLBACK")
 
     if mode == "deterministic":
@@ -1231,9 +1349,7 @@ def _group_gates(
         claim_status = "EMPIRICALLY_SUPPORTED_NOT_PROVEN"
 
     if not execution_ok or (
-        mode != "deterministic"
-        and protocol.require_zero_budget_failures
-        and not budget_ok
+        mode != "deterministic" and protocol.require_zero_budget_failures and not budget_ok
     ):
         validation_status = "FAIL"
     elif (
@@ -1251,14 +1367,10 @@ def _group_gates(
         "sample_size": "PASS" if enough_trials else "INSUFFICIENT",
         "execution_integrity": "PASS" if execution_ok else "FAIL",
         "risk_accounting": (
-            "NOT_APPLICABLE"
-            if mode == "deterministic"
-            else ("PASS" if budget_ok else "FAIL")
+            "NOT_APPLICABLE" if mode == "deterministic" else ("PASS" if budget_ok else "FAIL")
         ),
         "empirical_collision_bound": (
-            "PASS"
-            if empirical_collision_ok
-            else ("INSUFFICIENT" if not enough_trials else "FAIL")
+            "PASS" if empirical_collision_ok else ("INSUFFICIENT" if not enough_trials else "FAIL")
         ),
         "real_time_p99": "PASS" if timing_ok else "FAIL",
         "realtime_claim_eligible": realtime_claim_eligible,
@@ -1277,6 +1389,103 @@ def _group_gates(
     }
 
 
+def _validated_risk_provenance(
+    trials: Sequence[NativeTrialResult],
+    protocol: NativeMonteCarloProtocol,
+) -> dict[str, tuple[str, str, str | None]]:
+    """Validate mode/risk identity before any trial values are combined."""
+    expected_requested = dict(protocol.mode_requests)
+    identities: dict[str, set[tuple[str, str, str | None]]] = {}
+    for trial in trials:
+        requested = str(trial.requested_mode or trial.mode).strip().lower()
+        request = canonicalize_mode(requested)
+        if request.canonical_mode != trial.mode:
+            raise ValueError(
+                f"trial requested_mode {requested!r} does not canonicalize to "
+                f"controller mode {trial.mode!r}"
+            )
+        protocol_requested = expected_requested.get(trial.mode)
+        if protocol_requested is not None and requested != protocol_requested:
+            raise ValueError(
+                f"trial requested_mode {requested!r} does not match protocol "
+                f"requested_mode {protocol_requested!r} for {trial.mode!r}"
+            )
+        if bool(trial.legacy_mode_alias_used) != request.legacy_alias_used:
+            raise ValueError(
+                "trial legacy_mode_alias_used does not match requested_mode "
+                f"provenance for {requested!r}"
+            )
+
+        allowed_statuses = {"AVAILABLE", "PARTIAL_UNAVAILABLE", "UNAVAILABLE"}
+        if trial.risk_provenance_status not in allowed_statuses:
+            raise ValueError(
+                "cannot aggregate trial with unknown risk provenance status: "
+                f"{trial.risk_provenance_status!r}"
+            )
+        unavailable_ticks = int(trial.risk_provenance_unavailable_ticks)
+        if unavailable_ticks < 0 or unavailable_ticks > trial.completed_steps:
+            raise ValueError("risk_provenance_unavailable_ticks must be within completed ticks")
+        if trial.risk_provenance_status == "AVAILABLE" and unavailable_ticks != 0:
+            raise ValueError("AVAILABLE risk provenance cannot contain unavailable ticks")
+        if (
+            trial.risk_provenance_status == "PARTIAL_UNAVAILABLE"
+            and not 0 < unavailable_ticks < trial.completed_steps
+        ):
+            raise ValueError(
+                "PARTIAL_UNAVAILABLE risk provenance requires some, but not all, "
+                "ticks to be unavailable"
+            )
+        if (
+            trial.risk_provenance_status == "UNAVAILABLE"
+            and unavailable_ticks != trial.completed_steps
+        ):
+            raise ValueError(
+                "UNAVAILABLE risk provenance requires every completed tick to be unavailable"
+            )
+
+        expected_semantics, expected_method = _EXPECTED_RISK_PROVENANCE[trial.mode]
+        if trial.risk_semantics != expected_semantics:
+            raise ValueError(
+                f"controller mode {trial.mode!r} requires risk_semantics "
+                f"{expected_semantics!r}, got {trial.risk_semantics!r}"
+            )
+        if trial.risk_allocation_method != expected_method:
+            raise ValueError(
+                f"controller mode {trial.mode!r} requires risk_allocation_method "
+                f"{expected_method!r}, got {trial.risk_allocation_method!r}"
+            )
+        allocator_hash = trial.allocator_config_hash
+        if trial.mode == "deterministic":
+            if allocator_hash is not None:
+                raise ValueError("deterministic trials must not record allocator_config_hash")
+        elif (
+            not isinstance(allocator_hash, str)
+            or len(allocator_hash) != 64
+            or any(character not in "0123456789abcdef" for character in allocator_hash)
+        ):
+            raise ValueError(
+                f"{trial.mode} trials require a lowercase SHA-256 allocator_config_hash"
+            )
+        identities.setdefault(trial.mode, set()).add(
+            (
+                trial.risk_semantics,
+                trial.risk_allocation_method,
+                allocator_hash,
+            )
+        )
+
+    validated: dict[str, tuple[str, str, str | None]] = {}
+    for mode, values in identities.items():
+        if len(values) != 1:
+            hashes = sorted(str(value[2]) for value in values)
+            raise ValueError(
+                f"cannot aggregate {mode!r} trials with different "
+                f"allocator_config_hash values: {hashes}"
+            )
+        validated[mode] = next(iter(values))
+    return validated
+
+
 def aggregate_native_trials(
     trials: Sequence[NativeTrialResult],
     protocol: NativeMonteCarloProtocol,
@@ -1286,9 +1495,7 @@ def aggregate_native_trials(
     """Aggregate by noise and controller with paired deltas and claim gates."""
     if not trials:
         raise ValueError("at least one native Monte Carlo trial is required")
-    active_protocols = {
-        trial.protocol for trial in trials if trial.protocol != "UNKNOWN_LEGACY"
-    }
+    active_protocols = {trial.protocol for trial in trials if trial.protocol != "UNKNOWN_LEGACY"}
     if len(active_protocols) > 1:
         raise ValueError(
             "cannot aggregate trials from multiple validation protocols: "
@@ -1296,8 +1503,11 @@ def aggregate_native_trials(
         )
     legacy_trials = [trial for trial in trials if trial.protocol == "UNKNOWN_LEGACY"]
     if legacy_trials:
+        raise ValueError("cannot aggregate UNKNOWN_LEGACY trials into a new protocol summary")
+    if active_protocols and active_protocols != {protocol.protocol_type}:
         raise ValueError(
-            "cannot aggregate UNKNOWN_LEGACY trials into a new protocol summary"
+            "trial validation protocol does not match aggregation protocol: "
+            f"trials={sorted(active_protocols)}, configured={protocol.protocol_type!r}"
         )
     trial_modes = {trial.mode for trial in trials}
     unknown_modes = trial_modes - set(protocol.modes)
@@ -1306,6 +1516,7 @@ def aggregate_native_trials(
             "cannot aggregate trials with canonical modes outside the protocol: "
             f"{sorted(unknown_modes)}; grouped runs must share canonical modes"
         )
+    risk_provenance = _validated_risk_provenance(trials, protocol)
     numeric_fields = (
         "final_error_m",
         "min_clearance_m",
@@ -1337,15 +1548,12 @@ def aggregate_native_trials(
         "collision_schema_version": 1,
         "timing_schema": dict(TIMING_SCHEMA_METADATA),
         "mode_schema_version": 2,
+        "risk_provenance_schema_version": RISK_PROVENANCE_SCHEMA_VERSION,
         "controller_modes": list(protocol.modes),
         "requested_modes": list(protocol.requested_modes) or list(protocol.modes),
         "mode_aliases_used": bool(protocol.mode_aliases_used),
-        "protocol": (
-            active_protocols.pop() if active_protocols else "UNKNOWN_LEGACY"
-        ),
-        "deadline_policy": (
-            deadline_policy_from_protocol(protocol.protocol).value
-        ),
+        "protocol": (active_protocols.pop() if active_protocols else "UNKNOWN_LEGACY"),
+        "deadline_policy": (deadline_policy_from_protocol(protocol.protocol).value),
         "deadline_clock": protocol.deadline_clock,
         "control_period_ms": controller_period_ms,
         "confidence_level": protocol.confidence_level,
@@ -1353,9 +1561,7 @@ def aggregate_native_trials(
         "noise_levels": {},
     }
     for level in protocol.noise_levels:
-        level_items = [
-            trial for trial in trials if trial.noise_label == level.label
-        ]
+        level_items = [trial for trial in trials if trial.noise_label == level.label]
         level_output: dict[str, Any] = {
             "covariance_scale": level.covariance_scale,
             "controllers": {},
@@ -1365,8 +1571,33 @@ def aggregate_native_trials(
             items = [trial for trial in level_items if trial.mode == mode]
             if not items:
                 continue
+            provenance_status_counts = {
+                status: sum(item.risk_provenance_status == status for item in items)
+                for status in (
+                    "AVAILABLE",
+                    "PARTIAL_UNAVAILABLE",
+                    "UNAVAILABLE",
+                )
+            }
+            if provenance_status_counts["AVAILABLE"] == len(items):
+                provenance_status = "AVAILABLE"
+            elif provenance_status_counts["UNAVAILABLE"] == len(items):
+                provenance_status = "UNAVAILABLE"
+            else:
+                provenance_status = "PARTIAL_UNAVAILABLE"
             summary: dict[str, Any] = {
                 "trials": len(items),
+                "risk_provenance": {
+                    "controller_mode": mode,
+                    "risk_semantics": risk_provenance[mode][0],
+                    "risk_allocation_method": risk_provenance[mode][1],
+                    "allocator_config_hash": risk_provenance[mode][2],
+                    "telemetry_status": provenance_status,
+                    "status_counts": provenance_status_counts,
+                    "unavailable_tick_count": sum(
+                        item.risk_provenance_unavailable_ticks for item in items
+                    ),
+                },
                 "success_rate": _rate_summary(
                     items,
                     lambda item: item.success,
@@ -1444,9 +1675,7 @@ def aggregate_native_trials(
                 ),
             }
             for name in numeric_fields:
-                summary[name] = _numeric_summary(
-                    getattr(item, name) for item in items
-                )
+                summary[name] = _numeric_summary(getattr(item, name) for item in items)
             summary["timing"] = _timing_group_summary(items)
             summary["gates"] = _group_gates(
                 items,
@@ -1454,11 +1683,21 @@ def aggregate_native_trials(
                 protocol,
                 controller_period_ms=controller_period_ms,
             )
+            provenance_available = provenance_status == "AVAILABLE"
+            summary["gates"]["risk_provenance"] = "PASS" if provenance_available else "FAIL"
+            if not provenance_available:
+                summary["gates"]["execution_integrity"] = "FAIL"
+                if mode != "deterministic":
+                    summary["gates"]["claim_status"] = "BLOCKED_RISK_PROVENANCE_UNAVAILABLE"
+                    summary["gates"]["claim_blockers"] = sorted(
+                        {
+                            *summary["gates"]["claim_blockers"],
+                            "risk_provenance_unavailable",
+                        }
+                    )
             level_output["controllers"][mode] = summary
 
-        deterministic = {
-            item.seed: item for item in level_items if item.mode == "deterministic"
-        }
+        deterministic = {item.seed: item for item in level_items if item.mode == "deterministic"}
         for mode in protocol.modes:
             if mode == "deterministic":
                 continue
@@ -1470,8 +1709,7 @@ def aggregate_native_trials(
                 "paired_seeds": common,
                 "metrics": {
                     name: _numeric_summary(
-                        getattr(compared[seed], name)
-                        - getattr(deterministic[seed], name)
+                        getattr(compared[seed], name) - getattr(deterministic[seed], name)
                         for seed in common
                     )
                     for name in (
@@ -1509,18 +1747,11 @@ def aggregate_native_trials(
         for mode, summary in level["controllers"].items()
         if mode != "deterministic"
     ]
-    execution_ok = all(
-        summary["gates"]["execution_integrity"] == "PASS" for summary in groups
-    )
-    enough_samples = all(
-        summary["gates"]["sample_size"] == "PASS" for summary in groups
-    )
-    real_time_ok = all(
-        summary["gates"]["real_time_p99"] == "PASS" for summary in groups
-    )
+    execution_ok = all(summary["gates"]["execution_integrity"] == "PASS" for summary in groups)
+    enough_samples = all(summary["gates"]["sample_size"] == "PASS" for summary in groups)
+    real_time_ok = all(summary["gates"]["real_time_p99"] == "PASS" for summary in groups)
     claims_supported = bool(chance_groups) and all(
-        summary["gates"]["claim_status"]
-        == "EMPIRICALLY_SUPPORTED_NOT_PROVEN"
+        summary["gates"]["claim_status"] == "EMPIRICALLY_SUPPORTED_NOT_PROVEN"
         for summary in chance_groups
     )
     if not execution_ok:
@@ -1537,9 +1768,7 @@ def aggregate_native_trials(
         "sample_size": "PASS" if enough_samples else "INSUFFICIENT",
         "real_time": "PASS" if real_time_ok else "FAIL",
         "probabilistic_claim": (
-            "EMPIRICALLY_SUPPORTED_NOT_PROVEN"
-            if claims_supported
-            else "BLOCKED"
+            "EMPIRICALLY_SUPPORTED_NOT_PROVEN" if claims_supported else "BLOCKED"
         ),
         "interpretation": (
             "A finite Monte Carlo result is empirical evidence only. The configured "
@@ -1617,16 +1846,11 @@ def _hash_loose_validation_source(code_root: Path) -> tuple[str, int]:
     """Hash a source archive that has no Git identity without trusting it."""
     source_root = code_root.resolve()
     for candidate in (source_root, *source_root.parents):
-        if (
-            (candidate / "pyproject.toml").is_file()
-            and (candidate / "quadrotor_mpc").is_dir()
-        ):
+        if (candidate / "pyproject.toml").is_file() and (candidate / "quadrotor_mpc").is_dir():
             source_root = candidate
             break
     repository_root = (
-        source_root.parent
-        if (source_root.parent / "README.md").is_file()
-        else source_root
+        source_root.parent if (source_root.parent / "README.md").is_file() else source_root
     )
     selected: list[Path] = []
     suffixes = {".py", ".toml", ".yaml", ".yml", ".txt", ".lock", ".xml", ".obj"}
@@ -1705,8 +1929,7 @@ def _installed_distribution_provenance() -> dict[str, Any]:
         if installed_path.is_file():
             selected.append((logical_path.as_posix(), installed_path))
             module_belongs_to_distribution = bool(
-                module_belongs_to_distribution
-                or installed_path.resolve() == active_module
+                module_belongs_to_distribution or installed_path.resolve() == active_module
             )
 
     if not module_belongs_to_distribution:
@@ -1859,6 +2082,7 @@ def create_validation_directory(
         "collision_schema_version": 1,
         "timing_schema": dict(TIMING_SCHEMA_METADATA),
         "mode_schema_version": 2,
+        "risk_provenance_schema_version": RISK_PROVENANCE_SCHEMA_VERSION,
         "stage": 8,
         "run_id": directory.name,
         "created_at_utc": timestamp.isoformat(),
@@ -1875,9 +2099,7 @@ def create_validation_directory(
             "platform": platform.platform(),
             "dependencies": _versions(),
         },
-        "expected_trials": (
-            protocol.trials * len(protocol.modes) * len(protocol.noise_levels)
-        ),
+        "expected_trials": (protocol.trials * len(protocol.modes) * len(protocol.noise_levels)),
     }
     (directory / "manifest.yaml").write_text(
         yaml.safe_dump(manifest, sort_keys=False),
@@ -1919,9 +2141,7 @@ def load_trial_checkpoint(directory: str | Path) -> list[NativeTrialResult]:
         try:
             trial = NativeTrialResult(**json.loads(line))
         except (TypeError, json.JSONDecodeError) as exc:
-            raise ValueError(
-                f"invalid trial checkpoint at {path}:{line_number}"
-            ) from exc
+            raise ValueError(f"invalid trial checkpoint at {path}:{line_number}") from exc
         trials.append(_upgrade_legacy_trial_mode(trial))
     return trials
 
@@ -1948,10 +2168,7 @@ def _save_plot(
     figure, axes = plt.subplots(2, 3, figsize=(15, 8.5), constrained_layout=True)
     x = np.arange(len(labels), dtype=float)
     width = 0.22
-    offsets = {
-        mode: (index - (len(modes) - 1) / 2.0) * width
-        for index, mode in enumerate(modes)
-    }
+    offsets = {mode: (index - (len(modes) - 1) / 2.0) * width for index, mode in enumerate(modes)}
     for mode in modes:
         rates = []
         lows = []
@@ -1969,15 +2186,11 @@ def _save_plot(
             highs.append(collision["ci"][1])
             success.append(summary["success_rate"]["rate"])
             subset = [
-                trial
-                for trial in trials
-                if trial.noise_label == label and trial.mode == mode
+                trial for trial in trials if trial.noise_label == label and trial.mode == mode
             ]
             clearances.append([trial.min_clearance_m for trial in subset])
             errors.append([trial.final_error_m for trial in subset])
-            slack_rates.append(
-                summary["positive_slack_episode_rate"]["rate"]
-            )
+            slack_rates.append(summary["positive_slack_episode_rate"]["rate"])
             solver_p99.append(summary["p99_solver_ms"]["median"])
         position = x + offsets[mode]
         asymmetric = np.array([np.array(rates) - lows, np.array(highs) - rates])
@@ -2078,8 +2291,8 @@ def _save_markdown_report(
         "## Aggregate results",
         "",
         (
-        "| Noise | Controller | Success (CI) | Collision (CI) | "
-        "Min clearance mean | Max slack mean | Solver p99 median | Claim blockers |"
+            "| Noise | Controller | Success (CI) | Collision (CI) | "
+            "Min clearance mean | Max slack mean | Solver p99 median | Claim blockers |"
         ),
         "|---|---|---:|---:|---:|---:|---:|---|",
     ]
@@ -2143,10 +2356,7 @@ def finalize_validation_artifacts(
         for mode in protocol.modes
         for seed in protocol.seeds
     }
-    actual_keys = {
-        (trial.noise_label, trial.mode, trial.seed)
-        for trial in trials
-    }
+    actual_keys = {(trial.noise_label, trial.mode, trial.seed) for trial in trials}
     if len(actual_keys) != len(trials):
         raise ValueError("native Monte Carlo trials contain duplicate keys")
     if actual_keys != expected_keys:
@@ -2165,10 +2375,7 @@ def finalize_validation_artifacts(
         ),
     )
     checkpoint_trials = load_trial_checkpoint(target)
-    checkpoint_keys = {
-        (trial.noise_label, trial.mode, trial.seed)
-        for trial in checkpoint_trials
-    }
+    checkpoint_keys = {(trial.noise_label, trial.mode, trial.seed) for trial in checkpoint_trials}
     if len(checkpoint_keys) != len(checkpoint_trials):
         raise ValueError("native Monte Carlo checkpoint contains duplicate keys")
     unexpected_checkpoint = checkpoint_keys - expected_keys
@@ -2207,9 +2414,7 @@ def finalize_validation_artifacts(
         "CLEAN_GIT_COMMIT",
         "INSTALLED_DISTRIBUTION",
     }
-    aggregate["overall"]["release_provenance"] = (
-        "PASS" if provenance_ok else "FAIL_DIRTY_SOURCE"
-    )
+    aggregate["overall"]["release_provenance"] = "PASS" if provenance_ok else "FAIL_DIRTY_SOURCE"
     aggregate["overall"]["release_eligible"] = bool(
         provenance_ok
         and aggregate["overall"]["execution_integrity"] == "PASS"

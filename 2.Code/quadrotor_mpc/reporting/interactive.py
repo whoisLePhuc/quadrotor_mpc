@@ -39,9 +39,7 @@ def _table(results: list[SimulationResult]) -> str:
     head = "".join(f"<th>{html.escape(label)}</th>" for label, _ in columns)
     rows = []
     for result in results:
-        cells = "".join(
-            f"<td>{html.escape(_fmt(getter(result)))}</td>" for _, getter in columns
-        )
+        cells = "".join(f"<td>{html.escape(_fmt(getter(result)))}</td>" for _, getter in columns)
         rows.append(f"<tr>{cells}</tr>")
     return f"<table><thead><tr>{head}</tr></thead><tbody>{''.join(rows)}</tbody></table>"
 
@@ -53,9 +51,11 @@ def _plotly_figure(results: list[SimulationResult], scenario: ScenarioConfig):
     figure = make_subplots(
         rows=3,
         cols=2,
-        specs=[[{"type": "scene", "rowspan": 2}, {"type": "xy"}],
-               [None, {"type": "xy"}],
-               [{"type": "xy"}, {"type": "xy"}]],
+        specs=[
+            [{"type": "scene", "rowspan": 2}, {"type": "xy"}],
+            [None, {"type": "xy"}],
+            [{"type": "xy"}, {"type": "xy"}],
+        ],
         subplot_titles=(
             "3-D trajectory",
             "Position error",
@@ -70,60 +70,121 @@ def _plotly_figure(results: list[SimulationResult], scenario: ScenarioConfig):
         color = palette.get(result.mode, "#8e44ad")
         label = f"{result.mode} / seed {result.seed}"
         position_error = np.linalg.norm(result.states[:, :3] - scenario.goal, axis=1)
-        figure.add_trace(go.Scatter3d(
-            x=result.states[:, 0], y=result.states[:, 1], z=result.states[:, 2],
-            mode="lines", name=label, line={"color": color, "width": 6},
-            legendgroup=label,
-        ), row=1, col=1)
-        figure.add_trace(go.Scatter(
-            x=result.times, y=position_error, name=label,
-            line={"color": color}, legendgroup=label, showlegend=False,
-        ), row=1, col=2)
-        safety = result.clearances if scenario.obstacles else result.chance_residuals
-        figure.add_trace(go.Scatter(
-            x=result.times, y=safety, name=label,
-            line={"color": color}, legendgroup=label, showlegend=False,
-        ), row=2, col=2)
-        for index, command_name in enumerate(("roll", "pitch", "vz", "yaw rate")):
-            figure.add_trace(go.Scatter(
+        figure.add_trace(
+            go.Scatter3d(
+                x=result.states[:, 0],
+                y=result.states[:, 1],
+                z=result.states[:, 2],
+                mode="lines",
+                name=label,
+                line={"color": color, "width": 6},
+                legendgroup=label,
+            ),
+            row=1,
+            col=1,
+        )
+        figure.add_trace(
+            go.Scatter(
                 x=result.times,
-                y=result.controls[:, index],
-                name=f"{result.mode}: {command_name}",
+                y=position_error,
+                name=label,
+                line={"color": color},
                 legendgroup=label,
                 showlegend=False,
-            ), row=3, col=1)
+            ),
+            row=1,
+            col=2,
+        )
+        safety = result.clearances if scenario.obstacles else result.chance_residuals
+        figure.add_trace(
+            go.Scatter(
+                x=result.times,
+                y=safety,
+                name=label,
+                line={"color": color},
+                legendgroup=label,
+                showlegend=False,
+            ),
+            row=2,
+            col=2,
+        )
+        for index, command_name in enumerate(("roll", "pitch", "vz", "yaw rate")):
+            figure.add_trace(
+                go.Scatter(
+                    x=result.times,
+                    y=result.controls[:, index],
+                    name=f"{result.mode}: {command_name}",
+                    legendgroup=label,
+                    showlegend=False,
+                ),
+                row=3,
+                col=1,
+            )
         mask = result.solver_times_ms > 0.0
-        figure.add_trace(go.Scatter(
-            x=result.times[mask], y=result.solver_times_ms[mask],
-            name=label, line={"color": color}, legendgroup=label, showlegend=False,
-        ), row=3, col=2)
+        figure.add_trace(
+            go.Scatter(
+                x=result.times[mask],
+                y=result.solver_times_ms[mask],
+                name=label,
+                line={"color": color},
+                legendgroup=label,
+                showlegend=False,
+            ),
+            row=3,
+            col=2,
+        )
 
-    figure.add_trace(go.Scatter3d(
-        x=[scenario.start[0], scenario.goal[0]],
-        y=[scenario.start[1], scenario.goal[1]],
-        z=[scenario.start[2], scenario.goal[2]],
-        mode="markers", marker={"size": [5, 8], "color": ["#8395a7", "#feca57"]},
-        name="start / goal",
-    ), row=1, col=1)
+    figure.add_trace(
+        go.Scatter3d(
+            x=[scenario.start[0], scenario.goal[0]],
+            y=[scenario.start[1], scenario.goal[1]],
+            z=[scenario.start[2], scenario.goal[2]],
+            mode="markers",
+            marker={"size": [5, 8], "color": ["#8395a7", "#feca57"]},
+            name="start / goal",
+        ),
+        row=1,
+        col=1,
+    )
     for index, obstacle in enumerate(scenario.obstacles):
-        figure.add_trace(go.Scatter3d(
-            x=[obstacle.position[0]], y=[obstacle.position[1]], z=[obstacle.position[2]],
-            mode="markers", marker={"size": 12, "color": "#ee5253", "opacity": 0.55},
-            name=f"obstacle {index + 1}",
-        ), row=1, col=1)
+        figure.add_trace(
+            go.Scatter3d(
+                x=[obstacle.position[0]],
+                y=[obstacle.position[1]],
+                z=[obstacle.position[2]],
+                mode="markers",
+                marker={"size": 12, "color": "#ee5253", "opacity": 0.55},
+                name=f"obstacle {index + 1}",
+            ),
+            row=1,
+            col=1,
+        )
     maximum_time = max(float(result.times[-1]) for result in results)
-    figure.add_trace(go.Scatter(
-        x=[0.0, maximum_time], y=[0.0, 0.0], mode="lines",
-        line={"dash": "dash", "color": "#ee5253"},
-        name="safety boundary", showlegend=False,
-    ), row=2, col=2)
-    for result in results:
-        figure.add_trace(go.Scatter(
+    figure.add_trace(
+        go.Scatter(
             x=[0.0, maximum_time],
-            y=[result.controller_dt * 1000.0] * 2,
-            mode="lines", line={"dash": "dot", "color": "#8395a7"},
-            name=f"deadline · {result.mode}", showlegend=False,
-        ), row=3, col=2)
+            y=[0.0, 0.0],
+            mode="lines",
+            line={"dash": "dash", "color": "#ee5253"},
+            name="safety boundary",
+            showlegend=False,
+        ),
+        row=2,
+        col=2,
+    )
+    for result in results:
+        figure.add_trace(
+            go.Scatter(
+                x=[0.0, maximum_time],
+                y=[result.controller_dt * 1000.0] * 2,
+                mode="lines",
+                line={"dash": "dot", "color": "#8395a7"},
+                name=f"deadline · {result.mode}",
+                showlegend=False,
+            ),
+            row=3,
+            col=2,
+        )
     figure.update_layout(
         template="plotly_white",
         height=1050,

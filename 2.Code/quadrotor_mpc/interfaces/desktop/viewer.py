@@ -202,9 +202,7 @@ class NativeMuJoCoConfig:
             simulation_raw.get("mujoco_timestep_s", 0.002),
             "mujoco_timestep_s",
         )
-        safety_fallback_options = SafetyFallbackOptions.from_mapping(
-            safety_fallback_raw
-        )
+        safety_fallback_options = SafetyFallbackOptions.from_mapping(safety_fallback_raw)
         if (
             safety_fallback_options.enabled
             and safety_fallback_options.reject_on_deadline_miss
@@ -297,22 +295,14 @@ class NativeMuJoCoConfig:
             covariance_propagation_enabled=self.covariance_propagation.enabled,
             supervisor_enabled=self.safety_fallback.enabled,
             solve_deadline_ms=1000.0 * self.safety_fallback.solve_deadline_s,
-            guarantee_slack_tolerance_m=(
-                self.safety_fallback.guarantee_slack_tolerance_m
-            ),
-            maximum_acceptable_slack_m=(
-                self.safety_fallback.maximum_acceptable_slack_m
-            ),
+            guarantee_slack_tolerance_m=(self.safety_fallback.guarantee_slack_tolerance_m),
+            maximum_acceptable_slack_m=(self.safety_fallback.maximum_acceptable_slack_m),
             maximum_solver_residual=self.safety_fallback.maximum_solver_residual,
             configured_risk_semantics=(
-                risk_budget.semantics
-                if self.chance_constraints.enabled
-                else "disabled"
+                risk_budget.semantics if self.chance_constraints.enabled else "disabled"
             ),
             configured_risk_allocation=(
-                risk_budget.allocation
-                if self.chance_constraints.enabled
-                else "none"
+                risk_budget.allocation if self.chance_constraints.enabled else "none"
             ),
         )
 
@@ -462,7 +452,10 @@ class NativeMuJoCoViewer:
             prediction_color = (1.00, 0.18, 0.22, 0.82)
         elif horizon_eligible:
             prediction_color = (0.15, 1.00, 0.35, 0.78)
-        elif assurance_reason == "positive_slack" or assurance_status == "NOT_GUARANTEED_POSITIVE_SLACK":
+        elif (
+            assurance_reason == "positive_slack"
+            or assurance_status == "NOT_GUARANTEED_POSITIVE_SLACK"
+        ):
             prediction_color = (1.00, 0.72, 0.10, 0.80)
         else:
             prediction_color = (0.20, 0.65, 1.00, 0.72)
@@ -526,7 +519,10 @@ class NativeMuJoCoViewer:
                 )
             if fallback_active:
                 self._add_sphere(position, 0.28, (1.0, 0.10, 0.12, 0.18))
-            elif assurance_reason == "positive_slack" or assurance_status == "NOT_GUARANTEED_POSITIVE_SLACK":
+            elif (
+                assurance_reason == "positive_slack"
+                or assurance_status == "NOT_GUARANTEED_POSITIVE_SLACK"
+            ):
                 self._add_sphere(position, 0.24, (1.0, 0.72, 0.05, 0.12))
             if step.collided:
                 self._add_sphere(position, 0.46, (1.0, 0.05, 0.05, 0.24))

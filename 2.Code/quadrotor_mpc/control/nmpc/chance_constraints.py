@@ -54,14 +54,10 @@ class ChanceConstraintOptions:
     def __post_init__(self) -> None:
         epsilon = float(self.individual_epsilon)
         if not np.isfinite(epsilon) or not 0.0 < epsilon < 0.5:
-            raise ValueError(
-                "controller.chance_constraints.individual_epsilon must be in (0, 0.5)"
-            )
+            raise ValueError("controller.chance_constraints.individual_epsilon must be in (0, 0.5)")
         object.__setattr__(self, "individual_epsilon", epsilon)
         if not isinstance(self.risk_budget, RiskBudgetOptions):
-            raise TypeError(
-                "controller.chance_constraints.risk_budget must be RiskBudgetOptions"
-            )
+            raise TypeError("controller.chance_constraints.risk_budget must be RiskBudgetOptions")
         object.__setattr__(
             self,
             "slack_penalty",
@@ -101,14 +97,10 @@ class ChanceConstraintOptions:
     def from_mapping(cls, raw: Mapping[str, Any]) -> ChanceConstraintOptions:
         constraint_type = str(raw.get("type", "spherical")).lower()
         if constraint_type != "spherical":
-            raise ValueError(
-                "controller.chance_constraints.type must be 'spherical' in Stage 5"
-            )
+            raise ValueError("controller.chance_constraints.type must be 'spherical' in Stage 5")
         risk_raw = raw.get("risk_budget", {})
         if not isinstance(risk_raw, Mapping):
-            raise TypeError(
-                "controller.chance_constraints.risk_budget must be a mapping"
-            )
+            raise TypeError("controller.chance_constraints.risk_budget must be a mapping")
         return cls(
             enabled=bool(raw.get("enabled", False)),
             individual_epsilon=raw.get("individual_epsilon", 0.05),
@@ -217,9 +209,7 @@ class SphericalChanceProfile:
 
 def _fallback_direction(relative_covariance: np.ndarray) -> np.ndarray:
     """Use the largest-variance direction when the nominal centers coincide."""
-    eigenvalues, eigenvectors = np.linalg.eigh(
-        0.5 * (relative_covariance + relative_covariance.T)
-    )
+    eigenvalues, eigenvectors = np.linalg.eigh(0.5 * (relative_covariance + relative_covariance.T))
     direction = eigenvectors[:, int(np.argmax(eigenvalues))]
     norm = float(np.linalg.norm(direction))
     if norm <= 1e-12:
@@ -253,15 +243,11 @@ def build_spherical_chance_profile(
     steps = positions.shape[0]
     obstacle_count = base_radii.shape[0]
     if obstacle_means.shape != (obstacle_count, steps, 3):
-        raise ValueError(
-            "obstacle_positions must have shape (obstacles, steps, 3)"
-        )
+        raise ValueError("obstacle_positions must have shape (obstacles, steps, 3)")
     if vehicle_covariance.shape != (steps, 12, 12):
         raise ValueError("vehicle_covariances must have shape (steps, 12, 12)")
     if obstacle_covariance.shape != (steps, obstacle_count, 6, 6):
-        raise ValueError(
-            "obstacle_covariances must have shape (steps, obstacles, 6, 6)"
-        )
+        raise ValueError("obstacle_covariances must have shape (steps, obstacles, 6, 6)")
     for label, array in (
         ("vehicle_positions", positions),
         ("obstacle_positions", obstacle_means),
@@ -280,8 +266,7 @@ def build_spherical_chance_profile(
         vehicle_position_covariance = vehicle_covariance[step, :3, :3]
         for obstacle in range(obstacle_count):
             relative_covariance = (
-                vehicle_position_covariance
-                + obstacle_covariance[step, obstacle, :3, :3]
+                vehicle_position_covariance + obstacle_covariance[step, obstacle, :3, :3]
             )
             relative = positions[step] - obstacle_means[obstacle, step]
             distance = float(np.linalg.norm(relative))
@@ -351,8 +336,6 @@ def evaluate_spherical_constraints(
     if obstacles.shape[1] != vehicle.shape[0] or safe.shape != expected:
         raise ValueError("safety_radii_m must have shape (steps, obstacles)")
     relative = vehicle[:, None, :] - np.swapaxes(obstacles, 0, 1)
-    distance = np.sqrt(
-        np.sum(relative * relative, axis=2) + float(distance_smoothing_m2)
-    )
+    distance = np.sqrt(np.sum(relative * relative, axis=2) + float(distance_smoothing_m2))
     residual = distance - safe
     return residual, np.maximum(0.0, -residual)

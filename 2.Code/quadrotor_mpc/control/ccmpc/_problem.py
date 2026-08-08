@@ -70,9 +70,7 @@ def build_qp_problem(mpc: CCMPC) -> None:
                 mpc._fov_a.append(a_fov)
                 mpc._fov_b.append(b_fov)
                 mpc._fov_slack.append(s_fov)
-                constraints.append(
-                    b_fov - a_fov @ mpc._states[:3, k + 1] + s_fov >= 0.0
-                )
+                constraints.append(b_fov - a_fov @ mpc._states[:3, k + 1] + s_fov >= 0.0)
                 cost += mpc._fov_slack_penalty * s_fov
 
     # --- Reference trajectory params ---
@@ -92,11 +90,13 @@ def build_qp_problem(mpc: CCMPC) -> None:
         cost += _build_step_costs(mpc, k)
 
     # --- Terminal cost ---
-    terminal_position = opt.vstack([
-        mpc._states[0, -1] - mpc._goal[0],
-        mpc._states[1, -1] - mpc._goal[1],
-        mpc._states[2, -1] - mpc._goal[2],
-    ])
+    terminal_position = opt.vstack(
+        [
+            mpc._states[0, -1] - mpc._goal[0],
+            mpc._states[1, -1] - mpc._goal[1],
+            mpc._states[2, -1] - mpc._goal[2],
+        ]
+    )
     cost += opt.quad_form(terminal_position, mpc.Qg)
     cost += mpc.Q_psi * 10.0 * (mpc._states[8, -1] - mpc._yaw_ref[-1]) ** 2
 
@@ -146,11 +146,13 @@ def _build_step_costs(mpc: CCMPC, k: int) -> Any:
     cost: Any = 0.0
 
     # Reference tracking
-    pos_err = opt.vstack([
-        mpc._states[0, k + 1] - mpc._ref_x[k],
-        mpc._states[1, k + 1] - mpc._ref_y[k],
-        mpc._states[2, k + 1] - mpc._ref_z[k],
-    ])
+    pos_err = opt.vstack(
+        [
+            mpc._states[0, k + 1] - mpc._ref_x[k],
+            mpc._states[1, k + 1] - mpc._ref_y[k],
+            mpc._states[2, k + 1] - mpc._ref_z[k],
+        ]
+    )
     cost += 0.5 * opt.sum_squares(pos_err)
 
     # Control effort
@@ -171,34 +173,40 @@ def _add_bounds(mpc: CCMPC, N: int, constraints: list) -> None:
     constraints.append(mpc._states[2, 1:] >= 0.1)  # altitude floor
 
     # Velocity bounds
-    constraints.extend([
-        mpc._states[3, 1:] <= mpc.max_speed,
-        mpc._states[3, 1:] >= -mpc.max_speed,
-        mpc._states[4, 1:] <= mpc.max_speed,
-        mpc._states[4, 1:] >= -mpc.max_speed,
-        mpc._states[5, 1:] <= mpc.max_vert_vel,
-        mpc._states[5, 1:] >= -mpc.max_vert_vel,
-    ])
+    constraints.extend(
+        [
+            mpc._states[3, 1:] <= mpc.max_speed,
+            mpc._states[3, 1:] >= -mpc.max_speed,
+            mpc._states[4, 1:] <= mpc.max_speed,
+            mpc._states[4, 1:] >= -mpc.max_speed,
+            mpc._states[5, 1:] <= mpc.max_vert_vel,
+            mpc._states[5, 1:] >= -mpc.max_vert_vel,
+        ]
+    )
 
     # Attitude bounds
-    constraints.extend([
-        mpc._states[6, 1:] <= 0.5,
-        mpc._states[6, 1:] >= -0.5,
-        mpc._states[7, 1:] <= 0.5,
-        mpc._states[7, 1:] >= -0.5,
-    ])
+    constraints.extend(
+        [
+            mpc._states[6, 1:] <= 0.5,
+            mpc._states[6, 1:] >= -0.5,
+            mpc._states[7, 1:] <= 0.5,
+            mpc._states[7, 1:] >= -0.5,
+        ]
+    )
 
     # Control bounds
-    constraints.extend([
-        mpc._controls[0, :] <= mpc.max_roll,
-        mpc._controls[0, :] >= -mpc.max_roll,
-        mpc._controls[1, :] <= mpc.max_pitch,
-        mpc._controls[1, :] >= -mpc.max_pitch,
-        mpc._controls[2, :] <= mpc.max_vert_vel,
-        mpc._controls[2, :] >= -mpc.max_vert_vel,
-        mpc._controls[3, :] <= mpc.max_yaw_rate,
-        mpc._controls[3, :] >= -mpc.max_yaw_rate,
-    ])
+    constraints.extend(
+        [
+            mpc._controls[0, :] <= mpc.max_roll,
+            mpc._controls[0, :] >= -mpc.max_roll,
+            mpc._controls[1, :] <= mpc.max_pitch,
+            mpc._controls[1, :] >= -mpc.max_pitch,
+            mpc._controls[2, :] <= mpc.max_vert_vel,
+            mpc._controls[2, :] >= -mpc.max_vert_vel,
+            mpc._controls[3, :] <= mpc.max_yaw_rate,
+            mpc._controls[3, :] >= -mpc.max_yaw_rate,
+        ]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -308,11 +316,13 @@ def compute_fov_params(
     for k in range(N):
         yaw_k = x_guess[8, k]
         ct, st = math.cos(yaw_k), math.sin(yaw_k)
-        R_yaw = np.array([
-            [ct, -st, 0.0],
-            [st, ct, 0.0],
-            [0.0, 0.0, 1.0],
-        ])
+        R_yaw = np.array(
+            [
+                [ct, -st, 0.0],
+                [st, ct, 0.0],
+                [0.0, 0.0, 1.0],
+            ]
+        )
         p_k = x_guess[:3, k]
         p_k1 = x_guess[:3, k + 1]
         p_body = R_yaw.T @ (p_k1 - p_k)

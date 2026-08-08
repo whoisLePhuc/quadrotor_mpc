@@ -157,11 +157,9 @@ def main(argv: list[str] | None = None) -> int:
 
         recorded_source = manifest.get("source", {})
         current_source = source_provenance()
-        if (
-            recorded_source.get("source_snapshot_sha256")
-            and recorded_source.get("source_snapshot_sha256")
-            != current_source.get("source_snapshot_sha256")
-        ):
+        if recorded_source.get("source_snapshot_sha256") and recorded_source.get(
+            "source_snapshot_sha256"
+        ) != current_source.get("source_snapshot_sha256"):
             raise SystemExit("resume rejected: validation source snapshot does not match")
         trials = load_trial_checkpoint(directory)
         print(f"resume:         {directory} ({len(trials)}/{expected} complete)")
@@ -175,10 +173,8 @@ def main(argv: list[str] | None = None) -> int:
         trials = []
         print(f"output:         {directory}")
 
-    completed = {
-        (trial.noise_label, trial.mode, trial.seed)
-        for trial in trials
-    }
+    completed = {(trial.noise_label, trial.mode, trial.seed) for trial in trials}
+
     def save_trial(trial) -> None:
         trials.append(trial)
         append_trial_checkpoint(directory, trial)
@@ -200,13 +196,14 @@ def main(argv: list[str] | None = None) -> int:
         )
         for level in protocol.noise_levels:
             for seed in protocol.seeds:
-                for mode in protocol.modes:
+                for mode, requested_mode in protocol.mode_requests:
                     key = (level.label, mode, seed)
                     if key in completed:
                         continue
                     save_trial(
                         runner.run_trial(
                             mode=mode,
+                            requested_mode=requested_mode,
                             noise_level=level,
                             seed=seed,
                         )
@@ -214,14 +211,17 @@ def main(argv: list[str] | None = None) -> int:
     else:
         batches = []
         for level in protocol.noise_levels:
-            for mode in protocol.modes:
+            for mode, requested_mode in protocol.mode_requests:
                 seeds = [
-                    seed
-                    for seed in protocol.seeds
-                    if (level.label, mode, seed) not in completed
+                    seed for seed in protocol.seeds if (level.label, mode, seed) not in completed
                 ]
                 batches.extend(
-                    (level, mode, seeds[index : index + args.batch_size])
+                    (
+                        level,
+                        mode,
+                        requested_mode,
+                        seeds[index : index + args.batch_size],
+                    )
                     for index in range(0, len(seeds), args.batch_size)
                 )
         context = multiprocessing.get_context("spawn")
@@ -234,12 +234,13 @@ def main(argv: list[str] | None = None) -> int:
                     run_native_trial_batch,
                     base_config.to_mapping(),
                     mode=mode,
+                    requested_mode=requested_mode,
                     noise_label=level.label,
                     covariance_scale=level.covariance_scale,
                     seeds=seeds,
                     protocol_type=protocol.protocol_type,
                 ): (level.label, mode, seeds)
-                for level, mode, seeds in batches
+                for level, mode, requested_mode, seeds in batches
             }
             for future in as_completed(futures):
                 label, mode, seeds = futures[future]
@@ -247,8 +248,7 @@ def main(argv: list[str] | None = None) -> int:
                     rows = future.result()
                 except Exception as exc:
                     raise RuntimeError(
-                        f"native Monte Carlo batch failed: "
-                        f"{label}/{mode}/seeds={seeds}"
+                        f"native Monte Carlo batch failed: {label}/{mode}/seeds={seeds}"
                     ) from exc
                 from quadrotor_mpc.application.validation.monte_carlo import NativeTrialResult
 

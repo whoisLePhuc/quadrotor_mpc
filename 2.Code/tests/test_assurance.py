@@ -31,9 +31,7 @@ BUDGET_INVALID = HorizonAssuranceStatus.NOT_GUARANTEED_RISK_BUDGET_INVALID
 SOLVER_FAILURE = HorizonAssuranceStatus.NOT_GUARANTEED_PRIMARY_SOLVER_FAILURE
 RESIDUAL_UNAVAILABLE = HorizonAssuranceStatus.NOT_GUARANTEED_RESIDUAL_UNAVAILABLE
 RESIDUAL_INVALID = HorizonAssuranceStatus.NOT_GUARANTEED_RESIDUAL_INVALID
-RESIDUAL_THRESHOLD_EXCEEDED = (
-    HorizonAssuranceStatus.NOT_GUARANTEED_RESIDUAL_THRESHOLD_EXCEEDED
-)
+RESIDUAL_THRESHOLD_EXCEEDED = HorizonAssuranceStatus.NOT_GUARANTEED_RESIDUAL_THRESHOLD_EXCEEDED
 POSITIVE_SLACK = HorizonAssuranceStatus.NOT_GUARANTEED_POSITIVE_SLACK
 DEADLINE_MISS = HorizonAssuranceStatus.NOT_GUARANTEED_DEADLINE_MISS
 FALLBACK_ACTIVE = HorizonAssuranceStatus.NOT_GUARANTEED_FALLBACK_ACTIVE
@@ -65,9 +63,7 @@ def valid_joint_input(**overrides: Any) -> HorizonAssuranceInput:
             if "risk_budget_status" in overrides and overrides["risk_budget_status"] is None
             else str(overrides.get("risk_budget_status", "BUDGET_OK"))
         ),
-        primary_solver_success=bool(
-            overrides.get("primary_solver_success", True)
-        ),
+        primary_solver_success=bool(overrides.get("primary_solver_success", True)),
         residual_gate_status=_residual_gate_from_overrides(overrides),
         residual_status=str(overrides.get("residual_status", "AVAILABLE")),
         maximum_slack=float(overrides.get("maximum_slack", 0.0)),
@@ -181,9 +177,7 @@ class HorizonAssuranceBoundaryTests(unittest.TestCase):
         self.assertTrue(result.eligible)
 
     def test_slack_just_above_tolerance_is_not_eligible(self):
-        result = decision(
-            valid_joint_input(maximum_slack=float(np.nextafter(1e-6, np.inf)))
-        )
+        result = decision(valid_joint_input(maximum_slack=float(np.nextafter(1e-6, np.inf))))
         self.assertFalse(result.eligible)
         self.assertEqual(result.status, POSITIVE_SLACK)
 
@@ -192,11 +186,7 @@ class HorizonAssuranceBoundaryTests(unittest.TestCase):
         self.assertTrue(result.eligible)
 
     def test_primal_residual_just_above_tolerance_is_not_eligible(self):
-        result = decision(
-            valid_joint_input(
-                primal_residual=float(np.nextafter(1e-3, np.inf))
-            )
-        )
+        result = decision(valid_joint_input(primal_residual=float(np.nextafter(1e-3, np.inf))))
         self.assertFalse(result.eligible)
         self.assertEqual(result.status, RESIDUAL_THRESHOLD_EXCEEDED)
 
@@ -364,14 +354,10 @@ class SupervisorAssuranceIntegrationTests(unittest.TestCase):
         solution = ControlSolution(
             command=np.zeros(4, dtype=float),
             nominal_states=np.tile(
-                np.array(
-                    [0.0, 0.0, 1.0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0]
-                ).reshape(1, 13),
+                np.array([0.0, 0.0, 1.0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0]).reshape(1, 13),
                 (steps, 1),
             ),
-            predicted_covariances=np.repeat(
-                (np.eye(12) * 1e-3)[None, :, :], steps, axis=0
-            ),
+            predicted_covariances=np.repeat((np.eye(12) * 1e-3)[None, :, :], steps, axis=0),
             chance_margins=np.zeros((steps, 1)),
             risk_allocations=np.zeros((steps, 1)),
             slacks=np.zeros((steps, 1)),

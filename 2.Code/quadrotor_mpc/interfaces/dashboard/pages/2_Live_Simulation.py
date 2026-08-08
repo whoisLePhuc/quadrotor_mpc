@@ -34,7 +34,11 @@ if run_clicked:
     bar = st.progress(0.0)
     with st.spinner("Solving receding-horizon control..."):
         result = run_many(
-            scenario, [mode], backend, 1, int(seed),
+            scenario,
+            [mode],
+            backend,
+            1,
+            int(seed),
             delta=delta if mode == "ccmpc" else None,
             fov=fov,
             progress=lambda done, total: bar.progress(done / total),
@@ -55,7 +59,9 @@ if "live_result" in st.session_state:
         disabled=len(result.predicted_trajectories) == 0,
     )
     st.plotly_chart(trajectory_3d([result], scenario, horizon_index), use_container_width=True)
-    telemetry, safety, solver, events = st.tabs(("Telemetry", "Safety & uncertainty", "Solver", "Events"))
+    telemetry, safety, solver, events = st.tabs(
+        ("Telemetry", "Safety & uncertainty", "Solver", "Events")
+    )
     with telemetry:
         st.plotly_chart(telemetry_figure(result, scenario), use_container_width=True)
     with safety:

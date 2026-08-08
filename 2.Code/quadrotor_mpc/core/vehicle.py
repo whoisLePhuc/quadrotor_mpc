@@ -47,8 +47,7 @@ CRAZYFLIE_2 = QuadrotorParameters(
     angular_damping_nms=4.0e-5,
     yaw_damping_nms=1.0e-5,
     source_url=(
-        "https://github.com/google-deepmind/mujoco_menagerie/"
-        "tree/main/bitcraze_crazyflie_2"
+        "https://github.com/google-deepmind/mujoco_menagerie/tree/main/bitcraze_crazyflie_2"
     ),
 )
 

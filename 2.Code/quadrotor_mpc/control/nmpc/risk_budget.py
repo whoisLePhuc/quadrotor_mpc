@@ -56,14 +56,12 @@ class RiskBudgetOptions:
         allocation = str(self.allocation).strip().lower()
         if allocation != UNIFORM_ALLOCATION:
             raise ValueError(
-                "controller.chance_constraints.risk_budget.allocation must be "
-                "'uniform' in Stage 5"
+                "controller.chance_constraints.risk_budget.allocation must be 'uniform' in Stage 5"
             )
         tolerance = float(self.tolerance)
         if not np.isfinite(tolerance) or tolerance < 0.0:
             raise ValueError(
-                "controller.chance_constraints.risk_budget.tolerance must be "
-                "finite and >= 0"
+                "controller.chance_constraints.risk_budget.tolerance must be finite and >= 0"
             )
         object.__setattr__(self, "semantics", semantics)
         object.__setattr__(self, "allocation", allocation)
@@ -119,9 +117,7 @@ class RiskAllocation:
         if not np.all(np.isfinite(epsilons)) or np.any(epsilons < 0.0):
             raise ValueError("RiskAllocation.epsilons must be finite and nonnegative")
         if not np.all(np.isfinite(quantiles)) or np.any(quantiles < 0.0):
-            raise ValueError(
-                "RiskAllocation.gaussian_quantiles must be finite and nonnegative"
-            )
+            raise ValueError("RiskAllocation.gaussian_quantiles must be finite and nonnegative")
         for label, array in (
             ("epsilons", epsilons),
             ("gaussian_quantiles", quantiles),
@@ -147,15 +143,11 @@ class RiskAllocation:
             if value is not None:
                 number = float(value)
                 if not np.isfinite(number) or number < -1e-12:
-                    raise ValueError(
-                        f"RiskAllocation.{label} must be finite and nonnegative"
-                    )
+                    raise ValueError(f"RiskAllocation.{label} must be finite and nonnegative")
                 object.__setattr__(self, label, max(0.0, number))
         allocated = float(self.allocated_epsilon)
         if not np.isfinite(allocated) or allocated < -1e-12:
-            raise ValueError(
-                "RiskAllocation.allocated_epsilon must be finite and nonnegative"
-            )
+            raise ValueError("RiskAllocation.allocated_epsilon must be finite and nonnegative")
         object.__setattr__(self, "allocated_epsilon", max(0.0, allocated))
 
 
@@ -199,9 +191,7 @@ def allocate_risk_budget(
         "controller.chance_constraints.individual_epsilon",
     )
     if active_count == 0:
-        configured_total = (
-            options.total_epsilon if options.semantics == JOINT_RISK else None
-        )
+        configured_total = options.total_epsilon if options.semantics == JOINT_RISK else None
         return RiskAllocation(
             epsilons=np.zeros(shape, dtype=float),
             gaussian_quantiles=np.zeros(shape, dtype=float),
@@ -211,11 +201,7 @@ def allocate_risk_budget(
             allocated_epsilon=0.0,
             remaining_epsilon=configured_total,
             active_constraint_count=0,
-            budget_status=(
-                "BUDGET_OK"
-                if options.semantics == JOINT_RISK
-                else "INDIVIDUAL_ONLY"
-            ),
+            budget_status=("BUDGET_OK" if options.semantics == JOINT_RISK else "INDIVIDUAL_ONLY"),
         )
 
     if options.semantics == INDIVIDUAL_RISK:
@@ -236,15 +222,10 @@ def allocate_risk_budget(
             else "BUDGET_EXCEEDED"
         )
         if status != "BUDGET_OK":
-            raise RuntimeError(
-                "uniform joint-risk allocation exceeded total_epsilon"
-            )
+            raise RuntimeError("uniform joint-risk allocation exceeded total_epsilon")
 
     quantiles = np.asarray(
-        [
-            NormalDist().inv_cdf(1.0 - epsilon)
-            for epsilon in epsilons.reshape(-1)
-        ],
+        [NormalDist().inv_cdf(1.0 - epsilon) for epsilon in epsilons.reshape(-1)],
         dtype=float,
     ).reshape(shape)
     return RiskAllocation(

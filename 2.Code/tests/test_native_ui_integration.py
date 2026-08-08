@@ -78,9 +78,7 @@ def _safe_sample() -> dict[str, object]:
 
 class PanelRuntimeContextTests(unittest.TestCase):
     def test_stage7_context_comes_from_effective_ccmpc_config(self):
-        config = load_native_mujoco_config(
-            CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml"
-        )
+        config = load_native_mujoco_config(CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml")
         context = config.panel_runtime_context()
         self.assertTrue(context.estimation_enabled)
         self.assertTrue(context.chance_constraints_enabled)

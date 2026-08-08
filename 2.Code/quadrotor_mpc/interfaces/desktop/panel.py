@@ -202,9 +202,7 @@ def _panel_main(
             scenario = QtWidgets.QLabel(f"<b>{title}</b>")
             scenario.setStyleSheet("font-size:17px")
             mode = QtWidgets.QLabel(context.mode_label)
-            mode.setStyleSheet(
-                "padding:5px 9px;background:#172131;color:#9fb4cf;border-radius:5px"
-            )
+            mode.setStyleSheet("padding:5px 9px;background:#172131;color:#9fb4cf;border-radius:5px")
             header.addWidget(scenario)
             header.addStretch(1)
             header.addWidget(mode)
@@ -222,13 +220,9 @@ def _panel_main(
                 button = QtWidgets.QPushButton(label)
                 button.clicked.connect(lambda _checked=False, n=name: self._send(n))
                 if name == CommandName.RUN_AGAIN:
-                    button.setStyleSheet(
-                        "background:#267a4a;color:white;font-weight:bold"
-                    )
+                    button.setStyleSheet("background:#267a4a;color:white;font-weight:bold")
                 if name == CommandName.STOP:
-                    button.setStyleSheet(
-                        "background:#8f2430;color:white;font-weight:bold"
-                    )
+                    button.setStyleSheet("background:#8f2430;color:white;font-weight:bold")
                 controls.addWidget(button)
             controls.addStretch(1)
             for label, name in (
@@ -268,12 +262,8 @@ def _panel_main(
             plots = QtWidgets.QGridLayout()
             plots.setSpacing(7)
             self.position_plot = pg.PlotWidget(title="Position (m)")
-            self.safety_plot = pg.PlotWidget(
-                title="Goal / clearance / chance residual / slack (m)"
-            )
-            self.uncertainty_plot = pg.PlotWidget(
-                title="Predicted uncertainty / safety radius (m)"
-            )
+            self.safety_plot = pg.PlotWidget(title="Goal / clearance / chance residual / slack (m)")
+            self.uncertainty_plot = pg.PlotWidget(title="Predicted uncertainty / safety radius (m)")
             self.control_plot = pg.PlotWidget(title="Control input")
             self.solver_plot = pg.PlotWidget(title="NMPC solve time (ms)")
             self.supervisor_plot = pg.PlotWidget(
@@ -394,9 +384,7 @@ def _panel_main(
 
         def _send(self, name: CommandName) -> None:
             try:
-                command_queue.put_nowait(
-                    RuntimeCommand(name=name, source="panel").as_message()
-                )
+                command_queue.put_nowait(RuntimeCommand(name=name, source="panel").as_message())
             except Full:
                 self.status.setText("Command queue is full; command was not sent")
 
@@ -441,9 +429,7 @@ def _panel_main(
                     "border-radius:6px}"
                 )
                 value.setText(card.value)
-                value.setStyleSheet(
-                    f"font-size:15px;font-weight:bold;color:{foreground}"
-                )
+                value.setStyleSheet(f"font-size:15px;font-weight:bold;color:{foreground}")
                 detail.setText(card.detail)
             background, foreground = colors[view.runtime_tone]
             self.status.setText(view.banner)
@@ -495,15 +481,12 @@ def _panel_main(
         def _append(self, sample: dict[str, Any]) -> None:
             t = float(sample["time_s"])
             terminal_sigma = sample.get("horizon_terminal_position_sigma")
-            terminal_sigma_max = (
-                float("nan") if terminal_sigma is None else max(terminal_sigma)
-            )
+            terminal_sigma_max = float("nan") if terminal_sigma is None else max(terminal_sigma)
             risk_total = sample.get("risk_budget_total")
             risk_fraction = (
                 float("nan")
                 if risk_total in (None, 0.0)
-                else float(sample.get("risk_budget_allocated", 0.0))
-                / float(risk_total)
+                else float(sample.get("risk_budget_allocated", 0.0)) / float(risk_total)
             )
             chance_residual = sample.get("minimum_chance_residual_m")
             slack = sample.get("maximum_slack_m")
@@ -535,9 +518,7 @@ def _panel_main(
                 (self.solve_ms, sample["solver_time_ms"]),
                 (
                     self.deadline_ms,
-                    context.solve_deadline_ms
-                    if context.supervisor_enabled
-                    else float("nan"),
+                    context.solve_deadline_ms if context.supervisor_enabled else float("nan"),
                 ),
                 (self.risk_fraction, risk_fraction),
                 (

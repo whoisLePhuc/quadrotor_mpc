@@ -105,21 +105,24 @@ class QuadrotorMixer:
         # This feedforward term ensures the drone can hover at any attitude,
         # preventing altitude loss during horizontal flight.
         import math as _math
+
         tilt_comp = 1.0 / max(_math.cos(phi) * _math.cos(theta), 0.5)
-        tilt_comp = min(tilt_comp, 2.0)   # clamp at 60°
+        tilt_comp = min(tilt_comp, 2.0)  # clamp at 60°
         T_base = self.hover_thrust * tilt_comp + thrust_offset / 4.0
 
         # X-config mixing: FR(1), BR(2), BL(3), FL(4) with CCW=1,3 / CW=2,4
-        tau_roll  = roll_cmd
+        tau_roll = roll_cmd
         tau_pitch = pitch_cmd
-        tau_yaw   = yaw_cmd
+        tau_yaw = yaw_cmd
 
-        T = np.array([
-            T_base + tau_roll - tau_pitch + tau_yaw,   # rotor1 FR (CCW)
-            T_base + tau_roll + tau_pitch - tau_yaw,   # rotor2 BR (CW)
-            T_base - tau_roll + tau_pitch + tau_yaw,   # rotor3 BL (CCW)
-            T_base - tau_roll - tau_pitch - tau_yaw,   # rotor4 FL (CW)
-        ])
+        T = np.array(
+            [
+                T_base + tau_roll - tau_pitch + tau_yaw,  # rotor1 FR (CCW)
+                T_base + tau_roll + tau_pitch - tau_yaw,  # rotor2 BR (CW)
+                T_base - tau_roll + tau_pitch + tau_yaw,  # rotor3 BL (CCW)
+                T_base - tau_roll - tau_pitch - tau_yaw,  # rotor4 FL (CW)
+            ]
+        )
 
         # MuJoCo pure z-force actuators can't generate yaw torque directly.
         # Yaw control is handled externally via xfrc_applied in the step function.

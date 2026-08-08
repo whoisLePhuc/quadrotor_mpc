@@ -293,20 +293,11 @@ class InteractiveLoopTests(unittest.TestCase):
         np.testing.assert_array_equal(result["risk_semantics"], "joint")
         np.testing.assert_array_equal(result["risk_budget_status"], "BUDGET_OK")
         nominal_radii = np.asarray(
-            [
-                obstacle["radius"] + config.safety_margin + 0.03
-                for obstacle in config.obstacles
-            ]
+            [obstacle["radius"] + config.safety_margin + 0.03 for obstacle in config.obstacles]
         )
-        self.assertTrue(
-            np.all(result["tightened_safety_radius_horizon"] >= nominal_radii)
-        )
+        self.assertTrue(np.all(result["tightened_safety_radius_horizon"] >= nominal_radii))
         self.assertGreater(float(np.max(result["projected_uncertainty_horizon"])), 0.0)
-        self.assertTrue(
-            set(result["solver_status"]).issubset(
-                {"SOLVED_SAFE", "SOLVED_WITH_SLACK"}
-            )
-        )
+        self.assertTrue(set(result["solver_status"]).issubset({"SOLVED_SAFE", "SOLVED_WITH_SLACK"}))
 
     def test_reset_pause_step_and_stop_commands(self):
         from quadrotor_mpc.application.native.runtime import run_coupled_simulation

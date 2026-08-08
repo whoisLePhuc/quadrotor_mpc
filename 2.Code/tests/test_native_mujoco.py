@@ -28,14 +28,10 @@ class NativeMuJoCoConfigurationTests(unittest.TestCase):
                 "position": {"x": 1, "y": 0, "z": 1},
                 "euler": {},
             },
-            "controller": {
-                "bounds": {"thrust": 0.08, "torque_rp": 0.001, "torque_yaw": 0.0002}
-            },
+            "controller": {"bounds": {"thrust": 0.08, "torque_rp": 0.001, "torque_yaw": 0.0002}},
             "simulation": {},
             "viewer": {},
-            "obstacles": [
-                {"type": "teleporting", "x": 0, "y": 0, "z": 1, "radius": 0.2}
-            ],
+            "obstacles": [{"type": "teleporting", "x": 0, "y": 0, "z": 1, "radius": 0.2}],
         }
         with self.assertRaisesRegex(ValueError, "static.*dynamic"):
             NativeMuJoCoConfig.from_mapping(mapping)

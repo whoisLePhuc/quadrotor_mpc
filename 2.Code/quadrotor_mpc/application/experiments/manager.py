@@ -65,9 +65,9 @@ def _wilson_interval(successes: int, total: int, z: float = 1.96) -> list[float]
     proportion = successes / total
     denominator = 1.0 + z**2 / total
     center = (proportion + z**2 / (2.0 * total)) / denominator
-    half = z * np.sqrt(
-        proportion * (1.0 - proportion) / total + z**2 / (4.0 * total**2)
-    ) / denominator
+    half = (
+        z * np.sqrt(proportion * (1.0 - proportion) / total + z**2 / (4.0 * total**2)) / denominator
+    )
     return [float(max(0.0, center - half)), float(min(1.0, center + half))]
 
 
@@ -131,13 +131,15 @@ def aggregate_results(results: list[SimulationResult]) -> dict[str, Any]:
         output["paired_comparison"] = {
             "paired_seeds": common,
             "ccmpc_minus_deterministic": {
-                name: _numeric_summary([
-                    float(getattr(ccmpc[seed].metrics, name))
-                    - float(getattr(deterministic[seed].metrics, name))
-                    for seed in common
-                    if getattr(ccmpc[seed].metrics, name) is not None
-                    and getattr(deterministic[seed].metrics, name) is not None
-                ])
+                name: _numeric_summary(
+                    [
+                        float(getattr(ccmpc[seed].metrics, name))
+                        - float(getattr(deterministic[seed].metrics, name))
+                        for seed in common
+                        if getattr(ccmpc[seed].metrics, name) is not None
+                        and getattr(deterministic[seed].metrics, name) is not None
+                    ]
+                )
                 for name in metric_names
             },
         }
@@ -196,9 +198,7 @@ def save_experiment(
 
     aggregate = aggregate_results(results)
     metrics_path = directory / "metrics.json"
-    metrics_path.write_text(
-        json.dumps(aggregate, indent=2, allow_nan=False), encoding="utf-8"
-    )
+    metrics_path.write_text(json.dumps(aggregate, indent=2, allow_nan=False), encoding="utf-8")
     rows = _comparison_rows(results)
     comparison_path = directory / "comparison.csv"
     with comparison_path.open("w", newline="", encoding="utf-8") as handle:
@@ -232,9 +232,7 @@ def save_experiment(
         },
     }
     manifest_path = directory / "manifest.yaml"
-    manifest_path.write_text(
-        yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8"
-    )
+    manifest_path.write_text(yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
 
     static_report = save_report(results, scenario, directory / "report.png")
     interactive_report = save_interactive_report(

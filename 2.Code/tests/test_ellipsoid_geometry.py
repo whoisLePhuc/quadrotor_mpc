@@ -126,23 +126,13 @@ class EllipsoidalObstacleIntegrationTests(unittest.TestCase):
         obstacle = self._obstacle()
         metric_world = obstacle.get_omega(MAV_RADIUS)
 
-        point_inside = (
-            obstacle.p_hat
-            + obstacle.R_o @ np.array([1.9, 0.0, 0.0])
-        )
-        point_outside = (
-            obstacle.p_hat
-            + obstacle.R_o @ np.array([2.1, 0.0, 0.0])
-        )
+        point_inside = obstacle.p_hat + obstacle.R_o @ np.array([1.9, 0.0, 0.0])
+        point_outside = obstacle.p_hat + obstacle.R_o @ np.array([2.1, 0.0, 0.0])
         value_inside = float(
-            (point_inside - obstacle.p_hat)
-            @ metric_world
-            @ (point_inside - obstacle.p_hat)
+            (point_inside - obstacle.p_hat) @ metric_world @ (point_inside - obstacle.p_hat)
         )
         value_outside = float(
-            (point_outside - obstacle.p_hat)
-            @ metric_world
-            @ (point_outside - obstacle.p_hat)
+            (point_outside - obstacle.p_hat) @ metric_world @ (point_outside - obstacle.p_hat)
         )
 
         self.assertLessEqual(value_inside, 1.0)

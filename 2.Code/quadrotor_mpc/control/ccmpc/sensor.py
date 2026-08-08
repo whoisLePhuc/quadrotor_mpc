@@ -98,7 +98,7 @@ class DepthSensor:
             z_m = d_noisy * math.sin(tv_noisy)
 
             # Measurement covariance in body frame (depth-dependent)
-            R = np.diag([sigma_d**2, (d * self.sigma_angular)**2, (d * self.sigma_angular)**2])
+            R = np.diag([sigma_d**2, (d * self.sigma_angular) ** 2, (d * self.sigma_angular) ** 2])
 
             measurements.append((np.array([x_m, y_m, z_m]), R))
 

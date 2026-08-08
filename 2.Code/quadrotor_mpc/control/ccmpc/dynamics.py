@@ -21,9 +21,7 @@ import yaml
 # ---------------------------------------------------------------------------
 # Continuous dynamics (Eq 8 + Attitude)
 # ---------------------------------------------------------------------------
-def _body_tilt_factor(
-    phi: float, theta: float
-) -> tuple[float, float]:
+def _body_tilt_factor(phi: float, theta: float) -> tuple[float, float]:
     r"""Compute the tilt factors :math:`F_\theta, F_\varphi`.
 
     .. math::
@@ -97,9 +95,7 @@ def continuous_dynamics(
     dtheta = (k_theta * theta_c - theta) / tau_theta
     dpsi = psi_dot_c
 
-    return np.array(
-        [dx[0], dx[1], dx[2], dvx, dvy, dvz, dphi, dtheta, dpsi]
-    )
+    return np.array([dx[0], dx[1], dx[2], dvx, dvy, dvz, dphi, dtheta, dpsi])
 
 
 # ---------------------------------------------------------------------------
@@ -122,6 +118,7 @@ def discrete_step(
     Returns:
         Next state (9,).
     """
+
     def f(xk):
         return continuous_dynamics(xk, u, **params)
 
@@ -136,7 +133,8 @@ def discrete_step(
 # Numerical Jacobian (finite differences)
 # ---------------------------------------------------------------------------
 def _finite_diff_jacobian(
-    f, x0: npt.NDArray[np.float64],
+    f,
+    x0: npt.NDArray[np.float64],
     eps: float = 1e-6,
 ) -> npt.NDArray[np.float64]:
     """Compute Jacobian of f at x0 via central finite differences.
@@ -218,11 +216,15 @@ class QuadrotorDynamics:
             tau_vz=v["tau_vz"],
         )
 
-    def continuous(self, x: npt.NDArray[np.float64], u: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    def continuous(
+        self, x: npt.NDArray[np.float64], u: npt.NDArray[np.float64]
+    ) -> npt.NDArray[np.float64]:
         """Continuous dynamics f(x, u)."""
         return continuous_dynamics(x, u, **self._params)
 
-    def discrete(self, x: npt.NDArray[np.float64], u: npt.NDArray[np.float64], dt: float) -> npt.NDArray[np.float64]:
+    def discrete(
+        self, x: npt.NDArray[np.float64], u: npt.NDArray[np.float64], dt: float
+    ) -> npt.NDArray[np.float64]:
         """Discrete-time dynamics (RK4)."""
         return discrete_step(x, u, dt, **self._params)
 
@@ -233,8 +235,10 @@ class QuadrotorDynamics:
 
         Returns (9x9) matrix.
         """
+
         def f(xk):
             return self.continuous(xk, u)
+
         return _finite_diff_jacobian(f, x)
 
     def jacobian_control(
@@ -246,10 +250,10 @@ class QuadrotorDynamics:
         """
         # Simple analytical Jacobian for control since dynamics are linear in u
         J = np.zeros((9, 4))
-        J[6, 0] = self.k_phi / self.tau_phi    # d(dphi)/d(phi_c)
-        J[7, 1] = self.k_theta / self.tau_theta # d(dtheta)/d(theta_c)
-        J[5, 2] = self.k_vz / self.tau_vz       # d(dvz)/d(vz_c)
-        J[8, 3] = 1.0                            # d(dpsi)/d(psi_dot_c)
+        J[6, 0] = self.k_phi / self.tau_phi  # d(dphi)/d(phi_c)
+        J[7, 1] = self.k_theta / self.tau_theta  # d(dtheta)/d(theta_c)
+        J[5, 2] = self.k_vz / self.tau_vz  # d(dvz)/d(vz_c)
+        J[8, 3] = 1.0  # d(dpsi)/d(psi_dot_c)
         return J
 
     def linearize(

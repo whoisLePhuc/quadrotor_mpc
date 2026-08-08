@@ -18,12 +18,41 @@ The controller treats $g_k\geq0$ as safe under the local Gaussian approximation.
 When a soft slack is active, the run is feasible numerically but no longer has an absolute probability guarantee.
 """)
 
-st.table([
-    {"Concept": "9-state dynamics + RK4", "Implementation": "ccmpc/dynamics.py", "Test": "tests/test_dynamics.py", "View": "Telemetry"},
-    {"Concept": "Covariance propagation", "Implementation": "ccmpc/uncertainty.py", "Test": "tests/test_uncertainty.py", "View": "Safety & uncertainty"},
-    {"Concept": "Ellipsoid + chance constraint", "Implementation": "ccmpc/risk.py", "Test": "tests/test_risk.py", "View": "Chance residual"},
-    {"Concept": "Receding-horizon solve", "Implementation": "simulation/controllers.py", "Test": "tests/test_runner.py", "View": "Predicted horizon"},
-    {"Concept": "Experiment protocol", "Implementation": "experiments/manager.py", "Test": "tests/test_experiments.py", "View": "Experiment Explorer"},
-])
+st.table(
+    [
+        {
+            "Concept": "9-state dynamics + RK4",
+            "Implementation": "ccmpc/dynamics.py",
+            "Test": "tests/test_dynamics.py",
+            "View": "Telemetry",
+        },
+        {
+            "Concept": "Covariance propagation",
+            "Implementation": "ccmpc/uncertainty.py",
+            "Test": "tests/test_uncertainty.py",
+            "View": "Safety & uncertainty",
+        },
+        {
+            "Concept": "Ellipsoid + chance constraint",
+            "Implementation": "ccmpc/risk.py",
+            "Test": "tests/test_risk.py",
+            "View": "Chance residual",
+        },
+        {
+            "Concept": "Receding-horizon solve",
+            "Implementation": "simulation/controllers.py",
+            "Test": "tests/test_runner.py",
+            "View": "Predicted horizon",
+        },
+        {
+            "Concept": "Experiment protocol",
+            "Implementation": "experiments/manager.py",
+            "Test": "tests/test_experiments.py",
+            "View": "Experiment Explorer",
+        },
+    ]
+)
 
-st.warning("A nonzero chance slack must always be reported as a protocol deviation, not hidden as a successful hard safety guarantee.")
+st.warning(
+    "A nonzero chance slack must always be reported as a protocol deviation, not hidden as a successful hard safety guarantee."
+)

@@ -19,8 +19,12 @@ from quadrotor_mpc.application.simulation.config import load_scenario
 from quadrotor_mpc.infrastructure.resources import resolve_input_path, resolve_output_path
 
 PARAMETERS = (
-    "measurement_pos", "process_vel", "drag_scale",
-    "obstacle_speed_scale", "delta", "horizon_steps",
+    "measurement_pos",
+    "process_vel",
+    "drag_scale",
+    "obstacle_speed_scale",
+    "delta",
+    "horizon_steps",
 )
 
 
@@ -58,17 +62,21 @@ def _aggregate(rows: list[dict]) -> list[dict]:
         groups.setdefault((float(row["value"]), str(row["mode"])), []).append(row)
     aggregate = []
     for (value, mode), items in sorted(groups.items()):
-        clearances = [item["min_clearance_m"] for item in items if item["min_clearance_m"] is not None]
-        aggregate.append({
-            "value": value,
-            "mode": mode,
-            "trials": len(items),
-            "success_rate": float(np.mean([item["success"] for item in items])),
-            "collision_rate": float(np.mean([item["collision"] for item in items])),
-            "tracking_rmse_m": float(np.mean([item["tracking_rmse_m"] for item in items])),
-            "min_clearance_m": float(np.mean(clearances)) if clearances else None,
-            "p95_solver_ms": float(np.mean([item["p95_solver_ms"] for item in items])),
-        })
+        clearances = [
+            item["min_clearance_m"] for item in items if item["min_clearance_m"] is not None
+        ]
+        aggregate.append(
+            {
+                "value": value,
+                "mode": mode,
+                "trials": len(items),
+                "success_rate": float(np.mean([item["success"] for item in items])),
+                "collision_rate": float(np.mean([item["collision"] for item in items])),
+                "tracking_rmse_m": float(np.mean([item["tracking_rmse_m"] for item in items])),
+                "min_clearance_m": float(np.mean(clearances)) if clearances else None,
+                "p95_solver_ms": float(np.mean([item["p95_solver_ms"] for item in items])),
+            }
+        )
     return aggregate
 
 

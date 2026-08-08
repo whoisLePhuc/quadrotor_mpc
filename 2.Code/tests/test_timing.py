@@ -54,9 +54,7 @@ class TimingRecorderTests(unittest.TestCase):
             pass
         snapshot = recorder.snapshot()
         self.assertAlmostEqual(_require(snapshot.seed_trajectory_time_ms), 10 / 1e6)
-        self.assertAlmostEqual(
-            _require(snapshot.covariance_propagation_time_ms), 20 / 1e6
-        )
+        self.assertAlmostEqual(_require(snapshot.covariance_propagation_time_ms), 20 / 1e6)
 
     def test_exception_in_context_still_records_elapsed(self):
         recorder = TimingRecorder(clock_ns=_FakeClock([0, 25]))
@@ -243,9 +241,7 @@ class DeterministicControllerTimingTests(unittest.TestCase):
             load_native_mujoco_config,
         )
 
-        config = load_native_mujoco_config(
-            CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml"
-        )
+        config = load_native_mujoco_config(CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml")
         mapping = config.to_mapping()
         mapping["controller"]["chance_constraints"]["enabled"] = False
         mapping["controller"]["covariance_propagation"]["enabled"] = False
@@ -332,9 +328,7 @@ class TimingFailurePathTests(unittest.TestCase):
         return ControlSolution(
             command=np.array([0.0, 0.0, 0.0, 0.0], dtype=float),
             nominal_states=nominal,
-            predicted_covariances=np.repeat(
-                (np.eye(12) * 1e-3)[None, :, :], steps, axis=0
-            ),
+            predicted_covariances=np.repeat((np.eye(12) * 1e-3)[None, :, :], steps, axis=0),
             predicted_obstacle_covariances=np.repeat(
                 (np.eye(6) * 1e-3)[None, None, :, :], steps, axis=0
             ),
@@ -380,9 +374,7 @@ class TimingFailurePathTests(unittest.TestCase):
             def solve(self, belief, obstacles, goal, time_s):
                 raise RuntimeError("injected solver fault")
 
-        config = load_native_mujoco_config(
-            CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml"
-        )
+        config = load_native_mujoco_config(CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml")
         result = run_coupled_simulation(
             x0_vals=config.start,
             goal_pos=config.goal_position,
@@ -424,9 +416,7 @@ class TimingAggregationTests(unittest.TestCase):
             load_native_mujoco_config,
         )
 
-        base = load_native_mujoco_config(
-            CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml"
-        )
+        base = load_native_mujoco_config(CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml")
         mapping = base.to_mapping()
         mapping["simulation"]["duration_s"] = 0.10
         config = type(base).from_mapping(mapping)
@@ -439,15 +429,15 @@ class TimingAggregationTests(unittest.TestCase):
             "solution_accepted": np.ones(2, dtype=bool),
             "deadline_missed": np.zeros(2, dtype=bool),
             "fallback_active": np.zeros(2, dtype=bool),
-            "safety_assurance_status": np.array(
-                ["GUARANTEE_ELIGIBLE", "GUARANTEE_ELIGIBLE"]
-            ),
+            "safety_assurance_status": np.array(["GUARANTEE_ELIGIBLE", "GUARANTEE_ELIGIBLE"]),
             "horizon_assurance_eligible": np.ones(2, dtype=bool),
             "horizon_assurance_reason": np.array(["eligible", "eligible"]),
             "horizon_assurance_failed_checks": np.array([[], []], dtype=object),
             "risk_budget_status": np.array(["BUDGET_OK", "BUDGET_OK"]),
             "risk_budget_total": np.array([0.1, 0.1]),
             "risk_budget_allocated": np.array([0.1, 0.1]),
+            "risk_semantics": np.array(["joint", "joint"]),
+            "risk_allocation_method": np.array(["uniform", "uniform"]),
             "estimated_state": np.column_stack(
                 [
                     np.array([[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]]),
@@ -486,9 +476,7 @@ class TimingAggregationTests(unittest.TestCase):
             trial.timing_stats["total_controller_time_ms"]["max_ms"],
             60.0,
         )
-        self.assertIsNone(
-            trial.timing_stats["geometry_context_time_ms"]["mean_ms"]
-        )
+        self.assertIsNone(trial.timing_stats["geometry_context_time_ms"]["mean_ms"])
 
         protocol = NativeMonteCarloProtocol(
             name="timing-aggregation",

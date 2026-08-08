@@ -91,33 +91,60 @@ class SimulationResult:
         cost_names = sorted(self.cost_terms)
         header = [
             "time_s",
-            "x", "y", "z", "vx", "vy", "vz", "roll", "pitch", "yaw",
-            "x_est", "y_est", "z_est", "vx_est", "vy_est", "vz_est",
-            "roll_est", "pitch_est", "yaw_est",
-            "x_ref", "y_ref", "z_ref",
-            "phi_cmd", "theta_cmd", "vz_cmd", "yaw_rate_cmd",
-            "sigma_x", "sigma_y", "sigma_z",
-            "clearance_m", "chance_residual", "chance_slack",
-            "solver_ms", "solver_iterations",
+            "x",
+            "y",
+            "z",
+            "vx",
+            "vy",
+            "vz",
+            "roll",
+            "pitch",
+            "yaw",
+            "x_est",
+            "y_est",
+            "z_est",
+            "vx_est",
+            "vy_est",
+            "vz_est",
+            "roll_est",
+            "pitch_est",
+            "yaw_est",
+            "x_ref",
+            "y_ref",
+            "z_ref",
+            "phi_cmd",
+            "theta_cmd",
+            "vz_cmd",
+            "yaw_rate_cmd",
+            "sigma_x",
+            "sigma_y",
+            "sigma_z",
+            "clearance_m",
+            "chance_residual",
+            "chance_slack",
+            "solver_ms",
+            "solver_iterations",
         ] + [f"cost_{name}" for name in cost_names]
         with csv_path.open("w", newline="", encoding="utf-8") as handle:
             writer = csv.writer(handle)
             writer.writerow(header)
             for index in range(len(self.times)):
-                writer.writerow([
-                    self.times[index],
-                    *self.states[index],
-                    *self.estimated_states[index],
-                    *self.reference_positions[index],
-                    *self.controls[index],
-                    *np.sqrt(np.maximum(np.diag(self.covariances[index])[:3], 0.0)),
-                    self.clearances[index],
-                    self.chance_residuals[index],
-                    self.chance_slacks[index],
-                    self.solver_times_ms[index],
-                    int(self.solver_iterations[index]),
-                    *[self.cost_terms[name][index] for name in cost_names],
-                ])
+                writer.writerow(
+                    [
+                        self.times[index],
+                        *self.states[index],
+                        *self.estimated_states[index],
+                        *self.reference_positions[index],
+                        *self.controls[index],
+                        *np.sqrt(np.maximum(np.diag(self.covariances[index])[:3], 0.0)),
+                        self.clearances[index],
+                        self.chance_residuals[index],
+                        self.chance_slacks[index],
+                        self.solver_times_ms[index],
+                        int(self.solver_iterations[index]),
+                        *[self.cost_terms[name][index] for name in cost_names],
+                    ]
+                )
 
         np.savez_compressed(
             predictions_path,
@@ -169,66 +196,75 @@ class SimulationRunner:
         )
         self.controller.reset()
 
-        self.obstacles = ObstacleManager([
-            EllipsoidalObstacle(
-                position=item.position,
-                size=item.size,
-                yaw=item.yaw,
-                velocity=item.velocity,
-                pos_uncertainty=item.pos_uncertainty,
-                vel_uncertainty=item.vel_uncertainty,
-            )
-            for item in scenario.obstacles
-        ])
+        self.obstacles = ObstacleManager(
+            [
+                EllipsoidalObstacle(
+                    position=item.position,
+                    size=item.size,
+                    yaw=item.yaw,
+                    velocity=item.velocity,
+                    pos_uncertainty=item.pos_uncertainty,
+                    vel_uncertainty=item.vel_uncertainty,
+                )
+                for item in scenario.obstacles
+            ]
+        )
 
         uncertainty_cfg = config["controller"]["uncertainty"]
-        self.covariance = np.diag(np.concatenate([
-            [uncertainty_cfg["init_pos_noise"] ** 2] * 3,
-            [uncertainty_cfg["init_vel_noise"] ** 2] * 3,
-            [uncertainty_cfg["init_att_noise"] ** 2] * 3,
-        ]))
-        self.process_covariance = np.diag(np.concatenate([
-            [uncertainty_cfg["process_noise_pos"] ** 2] * 3,
-            [uncertainty_cfg["process_noise_vel"] ** 2] * 3,
-            [uncertainty_cfg["process_noise_att"] ** 2] * 3,
-        ]))
+        self.covariance = np.diag(
+            np.concatenate(
+                [
+                    [uncertainty_cfg["init_pos_noise"] ** 2] * 3,
+                    [uncertainty_cfg["init_vel_noise"] ** 2] * 3,
+                    [uncertainty_cfg["init_att_noise"] ** 2] * 3,
+                ]
+            )
+        )
+        self.process_covariance = np.diag(
+            np.concatenate(
+                [
+                    [uncertainty_cfg["process_noise_pos"] ** 2] * 3,
+                    [uncertainty_cfg["process_noise_vel"] ** 2] * 3,
+                    [uncertainty_cfg["process_noise_att"] ** 2] * 3,
+                ]
+            )
+        )
         noise = scenario.noise
-        self.measurement_covariance = np.diag(np.array(
-            [max(noise.measurement_pos, 1e-6) ** 2] * 3
-            + [max(noise.measurement_vel, 1e-6) ** 2] * 3
-            + [max(noise.measurement_att, 1e-6) ** 2] * 3
-        ))
+        self.measurement_covariance = np.diag(
+            np.array(
+                [max(noise.measurement_pos, 1e-6) ** 2] * 3
+                + [max(noise.measurement_vel, 1e-6) ** 2] * 3
+                + [max(noise.measurement_att, 1e-6) ** 2] * 3
+            )
+        )
         self.estimator = ExtendedKalmanEstimator(
             self.controller.dynamics,
             self.process_covariance,
             self.measurement_covariance,
         )
         limits = config["controller"]["limits"]
-        self.control_limits = np.array([
-            limits["max_roll"],
-            limits["max_pitch"],
-            limits["max_vert_vel"],
-            limits["max_yaw_rate"],
-        ], dtype=float)
+        self.control_limits = np.array(
+            [
+                limits["max_roll"],
+                limits["max_pitch"],
+                limits["max_vert_vel"],
+                limits["max_yaw_rate"],
+            ],
+            dtype=float,
+        )
 
     def _measure(self, state: Array) -> Array:
         noise = self.scenario.noise
         sigma = np.array(
-            [noise.measurement_pos] * 3
-            + [noise.measurement_vel] * 3
-            + [noise.measurement_att] * 3
+            [noise.measurement_pos] * 3 + [noise.measurement_vel] * 3 + [noise.measurement_att] * 3
         )
         return state + self.rng.normal(0.0, sigma)
 
     def _apply_process_noise(self, state: Array, dt: float) -> Array:
         noise = self.scenario.noise
         disturbed = state.copy()
-        disturbed[3:6] += self.rng.normal(
-            0.0, noise.process_vel * math.sqrt(dt), 3
-        )
-        disturbed[6:9] += self.rng.normal(
-            0.0, noise.process_att * math.sqrt(dt), 3
-        )
+        disturbed[3:6] += self.rng.normal(0.0, noise.process_vel * math.sqrt(dt), 3)
+        disturbed[6:9] += self.rng.normal(0.0, noise.process_att * math.sqrt(dt), 3)
         disturbed[8] = (disturbed[8] + math.pi) % (2.0 * math.pi) - math.pi
         return disturbed
 
@@ -251,9 +287,7 @@ class SimulationRunner:
             return self.scenario.goal.copy()
         reference_duration = max(0.65 * self.scenario.max_time, self.controller.dt)
         fraction = min(1.0, time_s / reference_duration)
-        return self.scenario.start[:3] + fraction * (
-            self.scenario.goal - self.scenario.start[:3]
-        )
+        return self.scenario.start[:3] + fraction * (self.scenario.goal - self.scenario.start[:3])
 
     def run(self) -> SimulationResult:
         scenario = self.scenario
@@ -313,17 +347,21 @@ class SimulationRunner:
                 solved_this_step = True
 
                 if not last_control_result.status.startswith("optimal"):
-                    events.append({
-                        "time_s": current_time,
-                        "type": "solver_warning",
-                        "status": last_control_result.status,
-                    })
+                    events.append(
+                        {
+                            "time_s": current_time,
+                            "type": "solver_warning",
+                            "status": last_control_result.status,
+                        }
+                    )
                 if last_control_result.solve_time_ms > self.controller.dt * 1000.0:
-                    events.append({
-                        "time_s": current_time,
-                        "type": "deadline_miss",
-                        "solve_time_ms": last_control_result.solve_time_ms,
-                    })
+                    events.append(
+                        {
+                            "time_s": current_time,
+                            "type": "deadline_miss",
+                            "solve_time_ms": last_control_result.solve_time_ms,
+                        }
+                    )
 
             state = self.plant.discrete(state, command, dt)
             state = self._apply_process_noise(state, dt)
@@ -339,17 +377,17 @@ class SimulationRunner:
             collided |= is_collision
             elapsed = (step + 1) * dt
             current_residual = (
-                last_control_result.min_chance_residual
-                if last_control_result is not None
-                else None
+                last_control_result.min_chance_residual if last_control_result is not None else None
             )
             violates_chance = current_residual is not None and current_residual < 0.0
             if violates_chance and not chance_violation_active:
-                events.append({
-                    "time_s": elapsed,
-                    "type": "chance_constraint_violation",
-                    "residual": current_residual,
-                })
+                events.append(
+                    {
+                        "time_s": elapsed,
+                        "type": "chance_constraint_violation",
+                        "residual": current_residual,
+                    }
+                )
             chance_violation_active = violates_chance
 
             times.append(elapsed)
@@ -373,9 +411,7 @@ class SimulationRunner:
                 if solved_this_step and last_control_result is not None
                 else 0
             )
-            cost_records.append(
-                dict(last_control_result.cost_terms) if last_control_result else {}
-            )
+            cost_records.append(dict(last_control_result.cost_terms) if last_control_result else {})
             obstacle_history.append([obs.p_hat.copy() for obs in self.obstacles.obstacles])
 
             goal_error = float(np.linalg.norm(state[:3] - scenario.goal))

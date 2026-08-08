@@ -34,9 +34,7 @@ def available(value: float) -> SolverResidual:
 
 
 def unavailable() -> SolverResidual:
-    return SolverResidual(
-        status=ResidualStatus.UNAVAILABLE, value=None, source="test"
-    )
+    return SolverResidual(status=ResidualStatus.UNAVAILABLE, value=None, source="test")
 
 
 def invalid() -> SolverResidual:

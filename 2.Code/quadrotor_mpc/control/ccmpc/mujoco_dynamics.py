@@ -18,9 +18,7 @@ import numpy as np
 import numpy.typing as npt
 
 
-def euler_to_quat(
-    roll: float, pitch: float, yaw: float
-) -> npt.NDArray[np.float64]:
+def euler_to_quat(roll: float, pitch: float, yaw: float) -> npt.NDArray[np.float64]:
     """Convert ZYX Euler angles (rad) to quaternion [w, x, y, z]."""
     cr = math.cos(roll * 0.5)
     sr = math.sin(roll * 0.5)
@@ -28,12 +26,14 @@ def euler_to_quat(
     sp = math.sin(pitch * 0.5)
     cy = math.cos(yaw * 0.5)
     sy = math.sin(yaw * 0.5)
-    return np.array([
-        cr * cp * cy + sr * sp * sy,
-        sr * cp * cy - cr * sp * sy,
-        cr * sp * cy + sr * cp * sy,
-        cr * cp * sy - sr * sp * cy,
-    ])
+    return np.array(
+        [
+            cr * cp * cy + sr * sp * sy,
+            sr * cp * cy - cr * sp * sy,
+            cr * sp * cy + sr * cp * sy,
+            cr * cp * sy - sr * sp * cy,
+        ]
+    )
 
 
 def quat_to_euler(q: npt.NDArray[np.float64]) -> tuple[float, float, float]:
@@ -111,11 +111,10 @@ class MuJoCoDynamics:
         # mjd_transitionFD + step() modify MjData, which races with the
         # simulation thread's mj_step().  A private copy eliminates the race.
         import mujoco
+
         self._d_lin = mujoco.MjData(model)
 
-    def set_state_and_ctrl(
-        self, x: npt.NDArray[np.float64], u: npt.NDArray[np.float64]
-    ) -> None:
+    def set_state_and_ctrl(self, x: npt.NDArray[np.float64], u: npt.NDArray[np.float64]) -> None:
         """Set MuJoCo state + controls from 9D state and 4D MPC command.
 
         Converts MPC attitude command [phi_c, theta_c, vz_c, psi_dot_c]
@@ -133,6 +132,7 @@ class MuJoCoDynamics:
         else:
             self.d.ctrl[:] = u
         import mujoco
+
         mujoco.mj_forward(self.m, self.d)
 
     def get_state_9d(self) -> npt.NDArray[np.float64]:
@@ -141,11 +141,19 @@ class MuJoCoDynamics:
         quat = self.d.qpos[3:7].copy()
         roll, pitch, yaw = quat_to_euler(quat)
         vel = self.d.qvel[:3].copy()
-        return np.array([
-            pos[0], pos[1], pos[2],
-            vel[0], vel[1], vel[2],
-            roll, pitch, yaw,
-        ])
+        return np.array(
+            [
+                pos[0],
+                pos[1],
+                pos[2],
+                vel[0],
+                vel[1],
+                vel[2],
+                roll,
+                pitch,
+                yaw,
+            ]
+        )
 
     def step(self, u: npt.NDArray[np.float64], n_steps: int = 1) -> npt.NDArray[np.float64]:
         """Advance MuJoCo physics by n_steps using MPC command and return 9D state.
@@ -158,6 +166,7 @@ class MuJoCoDynamics:
             Next 9D state.
         """
         import mujoco
+
         if self.mixer is not None:
             x_prev = None
             x_current = self.get_state_9d()
@@ -275,12 +284,14 @@ class MuJoCoDynamics:
         kp = self.mixer.kp_angle if self.mixer else 1.0
         kd_yaw = self.mixer.kd_yaw if self.mixer else 0.0
         kp_vz = self.mixer.kp_vz if self.mixer else 0.0
-        mix_J = np.array([
-            [ kp, -kp, kp_vz/4.0,  kd_yaw],
-            [ kp,  kp, kp_vz/4.0, -kd_yaw],
-            [-kp,  kp, kp_vz/4.0,  kd_yaw],
-            [-kp, -kp, kp_vz/4.0, -kd_yaw],
-        ])
+        mix_J = np.array(
+            [
+                [kp, -kp, kp_vz / 4.0, kd_yaw],
+                [kp, kp, kp_vz / 4.0, -kd_yaw],
+                [-kp, kp, kp_vz / 4.0, kd_yaw],
+                [-kp, -kp, kp_vz / 4.0, -kd_yaw],
+            ]
+        )
 
         # B in command space = B_thrust @ mix_J
         B_cmd = B_n @ mix_J  # (12x4) @ (4x4) = (12x4)

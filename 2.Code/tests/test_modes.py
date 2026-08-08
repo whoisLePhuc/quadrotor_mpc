@@ -92,16 +92,12 @@ class WarningTests(unittest.TestCase):
 
 class EndToEndEquivalenceTests(unittest.TestCase):
     def test_alias_and_canonical_build_the_same_controller_config(self):
-        base = load_native_mujoco_config(
-            CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml"
-        )
+        base = load_native_mujoco_config(CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml")
         from quadrotor_mpc.application.validation.monte_carlo import (
             effective_native_config,
         )
 
-        alias = effective_native_config(
-            base, mode="joint", covariance_scale=1.0, seed=3
-        )
+        alias = effective_native_config(base, mode="joint", covariance_scale=1.0, seed=3)
         canonical = effective_native_config(
             base, mode="joint_uniform", covariance_scale=1.0, seed=3
         )
@@ -116,16 +112,12 @@ class EndToEndEquivalenceTests(unittest.TestCase):
         )
 
     def test_individual_keeps_individual_semantics(self):
-        base = load_native_mujoco_config(
-            CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml"
-        )
+        base = load_native_mujoco_config(CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml")
         from quadrotor_mpc.application.validation.monte_carlo import (
             effective_native_config,
         )
 
-        individual = effective_native_config(
-            base, mode="individual", covariance_scale=1.0, seed=3
-        )
+        individual = effective_native_config(base, mode="individual", covariance_scale=1.0, seed=3)
         self.assertEqual(
             individual.chance_constraints.risk_budget.semantics,
             "individual",
@@ -138,9 +130,7 @@ class ArtifactProvenanceTests(unittest.TestCase):
             load_native_monte_carlo_protocol,
         )
 
-        loaded = load_native_monte_carlo_protocol(
-            CODE_ROOT / "config" / "native_monte_carlo.yaml"
-        )
+        loaded = load_native_monte_carlo_protocol(CODE_ROOT / "config" / "native_monte_carlo.yaml")
         self.assertIn("joint_uniform", loaded.modes)
         self.assertNotIn("joint", loaded.modes)
         self.assertEqual(loaded.requested_modes, loaded.modes)
@@ -250,6 +240,8 @@ def _trial(mode: str):
         NativeTrialResult,
     )
 
+    risk_semantics = "disabled" if mode == "deterministic" else "joint"
+    risk_allocation_method = "none" if mode == "deterministic" else "uniform"
     return NativeTrialResult(
         noise_label="nominal",
         covariance_scale=1.0,
@@ -310,6 +302,11 @@ def _trial(mode: str):
         enforced_profile_count=10,
         missing_enforced_profile_count=0,
         post_solve_diagnostic_profile_count=0,
+        requested_mode=mode,
+        risk_semantics=risk_semantics,
+        risk_allocation_method=risk_allocation_method,
+        allocator_config_hash=None if mode == "deterministic" else "a" * 64,
+        risk_provenance_status="AVAILABLE",
     )
 
 

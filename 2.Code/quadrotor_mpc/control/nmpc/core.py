@@ -308,11 +308,7 @@ def _fill_tvp(
         setv(f"obs_risk_{i}", 0.0 if obstacle_risks is None else obstacle_risks[i])
         setv(
             f"obs_safe_dist_{i}",
-            (
-                base_safe_distance
-                if obstacle_safe_distances is None
-                else obstacle_safe_distances[i]
-            ),
+            (base_safe_distance if obstacle_safe_distances is None else obstacle_safe_distances[i]),
         )
 
 
@@ -347,10 +343,7 @@ def make_mpc_tvp_fun(
         if obstacle_safe_distances is None:
             obstacle_safe_distances = np.repeat(
                 np.asarray(
-                    [
-                        obstacle["radius"] + float(margin) + DRONE_RADIUS
-                        for obstacle in obstacles
-                    ],
+                    [obstacle["radius"] + float(margin) + DRONE_RADIUS for obstacle in obstacles],
                     dtype=float,
                 )[:, None],
                 n_horizon + 1,
@@ -369,17 +362,11 @@ def make_mpc_tvp_fun(
                 dyn_idx,
                 t_now + k * dt,
                 obstacle_positions=obstacle_positions,
-                obstacle_sigmas=(
-                    None if obstacle_sigmas is None else obstacle_sigmas[:, k]
-                ),
+                obstacle_sigmas=(None if obstacle_sigmas is None else obstacle_sigmas[:, k]),
                 obstacle_betas=None if obstacle_betas is None else obstacle_betas[:, k],
-                obstacle_risks=(
-                    None if obstacle_risks is None else obstacle_risks[:, k]
-                ),
+                obstacle_risks=(None if obstacle_risks is None else obstacle_risks[:, k]),
                 obstacle_safe_distances=(
-                    None
-                    if obstacle_safe_distances is None
-                    else obstacle_safe_distances[:, k]
+                    None if obstacle_safe_distances is None else obstacle_safe_distances[:, k]
                 ),
             )
         return template

@@ -57,8 +57,12 @@ def save_report(
             result.states[:, 0], result.states[:, 1], color=color, lw=2.2, label=label
         )
         trajectory_axis.plot(
-            result.reference_positions[:, 0], result.reference_positions[:, 1],
-            color=color, lw=1.0, ls=":", alpha=0.6,
+            result.reference_positions[:, 0],
+            result.reference_positions[:, 1],
+            color=color,
+            lw=1.0,
+            ls=":",
+            alpha=0.6,
         )
         position_error = np.linalg.norm(result.states[:, :3] - scenario.goal, axis=1)
         error_axis.plot(result.times, position_error, color=color, label=label)
@@ -68,8 +72,12 @@ def save_report(
             safety_axis.plot(result.times[mask], clearance, color=color, label=label)
         else:
             safety_axis.text(
-                0.5, 0.5, "N/A — scenario has no obstacles",
-                ha="center", va="center", transform=safety_axis.transAxes,
+                0.5,
+                0.5,
+                "N/A — scenario has no obstacles",
+                ha="center",
+                va="center",
+                transform=safety_axis.transAxes,
                 color="#5d6d7e",
             )
 
@@ -86,8 +94,13 @@ def save_report(
         uncertainty_axis.plot(result.times, np.linalg.norm(sigma, axis=1), color=color, label=label)
         mask = result.solver_times_ms > 0.0
         solver_axis.plot(
-            result.times[mask], result.solver_times_ms[mask],
-            color=color, marker=".", ms=3, lw=1.0, label=label,
+            result.times[mask],
+            result.solver_times_ms[mask],
+            color=color,
+            marker=".",
+            ms=3,
+            lw=1.0,
+            label=label,
         )
         solver_axis.axhline(
             result.controller_dt * 1000.0,
@@ -111,18 +124,33 @@ def save_report(
         trajectory_axis.add_patch(patch)
         if np.linalg.norm(obstacle.velocity[:2]) > 0.0:
             trajectory_axis.arrow(
-                obstacle.position[0], obstacle.position[1],
-                obstacle.velocity[0], obstacle.velocity[1],
-                width=0.015, color="#7f0000", length_includes_head=True,
+                obstacle.position[0],
+                obstacle.position[1],
+                obstacle.velocity[0],
+                obstacle.velocity[1],
+                width=0.015,
+                color="#7f0000",
+                length_includes_head=True,
             )
 
     trajectory_axis.scatter(
-        scenario.start[0], scenario.start[1], marker="o", s=65,
-        color="#636e72", edgecolor="white", zorder=5, label="start",
+        scenario.start[0],
+        scenario.start[1],
+        marker="o",
+        s=65,
+        color="#636e72",
+        edgecolor="white",
+        zorder=5,
+        label="start",
     )
     trajectory_axis.scatter(
-        *scenario.goal[:2], marker="*", s=260,
-        color="#f1c40f", edgecolor="black", zorder=5, label="goal",
+        *scenario.goal[:2],
+        marker="*",
+        s=260,
+        color="#f1c40f",
+        edgecolor="black",
+        zorder=5,
+        label="goal",
     )
     same_point = np.linalg.norm(scenario.start[:2] - scenario.goal[:2]) < 1e-9
     trajectory_axis.set_title(f"Trajectory — {scenario.name}")
@@ -141,10 +169,13 @@ def save_report(
     safety_axis.axhline(0.0, color="#d73027", ls="--", lw=1)
     safety_axis.set(
         title="Ellipsoid clearance" if has_obstacles else "Safety clearance",
-        xlabel="time [s]", ylabel="clearance [m]",
+        xlabel="time [s]",
+        ylabel="clearance [m]",
     )
     control_axis.set(title="Control commands", xlabel="time [s]", ylabel="command")
-    uncertainty_axis.set(title="Position uncertainty", xlabel="time [s]", ylabel=r"$||\sigma_p||$ [m]")
+    uncertainty_axis.set(
+        title="Position uncertainty", xlabel="time [s]", ylabel=r"$||\sigma_p||$ [m]"
+    )
     solver_axis.set(title="Solver timing", xlabel="time [s]", ylabel="solve [ms]")
     for axis in (error_axis, safety_axis, control_axis, uncertainty_axis, solver_axis):
         axis.grid(True, alpha=0.25)
@@ -155,7 +186,8 @@ def save_report(
     kpis = []
     for result in results:
         clearance = (
-            "N/A" if result.metrics.min_clearance_m is None
+            "N/A"
+            if result.metrics.min_clearance_m is None
             else f"{result.metrics.min_clearance_m:.3f} m"
         )
         kpis.append(
@@ -164,8 +196,12 @@ def save_report(
             f"p95={result.metrics.p95_solver_ms:.1f} ms"
         )
     kpi_axis.text(
-        0.5, 0.5, "\n".join(kpis),
-        ha="center", va="center", fontsize=10.5,
+        0.5,
+        0.5,
+        "\n".join(kpis),
+        ha="center",
+        va="center",
+        fontsize=10.5,
         bbox={"boxstyle": "round,pad=0.5", "facecolor": "#f4f6f7", "edgecolor": "#d5d8dc"},
     )
     figure.savefig(output_path, dpi=180, bbox_inches="tight")

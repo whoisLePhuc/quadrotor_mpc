@@ -31,12 +31,18 @@ class RiskGeometryTests(unittest.TestCase):
         zero = np.zeros((3, 3))
         noisy = np.diag([0.12, 0.08, 0.05]) ** 2
         nominal = chance_constraint_residual(position, np.zeros(3), self.omega, zero, zero, 0.5)
-        tightened = chance_constraint_residual(position, np.zeros(3), self.omega, noisy, noisy, 0.03)
+        tightened = chance_constraint_residual(
+            position, np.zeros(3), self.omega, noisy, noisy, 0.03
+        )
         self.assertLess(tightened, nominal)
 
     def test_clearance_sign(self) -> None:
-        self.assertGreater(collision_clearance(np.array([3.0, 0.0, 0.0]), np.zeros(3), self.omega), 0.0)
-        self.assertLess(collision_clearance(np.array([0.05, 0.0, 0.0]), np.zeros(3), self.omega), 0.0)
+        self.assertGreater(
+            collision_clearance(np.array([3.0, 0.0, 0.0]), np.zeros(3), self.omega), 0.0
+        )
+        self.assertLess(
+            collision_clearance(np.array([0.05, 0.0, 0.0]), np.zeros(3), self.omega), 0.0
+        )
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-﻿"""Native closed-loop application runtime.
+"""Native closed-loop application runtime.
 
 The do-mpc/CasADi controller computes one receding-horizon command per MPC tick.
 The MuJoCo plant integrates that command with an independent 13-state rigid-body
@@ -221,9 +221,7 @@ def run_coupled_simulation(
             "injected controller horizon_steps must match run_coupled_simulation n_horizon"
         )
     effective_fallback_options = (
-        SafetyFallbackOptions()
-        if safety_fallback_options is None
-        else safety_fallback_options
+        SafetyFallbackOptions() if safety_fallback_options is None else safety_fallback_options
     )
     if effective_fallback_options.enabled and not isinstance(
         active_controller,
@@ -549,16 +547,11 @@ def run_coupled_simulation(
                     getattr(
                         solution,
                         "usable_without_deadline_gate",
-                        solution.primary_solver_success
-                        and solution.solution_accepted,
+                        solution.primary_solver_success and solution.solution_accepted,
                     )
                 ),
                 deadline_missed=deadline_missed,
-                rejection_reasons=(
-                    (solution.fallback_reason,)
-                    if solution.fallback_reason
-                    else ()
-                ),
+                rejection_reasons=((solution.fallback_reason,) if solution.fallback_reason else ()),
             )
             applied_command_source = decision.applied_command_source
             primary_disposition = decision.primary_disposition
@@ -574,29 +567,19 @@ def run_coupled_simulation(
             risk_semantics_history.append(solution.risk_semantics)
             risk_allocation_method_history.append(solution.risk_allocation_method)
             risk_budget_total_history.append(
-                np.nan
-                if solution.risk_budget_total is None
-                else solution.risk_budget_total
+                np.nan if solution.risk_budget_total is None else solution.risk_budget_total
             )
             risk_budget_allocated_history.append(solution.risk_budget_allocated)
             risk_budget_remaining_history.append(
-                np.nan
-                if solution.risk_budget_remaining is None
-                else solution.risk_budget_remaining
+                np.nan if solution.risk_budget_remaining is None else solution.risk_budget_remaining
             )
             risk_constraint_count_history.append(solution.risk_constraint_count)
             risk_budget_status_history.append(solution.risk_budget_status)
             primary_solver_status_history.append(solution.primary_solver_status)
             primary_solver_success_history.append(solution.primary_solver_success)
-            primary_solver_iteration_history.append(
-                solution.primary_solver_iterations
-            )
-            primary_solver_primal_residual_history.append(
-                solution.primary_solver_primal_residual
-            )
-            primary_solver_dual_residual_history.append(
-                solution.primary_solver_dual_residual
-            )
+            primary_solver_iteration_history.append(solution.primary_solver_iterations)
+            primary_solver_primal_residual_history.append(solution.primary_solver_primal_residual)
+            primary_solver_dual_residual_history.append(solution.primary_solver_dual_residual)
             primary_solver_primal_residual_status_history.append(
                 solution.primary_solver_primal_residual_status
             )
@@ -606,17 +589,13 @@ def run_coupled_simulation(
             primary_solver_residual_gate_status_history.append(
                 solution.primary_solver_residual_gate_status
             )
-            primary_solver_residual_source_history.append(
-                solution.primary_solver_residual_source
-            )
+            primary_solver_residual_source_history.append(solution.primary_solver_residual_source)
             command_source_history.append(solution.command_source)
             solution_accepted_history.append(solution.solution_accepted)
             fallback_active_history.append(solution.fallback_active)
             fallback_level_history.append(solution.fallback_level)
             fallback_reason_history.append(solution.fallback_reason)
-            consecutive_rejection_history.append(
-                solution.consecutive_rejections
-            )
+            consecutive_rejection_history.append(solution.consecutive_rejections)
             deadline_missed_history.append(solution.deadline_missed)
             applied_command_source_history.append(applied_command_source)
             primary_disposition_history.append(primary_disposition)
@@ -625,29 +604,17 @@ def run_coupled_simulation(
             )
             deadline_overrun_history.append(deadline_overrun_ms)
             total_controller_time_history.append(total_controller_time_ms)
-            safety_assurance_status_history.append(
-                solution.safety_assurance_status
-            )
-            horizon_assurance_status_history.append(
-                solution.horizon_assurance_status
-            )
-            horizon_assurance_eligible_history.append(
-                solution.horizon_assurance_eligible
-            )
-            horizon_assurance_reason_history.append(
-                solution.horizon_assurance_reason
-            )
-            horizon_assurance_failed_checks_history.append(
-                solution.horizon_assurance_failed_checks
-            )
+            safety_assurance_status_history.append(solution.safety_assurance_status)
+            horizon_assurance_status_history.append(solution.horizon_assurance_status)
+            horizon_assurance_eligible_history.append(solution.horizon_assurance_eligible)
+            horizon_assurance_reason_history.append(solution.horizon_assurance_reason)
+            horizon_assurance_failed_checks_history.append(solution.horizon_assurance_failed_checks)
             residual_status_history.append(solution.residual_status)
             measured_solver_time_ms = (
                 time.perf_counter_ns() - controller_tick_start_ns
             ) / 1_000_000.0
             solver_time_ms = (
-                solution.solve_time_ms
-                if solution.solve_time_ms > 0.0
-                else measured_solver_time_ms
+                solution.solve_time_ms if solution.solve_time_ms > 0.0 else measured_solver_time_ms
             )
             solver_time_history.append(solver_time_ms)
             controller_timing = merge_controller_timing(
@@ -747,9 +714,7 @@ def run_coupled_simulation(
                 time_s=step_time,
             )
             clearances.append(min_obstacle_clear)
-            collided = (
-                collided or obstacle_collision_detected or ground_collision_detected
-            )
+            collided = collided or obstacle_collision_detected or ground_collision_detected
             goal_distance = float(np.linalg.norm(position - goal_array))
 
             if renderer is not None and k % render_every == 0:
@@ -802,27 +767,17 @@ def run_coupled_simulation(
                         risk_budget_status=solution.risk_budget_status,
                         primary_solver_status=solution.primary_solver_status,
                         primary_solver_success=solution.primary_solver_success,
-                        primary_solver_iterations=(
-                            solution.primary_solver_iterations
-                        ),
-                        primary_solver_primal_residual=(
-                            solution.primary_solver_primal_residual
-                        ),
-                        primary_solver_dual_residual=(
-                            solution.primary_solver_dual_residual
-                        ),
+                        primary_solver_iterations=(solution.primary_solver_iterations),
+                        primary_solver_primal_residual=(solution.primary_solver_primal_residual),
+                        primary_solver_dual_residual=(solution.primary_solver_dual_residual),
                         command_source=solution.command_source,
                         solution_accepted=solution.solution_accepted,
                         fallback_active=solution.fallback_active,
                         fallback_level=solution.fallback_level,
                         fallback_reason=solution.fallback_reason,
-                        consecutive_rejections=(
-                            solution.consecutive_rejections
-                        ),
+                        consecutive_rejections=(solution.consecutive_rejections),
                         deadline_missed=solution.deadline_missed,
-                        safety_assurance_status=(
-                            solution.safety_assurance_status
-                        ),
+                        safety_assurance_status=(solution.safety_assurance_status),
                         residual_status=solution.residual_status,
                         primary_solver_primal_residual_status=(
                             solution.primary_solver_primal_residual_status
@@ -833,48 +788,28 @@ def run_coupled_simulation(
                         primary_solver_residual_gate_status=(
                             solution.primary_solver_residual_gate_status
                         ),
-                        primary_solver_residual_source=(
-                            solution.primary_solver_residual_source
-                        ),
+                        primary_solver_residual_source=(solution.primary_solver_residual_source),
                         primary_solver_residual_required_for_acceptance=(
                             solution.primary_solver_residual_required_for_acceptance
                         ),
                         primary_solver_residual_required_for_assurance=(
                             solution.primary_solver_residual_required_for_assurance
                         ),
-                        horizon_assurance_status=(
-                            solution.horizon_assurance_status
-                        ),
-                        horizon_assurance_eligible=(
-                            solution.horizon_assurance_eligible
-                        ),
-                        horizon_assurance_reason=(
-                            solution.horizon_assurance_reason
-                        ),
-                        horizon_assurance_failed_checks=(
-                            solution.horizon_assurance_failed_checks
-                        ),
-                        assurance_schema_version=(
-                            solution.assurance_schema_version
-                        ),
-                        chance_profile_schema_version=(
-                            solution.chance_profile_schema_version
-                        ),
-                        enforced_chance_profile=(
-                            solution.enforced_chance_profile
-                        ),
-                        post_solve_diagnostic_profile=(
-                            solution.post_solve_diagnostic_profile
-                        ),
+                        horizon_assurance_status=(solution.horizon_assurance_status),
+                        horizon_assurance_eligible=(solution.horizon_assurance_eligible),
+                        horizon_assurance_reason=(solution.horizon_assurance_reason),
+                        horizon_assurance_failed_checks=(solution.horizon_assurance_failed_checks),
+                        assurance_schema_version=(solution.assurance_schema_version),
+                        chance_profile_schema_version=(solution.chance_profile_schema_version),
+                        enforced_chance_profile=(solution.enforced_chance_profile),
+                        post_solve_diagnostic_profile=(solution.post_solve_diagnostic_profile),
                         chance_profile_application_status=(
                             solution.chance_profile_application_status
                         ),
                         chance_profile_enforced_profile_id=(
                             solution.chance_profile_enforced_profile_id
                         ),
-                        chance_profile_solve_attempt_id=(
-                            solution.chance_profile_solve_attempt_id
-                        ),
+                        chance_profile_solve_attempt_id=(solution.chance_profile_solve_attempt_id),
                         applied_command_source=applied_command_source,
                         primary_disposition=primary_disposition,
                         rejection_reasons=decision.rejection_reasons,
@@ -932,18 +867,10 @@ def run_coupled_simulation(
         "collision_type": collision_summary.collision_type.value,
         "first_collision_type": collision_summary.first_collision_type.value,
         "first_collision_time_s": collision_summary.first_collision_time_s,
-        "first_obstacle_collision_time_s": (
-            collision_summary.first_obstacle_collision_time_s
-        ),
-        "first_ground_collision_time_s": (
-            collision_summary.first_ground_collision_time_s
-        ),
-        "minimum_obstacle_clearance_m": (
-            collision_summary.minimum_obstacle_clearance_m
-        ),
-        "minimum_ground_clearance_m": (
-            collision_summary.minimum_ground_clearance_m
-        ),
+        "first_obstacle_collision_time_s": (collision_summary.first_obstacle_collision_time_s),
+        "first_ground_collision_time_s": (collision_summary.first_ground_collision_time_s),
+        "minimum_obstacle_clearance_m": (collision_summary.minimum_obstacle_clearance_m),
+        "minimum_ground_clearance_m": (collision_summary.minimum_ground_clearance_m),
         "frames": frames,
         "render_error": render_err,
         "termination_reason": termination_reason,
@@ -1039,24 +966,13 @@ def run_coupled_simulation(
             dtype=int,
         ),
         "deadline_missed": np.asarray(deadline_missed_history, dtype=bool),
-        "applied_command_source": np.asarray(
-            applied_command_source_history, dtype=str
-        ),
-        "primary_disposition": np.asarray(
-            primary_disposition_history, dtype=str
-        ),
-        "rejection_reasons": np.asarray(
-            rejection_reasons_history, dtype=object
-        ),
-        "deadline_overrun_ms": np.asarray(
-            deadline_overrun_history, dtype=float
-        ),
-        "total_controller_time_ms": np.asarray(
-            total_controller_time_history, dtype=float
-        ),
+        "applied_command_source": np.asarray(applied_command_source_history, dtype=str),
+        "primary_disposition": np.asarray(primary_disposition_history, dtype=str),
+        "rejection_reasons": np.asarray(rejection_reasons_history, dtype=object),
+        "deadline_overrun_ms": np.asarray(deadline_overrun_history, dtype=float),
+        "total_controller_time_ms": np.asarray(total_controller_time_history, dtype=float),
         "controller_timing": [
-            item.to_mapping() if item is not None else None
-            for item in controller_timing_history
+            item.to_mapping() if item is not None else None for item in controller_timing_history
         ],
         "safety_assurance_status": np.asarray(
             safety_assurance_status_history,
@@ -1110,4 +1026,3 @@ if __name__ == "__main__":
     print("min clearance:", result["clearance"].min())
     print("collided (real contact):", result["collided"])
     print("any NaN:", np.isnan(result["pos"]).any())
-

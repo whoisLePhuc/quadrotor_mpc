@@ -34,20 +34,24 @@ class UncertaintyPropagator:
     ):
         # Process noise covariance W (9x9)
         self.W = np.diag(
-            np.concatenate([
-                [process_noise_pos**2] * 3,   # position noise
-                [process_noise_vel**2] * 3,   # velocity noise
-                [process_noise_att**2] * 3,   # attitude noise
-            ])
+            np.concatenate(
+                [
+                    [process_noise_pos**2] * 3,  # position noise
+                    [process_noise_vel**2] * 3,  # velocity noise
+                    [process_noise_att**2] * 3,  # attitude noise
+                ]
+            )
         )
 
         # Initial state covariance Gamma_0
         self.Gamma_0 = np.diag(
-            np.concatenate([
-                [init_pos_noise**2] * 3,
-                [init_vel_noise**2] * 3,
-                [init_att_noise**2] * 3,
-            ])
+            np.concatenate(
+                [
+                    [init_pos_noise**2] * 3,
+                    [init_vel_noise**2] * 3,
+                    [init_att_noise**2] * 3,
+                ]
+            )
         )
 
     @classmethod
@@ -55,6 +59,7 @@ class UncertaintyPropagator:
         """Create from YAML config path or dict."""
         if isinstance(config, str):
             import yaml
+
             with open(config) as f:
                 config_data = yaml.safe_load(f)
         else:
@@ -74,6 +79,7 @@ class UncertaintyPropagator:
         """Create VIODriftModel from config."""
         if isinstance(config, str):
             import yaml
+
             with open(config) as f:
                 config_data = yaml.safe_load(f)
         else:
@@ -152,11 +158,13 @@ class UncertaintyPropagator:
         sigma_att: float = 0.02,
     ) -> npt.NDArray[np.float64]:
         """Simulate VIO measurement noise (i.i.d. Gaussian)."""
-        noise = np.concatenate([
-            np.random.normal(0, sigma_pos, 3),
-            np.random.normal(0, sigma_vel, 3),
-            np.random.normal(0, sigma_att, 3),
-        ])
+        noise = np.concatenate(
+            [
+                np.random.normal(0, sigma_pos, 3),
+                np.random.normal(0, sigma_vel, 3),
+                np.random.normal(0, sigma_att, 3),
+            ]
+        )
         return x + noise
 
 
@@ -176,11 +184,13 @@ class VIODriftModel:
         drift_vel: float = 0.02,
         drift_att: float = 0.005,
     ):
-        self.Q_drift = np.concatenate([
-            [drift_pos**2] * 3,
-            [drift_vel**2] * 3,
-            [drift_att**2] * 3,
-        ])
+        self.Q_drift = np.concatenate(
+            [
+                [drift_pos**2] * 3,
+                [drift_vel**2] * 3,
+                [drift_att**2] * 3,
+            ]
+        )
         self.bias: npt.NDArray[np.float64] = np.zeros(9)
 
     def update(self, dt: float = 0.02) -> npt.NDArray[np.float64]:

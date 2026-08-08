@@ -158,9 +158,7 @@ class DeterministicNMPCController:
                 self._timestep_s,
                 max_iter=max_iter,
                 penalty=(
-                    self._chance_options.slack_penalty
-                    if self._chance_options.enabled
-                    else 1e4
+                    self._chance_options.slack_penalty if self._chance_options.enabled else 1e4
                 ),
                 soft_obstacle_constraints=self._chance_options.soft_constraint,
             )
@@ -213,9 +211,7 @@ class DeterministicNMPCController:
             and self._last_nominal_controls is not None
             and self._last_nominal_controls.shape == (self._horizon_steps, 4)
         ):
-            states = np.vstack(
-                [self._last_nominal_states[1:], self._last_nominal_states[-1:]]
-            )
+            states = np.vstack([self._last_nominal_states[1:], self._last_nominal_states[-1:]])
             controls = np.vstack(
                 [self._last_nominal_controls[1:], self._last_nominal_controls[-1:]]
             )
@@ -224,9 +220,8 @@ class DeterministicNMPCController:
 
         states = np.repeat(belief.mean_state_13.reshape(1, 13), steps, axis=0)
         interpolation = np.linspace(0.0, 1.0, steps)[:, None]
-        states[:, :3] = (
-            belief.mean_state_13[:3]
-            + interpolation * (goal.position - belief.mean_state_13[:3])
+        states[:, :3] = belief.mean_state_13[:3] + interpolation * (
+            goal.position - belief.mean_state_13[:3]
         )
         controls = np.zeros((self._horizon_steps, 4), dtype=float)
         return states, controls
@@ -242,8 +237,7 @@ class DeterministicNMPCController:
         expected_steps = self._horizon_steps + 1
         if seed_states.shape != (expected_steps, 13):
             raise ChanceProfileShapeError(
-                f"seed_states must have shape ({expected_steps}, 13), "
-                f"got {seed_states.shape}"
+                f"seed_states must have shape ({expected_steps}, 13), got {seed_states.shape}"
             )
         if seed_controls.shape != (self._horizon_steps, 4):
             raise ChanceProfileShapeError(
@@ -301,9 +295,7 @@ class DeterministicNMPCController:
                     dtype=float,
                 )
             else:
-                obstacle_predictions = np.empty(
-                    (0, prediction_steps, 3), dtype=float
-                )
+                obstacle_predictions = np.empty((0, prediction_steps, 3), dtype=float)
 
             seed_states, seed_controls = self._seed_nominal(belief, goal)
         with timing_recorder.measure("covariance_propagation_time_ms"):
@@ -372,9 +364,7 @@ class DeterministicNMPCController:
                     projected_sigma=chance_profile.projected_sigmas_m,
                     tightening_margin=chance_profile.tightenings_m,
                     tightened_radius=chance_profile.safety_radii_m,
-                    active_mask=np.ones(
-                        (prediction_steps, len(obstacles)), dtype=bool
-                    ),
+                    active_mask=np.ones((prediction_steps, len(obstacles)), dtype=bool),
                     joint_budget=chance_profile.configured_total_epsilon,
                     allocated_budget=chance_profile.allocated_epsilon,
                     remaining_budget=chance_profile.remaining_epsilon,
@@ -385,23 +375,16 @@ class DeterministicNMPCController:
 
         with timing_recorder.measure("tvp_update_time_ms"):
             self._goal_state["pos"] = {
-                axis: float(value)
-                for axis, value in zip(("x", "y", "z"), goal.position)
+                axis: float(value) for axis, value in zip(("x", "y", "z"), goal.position)
             }
             # The TVP helper accepts a quaternion directly to avoid an unnecessary
             # quaternion -> Euler -> quaternion conversion at the interface boundary.
             self._goal_state["quaternion_wxyz"] = goal.quaternion_wxyz
             self._goal_state["obstacle_predictions"] = obstacle_predictions
-            self._goal_state["obstacle_projected_sigmas"] = (
-                chance_profile.projected_sigmas_m.T
-            )
+            self._goal_state["obstacle_projected_sigmas"] = chance_profile.projected_sigmas_m.T
             self._goal_state["obstacle_betas"] = chance_profile.gaussian_quantiles.T
-            self._goal_state["obstacle_risk_allocations"] = (
-                chance_profile.risk_allocations.T
-            )
-            self._goal_state["obstacle_safe_distances"] = (
-                chance_profile.safety_radii_m.T
-            )
+            self._goal_state["obstacle_risk_allocations"] = chance_profile.risk_allocations.T
+            self._goal_state["obstacle_safe_distances"] = chance_profile.safety_radii_m.T
             self._goal_state["prediction_time_s"] = float(time_s)
 
         with timing_recorder.measure("nlp_solve_time_ms"):
@@ -466,9 +449,7 @@ class DeterministicNMPCController:
             )
         else:
             predicted_covariances = tightening_vehicle_covariances[:horizon_length].copy()
-            predicted_obstacle_covariances = (
-                tightening_obstacle_covariances[:horizon_length].copy()
-            )
+            predicted_obstacle_covariances = tightening_obstacle_covariances[:horizon_length].copy()
 
         used_obstacle_predictions = obstacle_predictions
         used_sigmas = chance_profile.projected_sigmas_m
@@ -487,10 +468,7 @@ class DeterministicNMPCController:
                 diagnostic_obstacle_predictions = np.asarray(
                     [
                         np.column_stack(
-                            [
-                                np.interp(target, source, positions[:, axis])
-                                for axis in range(3)
-                            ]
+                            [np.interp(target, source, positions[:, axis]) for axis in range(3)]
                         )
                         for positions in obstacle_predictions
                     ],
@@ -517,9 +495,7 @@ class DeterministicNMPCController:
                     projected_sigma=diagnostic_metadata.projected_sigmas_m,
                     tightening_margin=diagnostic_metadata.tightenings_m,
                     tightened_radius=diagnostic_metadata.safety_radii_m,
-                    active_mask=np.ones(
-                        (horizon_length, len(obstacles)), dtype=bool
-                    ),
+                    active_mask=np.ones((horizon_length, len(obstacles)), dtype=bool),
                     joint_budget=diagnostic_metadata.configured_total_epsilon,
                     allocated_budget=diagnostic_metadata.allocated_epsilon,
                     remaining_budget=diagnostic_metadata.remaining_epsilon,
@@ -608,21 +584,13 @@ class DeterministicNMPCController:
             primary_solver_residual_source="ipopt_iteration_history",
             primary_solver_residual_required_for_acceptance=False,
             primary_solver_residual_required_for_assurance=True,
-            enforced_chance_profile=(
-                enforced_profile
-                if enforced_profile is not None
-                else None
-            ),
+            enforced_chance_profile=(enforced_profile if enforced_profile is not None else None),
             post_solve_diagnostic_profile=post_solve_diagnostic_profile,
             chance_profile_application_status=(
-                "APPLIED"
-                if enforced_profile is not None
-                else "NOT_APPLICABLE_DETERMINISTIC"
+                "APPLIED" if enforced_profile is not None else "NOT_APPLICABLE_DETERMINISTIC"
             ),
             chance_profile_enforced_profile_id=(
-                enforced_profile.provenance.profile_id
-                if enforced_profile is not None
-                else ""
+                enforced_profile.provenance.profile_id if enforced_profile is not None else ""
             ),
             chance_profile_solve_attempt_id=solve_attempt_id,
             controller_timing=timing_recorder.snapshot(),

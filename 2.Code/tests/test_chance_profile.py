@@ -59,11 +59,7 @@ def make_profile(
         active_mask=np.ones(shape, dtype=bool),
         joint_budget=joint_budget,
         allocated_budget=allocated,
-        remaining_budget=(
-            0.0
-            if joint_budget is not None and allocated is not None
-            else None
-        ),
+        remaining_budget=(0.0 if joint_budget is not None and allocated is not None else None),
     )
 
 
@@ -417,18 +413,12 @@ class ChanceProfileEnforcedSemanticsTests(unittest.TestCase):
             def __init__(self, horizon_rows: int):
                 self.solver_stats = {"success": True, "iterations": {}}
                 self.data = mock.MagicMock()
-                self.data.prediction.return_value = np.zeros(
-                    (horizon_rows, 1)
-                )
+                self.data.prediction.return_value = np.zeros((horizon_rows, 1))
 
             def make_step(self, _state):
                 return np.zeros((4, 1))
 
-        returned = (
-            horizon + 1
-            if returned_horizon is None
-            else max(1, int(returned_horizon))
-        )
+        returned = horizon + 1 if returned_horizon is None else max(1, int(returned_horizon))
         mpc = FakeMpc(returned)
         controller.mpc = mpc
         controller.model = mock.MagicMock()

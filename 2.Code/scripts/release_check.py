@@ -39,10 +39,7 @@ def require(condition: bool, message: str) -> None:
 
 
 def main() -> int:
-    scripts = {
-        entry.name
-        for entry in entry_points(group="console_scripts")
-    }
+    scripts = {entry.name for entry in entry_points(group="console_scripts")}
     expected_scripts = {
         "quadrotor-mpc-run",
         "quadrotor-mpc-sim",
@@ -52,9 +49,7 @@ def main() -> int:
         "quadrotor-mpc-dashboard",
     }
     if tomllib is not None:
-        project = tomllib.loads(
-            (CODE_ROOT / "pyproject.toml").read_text(encoding="utf-8")
-        )
+        project = tomllib.loads((CODE_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         require(
             project["project"]["version"] == EXPECTED_VERSION,
             "pyproject version mismatch",
@@ -109,9 +104,7 @@ def main() -> int:
         "CC-MPC acceptance deadline must equal its control period",
     )
 
-    protocol = load_native_monte_carlo_protocol(
-        CODE_ROOT / "config" / "native_monte_carlo.yaml"
-    )
+    protocol = load_native_monte_carlo_protocol(CODE_ROOT / "config" / "native_monte_carlo.yaml")
     require(protocol.trials == 50, "release Monte Carlo must use 50 trials per cell")
     require(protocol.minimum_trials_for_claim <= protocol.trials, "claim sample gate is impossible")
     require(protocol.base_config_path.is_file(), "Monte Carlo base config is missing")
