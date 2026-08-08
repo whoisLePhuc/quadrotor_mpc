@@ -108,6 +108,8 @@ def _with_overrides(protocol, args):
         protocol_type=args.protocol or protocol.protocol_type,
         control_period_ms=protocol.control_period_ms,
         deadline_clock=protocol.deadline_clock,
+        requested_modes=protocol.requested_modes,
+        mode_aliases_used=protocol.mode_aliases_used,
     )
 
 
@@ -115,6 +117,10 @@ def main(argv: list[str] | None = None) -> int:
     warnings.filterwarnings("ignore", message="The ONNX feature is not available.*")
     warnings.filterwarnings("ignore", message="The opcua feature is not available.*")
     warnings.filterwarnings("ignore", message="The approximateMPC feature requires PyTorch.*")
+    warnings.filterwarnings(
+        "always",
+        message="validation mode 'joint' is deprecated.*",
+    )
     args = build_parser().parse_args(argv)
     if args.workers < 1:
         raise SystemExit("--workers must be >= 1")
