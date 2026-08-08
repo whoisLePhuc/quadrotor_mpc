@@ -80,5 +80,62 @@ class LayerArchitectureTests(unittest.TestCase):
         self.assertEqual(violations, [])
 
 
+class PackageBoundaryTests(unittest.TestCase):
+    """Section 14: both controller packages import cleanly with their roles."""
+
+    def test_public_api_imports_for_both_controller_packages(self):
+        from quadrotor_mpc.control.ccmpc import (
+            CCMPC,
+            EllipsoidalObstacle,
+            ObstacleManager,
+            QuadrotorDynamics,
+            UncertaintyPropagator,
+            VIODriftModel,
+            chance_constraint_residual,
+            collision_clearance,
+            symmetric_matrix_sqrt,
+        )
+        from quadrotor_mpc.control.nmpc import (
+            core,
+            covariance,
+            deterministic,
+            risk_budget,
+            safety,
+        )
+
+        self.assertTrue(callable(CCMPC))
+        self.assertTrue(callable(collision_clearance))
+        self.assertTrue(callable(chance_constraint_residual))
+        self.assertTrue(hasattr(core, "DRONE_RADIUS"))
+        self.assertTrue(hasattr(deterministic, "DeterministicNMPCController"))
+        self.assertTrue(hasattr(safety, "SafeFallbackController"))
+        self.assertTrue(hasattr(covariance, "HorizonCovariancePropagator"))
+        self.assertTrue(hasattr(risk_budget, "allocate_risk_budget"))
+        self.assertIsInstance(QuadrotorDynamics, type)
+        self.assertIsInstance(EllipsoidalObstacle, type)
+        self.assertIsInstance(ObstacleManager, type)
+        self.assertIsInstance(UncertaintyPropagator, type)
+        self.assertIsInstance(VIODriftModel, type)
+        self.assertTrue(callable(symmetric_matrix_sqrt))
+
+    def test_monte_carlo_factory_builds_from_canonical_nmpc(self):
+        source = (
+            PACKAGE_ROOT / "application" / "validation" / "monte_carlo.py"
+        ).read_text(encoding="utf-8")
+        factory = source.split("def _build_controller")[1].split("\n\n")[0]
+        self.assertIn("quadrotor_mpc.control.nmpc.chance_constrained", factory)
+        self.assertIn("quadrotor_mpc.control.nmpc.deterministic", factory)
+        self.assertIn("quadrotor_mpc.control.nmpc.safety", factory)
+        self.assertNotIn("control.ccmpc", factory)
+
+    def test_adaptive_config_does_not_point_to_reference_package(self):
+        for path in (CODE_ROOT / "config").glob("*.yaml"):
+            if "adaptive" not in path.name and "adaptive" not in path.read_text(
+                encoding="utf-8"
+            ):
+                continue
+            self.fail(f"adaptive config must not exist yet: {path.name}")
+
+
 if __name__ == "__main__":
     unittest.main()

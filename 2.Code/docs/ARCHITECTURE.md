@@ -107,3 +107,30 @@ unchanged.
 All obstacle centers are TVPs in the native NMPC model. Geometry and obstacle
 count define the compiled NLP; estimated mean trajectories can change at every
 control tick without rebuilding it.
+
+## Control pipeline boundary: `control/nmpc/` vs `control/ccmpc/`
+
+The repository intentionally contains two controller packages with different
+state models. They are not interchangeable views of one implementation:
+
+| Attribute | `control/nmpc/` | `control/ccmpc/` |
+|---|---|---|
+| Role | Canonical native validation pipeline | Separate/reference implementation |
+| Runtime consumer | `application/native/runtime.py`, `application/validation/monte_carlo.py` (`_build_controller`), `infrastructure/mujoco/plant.py`, `interfaces/desktop/viewer.py`, `application/native/replay.py` | `application/simulation/controllers.py` and `application/simulation/runner.py` (9-state ODE track) and the ODE tests |
+| State model | 13-state quaternion NMPC (do-mpc/CasADi) | 9-state QP CC-MPC (CVXPY) |
+| Estimator/sensor integration | Native ESEKF + one 6D obstacle tracker per obstacle (`estimation/native.py`) | ODE simulation track |
+| Primary Monte Carlo | Yes | No |
+| Adaptive allocator target | Yes (Priority 1) | No |
+| Support level | Canonical | Reference/experimental |
+
+The Monte Carlo controller factory in `application/validation/monte_carlo.py`
+imports `control.nmpc.chance_constrained`, `control.nmpc.deterministic` and
+`control.nmpc.safety`; it never instantiates `control.ccmpc.CCMPC`. The
+adaptive risk-allocation phase must add exactly one extension point in the
+canonical `control/nmpc/` pipeline and must not be duplicated into
+`control/ccmpc/`. Shared mathematics should live near their first consumer
+until a second real consumer and a contract test exist.
+
+`control/ccmpc/` is not "broken" or "dead": its tests and the 9-state ODE
+track keep it executable. It is simply not the pipeline that generates the
+native Monte Carlo baseline for the paper.
