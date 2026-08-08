@@ -197,9 +197,16 @@ def _controller_card(sample: Mapping[str, Any]) -> StatusCard:
     source = str(sample.get("command_source", "PRIMARY_NMPC"))
     status = str(sample.get("primary_solver_status", sample.get("solver_status", "")))
     iterations = int(sample.get("primary_solver_iterations", 0))
-    primal = float(sample.get("primary_solver_primal_residual", 0.0))
-    dual = float(sample.get("primary_solver_dual_residual", 0.0))
-    residual = max(primal, dual)
+    raw_primal = sample.get("primary_solver_primal_residual")
+    raw_dual = sample.get("primary_solver_dual_residual")
+    available_residuals = [
+        value
+        for value in (raw_primal, raw_dual)
+        if isinstance(value, (int, float)) and math.isfinite(value)
+    ]
+    residual_text = (
+        f"{max(available_residuals):.2e}" if available_residuals else "n/a"
+    )
     if fallback_active:
         level = int(sample.get("fallback_level", 0))
         value = f"FALLBACK L{level}"
@@ -210,7 +217,7 @@ def _controller_card(sample: Mapping[str, Any]) -> StatusCard:
         value, tone = "REJECTED", DANGER
     detail = (
         f"{source} · {status or 'unknown'} · iter={iterations} · "
-        f"res={residual:.2e}"
+        f"res={residual_text}"
     )
     return StatusCard("controller", "Applied control", value, detail, tone)
 

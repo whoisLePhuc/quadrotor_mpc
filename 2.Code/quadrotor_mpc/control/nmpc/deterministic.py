@@ -24,6 +24,11 @@ from quadrotor_mpc.control.nmpc.covariance import (
     CovariancePropagationOptions,
     HorizonCovariancePropagator,
 )
+from quadrotor_mpc.control.nmpc.residuals import (
+    ResidualStatus,
+    SolverResidual,
+    extract_residual,
+)
 from quadrotor_mpc.core.contracts import (
     ControlGoal,
     ControlSolution,
@@ -310,33 +315,22 @@ class DeterministicNMPCController:
         solver_iterations = max(0, int(solver_stats.get("iter_count", 0)))
         iteration_history = solver_stats.get("iterations", {})
 
-        def final_residual(name: str) -> float:
+        def extract_from_history(name: str) -> SolverResidual:
             values = iteration_history.get(name, ())
             if not values:
-                return 0.0
-            value = float(values[-1])
-            return (
-                value
-                if np.isfinite(value) and value >= 0.0
-                else np.finfo(float).max
-            )
+                return SolverResidual(
+                    status=ResidualStatus.UNAVAILABLE,
+                    value=None,
+                    source=name,
+                    detail="field_not_exposed_by_backend",
+                )
+            return extract_residual(values, source=name)
 
-        def residual_status_for(name: str) -> str:
-            # A missing residual must never masquerade as a perfect 0.0.
-            values = iteration_history.get(name, ())
-            if not values:
-                return "UNAVAILABLE"
-            value = float(values[-1])
-            if not np.isfinite(value):
-                return "INVALID"
-            return "AVAILABLE"
-
-        primal_residual = final_residual("inf_pr")
-        dual_residual = final_residual("inf_du")
-        residual_statuses = {
-            residual_status_for("inf_pr"),
-            residual_status_for("inf_du"),
-        }
+        primal = extract_from_history("inf_pr")
+        dual = extract_from_history("inf_du")
+        primal_residual = primal.value
+        dual_residual = dual.value
+        residual_statuses = {primal.status.value, dual.status.value}
         if residual_statuses == {"UNAVAILABLE"}:
             residual_status = "UNAVAILABLE"
         elif "INVALID" in residual_statuses:
@@ -451,4 +445,9 @@ class DeterministicNMPCController:
             primary_solver_primal_residual=primal_residual,
             primary_solver_dual_residual=dual_residual,
             residual_status=residual_status,
+            primary_solver_primal_residual_status=primal.status.value,
+            primary_solver_dual_residual_status=dual.status.value,
+            primary_solver_residual_source="ipopt_iteration_history",
+            primary_solver_residual_required_for_acceptance=False,
+            primary_solver_residual_required_for_assurance=True,
         )

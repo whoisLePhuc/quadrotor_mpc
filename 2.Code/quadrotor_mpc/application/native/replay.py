@@ -1,4 +1,4 @@
-"""Replay a recorded native run without invoking the NMPC solver."""
+﻿"""Replay a recorded native run without invoking the NMPC solver."""
 
 from __future__ import annotations
 
@@ -197,11 +197,40 @@ def replay_native_recording(config: Any, recording: dict[str, Any], runtime: Any
                     primary_solver_iterations=int(
                         row.get("primary_solver_iterations", 0) or 0
                     ),
-                    primary_solver_primal_residual=float(
-                        row.get("primary_solver_primal_residual", 0.0) or 0.0
+                    primary_solver_primal_residual=(
+                        None
+                        if row.get("primary_solver_primal_residual", "") in ("", None)
+                        or row.get("primary_solver_primal_residual_status", "UNAVAILABLE")
+                        != "AVAILABLE"
+                        else float(row["primary_solver_primal_residual"])
                     ),
-                    primary_solver_dual_residual=float(
-                        row.get("primary_solver_dual_residual", 0.0) or 0.0
+                    primary_solver_dual_residual=(
+                        None
+                        if row.get("primary_solver_dual_residual", "") in ("", None)
+                        or row.get("primary_solver_dual_residual_status", "UNAVAILABLE")
+                        != "AVAILABLE"
+                        else float(row["primary_solver_dual_residual"])
+                    ),
+                    primary_solver_primal_residual_status=str(
+                        row.get(
+                            "primary_solver_primal_residual_status",
+                            "UNAVAILABLE",
+                        )
+                    ),
+                    primary_solver_dual_residual_status=str(
+                        row.get(
+                            "primary_solver_dual_residual_status",
+                            "UNAVAILABLE",
+                        )
+                    ),
+                    primary_solver_residual_gate_status=str(
+                        row.get(
+                            "primary_solver_residual_gate_status",
+                            "UNKNOWN_UNAVAILABLE",
+                        )
+                    ),
+                    primary_solver_residual_source=str(
+                        row.get("primary_solver_residual_source", "")
                     ),
                     command_source=str(
                         row.get("command_source", "PRIMARY_NMPC")
@@ -245,7 +274,7 @@ def replay_native_recording(config: Any, recording: dict[str, Any], runtime: Any
                         if check
                     ),
                     assurance_schema_version=int(
-                        row.get("assurance_schema_version", 2) or 2
+                        row.get("assurance_schema_version", 3) or 3
                     ),
                     projected_uncertainties=(
                         recording["projected_uncertainty_horizons"][index]
@@ -302,3 +331,4 @@ def replay_native_recording(config: Any, recording: dict[str, Any], runtime: Any
         "termination_reason": termination,
         "replay": True,
     }
+

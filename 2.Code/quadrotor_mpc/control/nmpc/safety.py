@@ -257,6 +257,34 @@ class SafeFallbackController:
         self._fallback_yaw = None
         self._consecutive_rejections = 0
 
+    def _residual_gate(self, solution: ControlSolution):
+        from quadrotor_mpc.control.nmpc.residuals import (
+            ResidualStatus,
+            SolverResidual,
+            SolverResidualDiagnostics,
+            evaluate_residual_gate,
+        )
+
+        return evaluate_residual_gate(
+            SolverResidualDiagnostics(
+                primal=SolverResidual(
+                    status=ResidualStatus(
+                        solution.primary_solver_primal_residual_status
+                    ),
+                    value=solution.primary_solver_primal_residual,
+                ),
+                dual=SolverResidual(
+                    status=ResidualStatus(
+                        solution.primary_solver_dual_residual_status
+                    ),
+                    value=solution.primary_solver_dual_residual,
+                ),
+            ),
+            primal_tolerance=self.options.maximum_solver_residual,
+            dual_tolerance=self.options.maximum_solver_residual,
+            required=True,
+        )
+
     def _rejection_reason(
         self,
         solution: ControlSolution,
@@ -264,11 +292,10 @@ class SafeFallbackController:
     ) -> str | None:
         if not solution.primary_solver_success:
             return "PRIMARY_SOLVER_FAILED"
-        if max(
-            solution.primary_solver_primal_residual,
-            solution.primary_solver_dual_residual,
-        ) > self.options.maximum_solver_residual:
+        if self._residual_gate(solution).value == "FAIL_THRESHOLD":
             return "SOLVER_RESIDUAL_EXCEEDED"
+        if self._residual_gate(solution).value == "FAIL_INVALID":
+            return "SOLVER_RESIDUAL_INVALID"
         if (
             solution.risk_semantics == "joint"
             and solution.risk_budget_status != "BUDGET_OK"
@@ -558,16 +585,14 @@ class SafeFallbackController:
             classify_horizon_assurance,
         )
 
+        gate = self._residual_gate(primary_solution)
         decision = classify_horizon_assurance(
             HorizonAssuranceInput(
                 risk_semantics=primary_solution.risk_semantics,
                 risk_budget_status=primary_solution.risk_budget_status,
                 primary_solver_success=primary_solution.primary_solver_success,
+                residual_gate_status=gate.value,
                 residual_status=primary_solution.residual_status,
-                primal_residual=primary_solution.primary_solver_primal_residual,
-                dual_residual=primary_solution.primary_solver_dual_residual,
-                primal_residual_tolerance=self.options.maximum_solver_residual,
-                dual_residual_tolerance=self.options.maximum_solver_residual,
                 maximum_slack=maximum_slack,
                 slack_tolerance=self.options.guarantee_slack_tolerance_m,
                 deadline_missed=deadline_missed,
@@ -586,6 +611,7 @@ class SafeFallbackController:
             consecutive_rejections=consecutive_rejections,
             solve_time_ms=elapsed_s * 1000.0,
             deadline_missed=deadline_missed,
+            primary_solver_residual_gate_status=gate.value,
             safety_assurance_status=decision.status.value,
             horizon_assurance_status=decision.status.value,
             horizon_assurance_eligible=decision.eligible,

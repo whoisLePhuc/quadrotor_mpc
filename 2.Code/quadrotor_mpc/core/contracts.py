@@ -211,9 +211,15 @@ class ControlSolution:
     primary_solver_status: str = ""
     primary_solver_success: bool = True
     primary_solver_iterations: int = 0
-    primary_solver_primal_residual: float = 0.0
-    primary_solver_dual_residual: float = 0.0
+    primary_solver_primal_residual: float | None = None
+    primary_solver_dual_residual: float | None = None
     residual_status: str = "UNAVAILABLE"
+    primary_solver_primal_residual_status: str = "UNAVAILABLE"
+    primary_solver_dual_residual_status: str = "UNAVAILABLE"
+    primary_solver_residual_gate_status: str = "UNKNOWN_UNAVAILABLE"
+    primary_solver_residual_source: str = ""
+    primary_solver_residual_required_for_acceptance: bool = False
+    primary_solver_residual_required_for_assurance: bool = True
     command_source: str = "PRIMARY_NMPC"
     solution_accepted: bool = True
     fallback_active: bool = False
@@ -227,7 +233,7 @@ class ControlSolution:
     horizon_assurance_eligible: bool = False
     horizon_assurance_reason: str = ""
     horizon_assurance_failed_checks: tuple[str, ...] = ()
-    assurance_schema_version: int = 2
+    assurance_schema_version: int = 3
 
     def __post_init__(self) -> None:
         command = _readonly_array(self.command, (CONTROL_SIZE,), "ControlSolution.command")
@@ -376,7 +382,11 @@ class ControlSolution:
             "primary_solver_primal_residual",
             "primary_solver_dual_residual",
         ):
-            residual = float(getattr(self, label))
+            raw = getattr(self, label)
+            if raw is None:
+                object.__setattr__(self, label, None)
+                continue
+            residual = float(raw)
             if not np.isfinite(residual) or residual < 0.0:
                 raise ValueError(
                     f"ControlSolution.{label} must be finite and >= 0"
@@ -430,6 +440,37 @@ class ControlSolution:
                 "'AVAILABLE', 'UNAVAILABLE' or 'INVALID'"
             )
         object.__setattr__(self, "residual_status", residual_status)
+        for label in (
+            "primary_solver_primal_residual_status",
+            "primary_solver_dual_residual_status",
+        ):
+            status = str(getattr(self, label))
+            if status not in {"AVAILABLE", "UNAVAILABLE", "INVALID"}:
+                raise ValueError(
+                    f"ControlSolution.{label} must be "
+                    "'AVAILABLE', 'UNAVAILABLE' or 'INVALID'"
+                )
+            object.__setattr__(self, label, status)
+        object.__setattr__(
+            self,
+            "primary_solver_residual_gate_status",
+            str(self.primary_solver_residual_gate_status),
+        )
+        object.__setattr__(
+            self,
+            "primary_solver_residual_source",
+            str(self.primary_solver_residual_source),
+        )
+        object.__setattr__(
+            self,
+            "primary_solver_residual_required_for_acceptance",
+            bool(self.primary_solver_residual_required_for_acceptance),
+        )
+        object.__setattr__(
+            self,
+            "primary_solver_residual_required_for_assurance",
+            bool(self.primary_solver_residual_required_for_assurance),
+        )
         object.__setattr__(
             self,
             "safety_assurance_status",

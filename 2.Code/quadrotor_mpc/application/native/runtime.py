@@ -1,4 +1,4 @@
-"""Native closed-loop application runtime.
+﻿"""Native closed-loop application runtime.
 
 The do-mpc/CasADi controller computes one receding-horizon command per MPC tick.
 The MuJoCo plant integrates that command with an independent 13-state rigid-body
@@ -89,9 +89,15 @@ class CoupledStep:
     primary_solver_status: str = ""
     primary_solver_success: bool = True
     primary_solver_iterations: int = 0
-    primary_solver_primal_residual: float = 0.0
-    primary_solver_dual_residual: float = 0.0
+    primary_solver_primal_residual: float | None = None
+    primary_solver_dual_residual: float | None = None
     residual_status: str = "UNAVAILABLE"
+    primary_solver_primal_residual_status: str = "UNAVAILABLE"
+    primary_solver_dual_residual_status: str = "UNAVAILABLE"
+    primary_solver_residual_gate_status: str = "UNKNOWN_UNAVAILABLE"
+    primary_solver_residual_source: str = ""
+    primary_solver_residual_required_for_acceptance: bool = False
+    primary_solver_residual_required_for_assurance: bool = True
     command_source: str = "PRIMARY_NMPC"
     solution_accepted: bool = True
     fallback_active: bool = False
@@ -104,7 +110,7 @@ class CoupledStep:
     horizon_assurance_eligible: bool = False
     horizon_assurance_reason: str = ""
     horizon_assurance_failed_checks: tuple[str, ...] = ()
-    assurance_schema_version: int = 2
+    assurance_schema_version: int = 3
 
 
 class CoupledRuntime(Protocol):
@@ -287,8 +293,12 @@ def run_coupled_simulation(
     primary_solver_status_history: list[str] = []
     primary_solver_success_history: list[bool] = []
     primary_solver_iteration_history: list[int] = []
-    primary_solver_primal_residual_history: list[float] = []
-    primary_solver_dual_residual_history: list[float] = []
+    primary_solver_primal_residual_history: list[float | None] = []
+    primary_solver_dual_residual_history: list[float | None] = []
+    primary_solver_primal_residual_status_history: list[str] = []
+    primary_solver_dual_residual_status_history: list[str] = []
+    primary_solver_residual_gate_status_history: list[str] = []
+    primary_solver_residual_source_history: list[str] = []
     command_source_history: list[str] = []
     solution_accepted_history: list[bool] = []
     fallback_active_history: list[bool] = []
@@ -415,6 +425,10 @@ def run_coupled_simulation(
                 primary_solver_iteration_history.clear()
                 primary_solver_primal_residual_history.clear()
                 primary_solver_dual_residual_history.clear()
+                primary_solver_primal_residual_status_history.clear()
+                primary_solver_dual_residual_status_history.clear()
+                primary_solver_residual_gate_status_history.clear()
+                primary_solver_residual_source_history.clear()
                 command_source_history.clear()
                 solution_accepted_history.clear()
                 fallback_active_history.clear()
@@ -515,6 +529,18 @@ def run_coupled_simulation(
             )
             primary_solver_dual_residual_history.append(
                 solution.primary_solver_dual_residual
+            )
+            primary_solver_primal_residual_status_history.append(
+                solution.primary_solver_primal_residual_status
+            )
+            primary_solver_dual_residual_status_history.append(
+                solution.primary_solver_dual_residual_status
+            )
+            primary_solver_residual_gate_status_history.append(
+                solution.primary_solver_residual_gate_status
+            )
+            primary_solver_residual_source_history.append(
+                solution.primary_solver_residual_source
             )
             command_source_history.append(solution.command_source)
             solution_accepted_history.append(solution.solution_accepted)
@@ -697,6 +723,24 @@ def run_coupled_simulation(
                             solution.safety_assurance_status
                         ),
                         residual_status=solution.residual_status,
+                        primary_solver_primal_residual_status=(
+                            solution.primary_solver_primal_residual_status
+                        ),
+                        primary_solver_dual_residual_status=(
+                            solution.primary_solver_dual_residual_status
+                        ),
+                        primary_solver_residual_gate_status=(
+                            solution.primary_solver_residual_gate_status
+                        ),
+                        primary_solver_residual_source=(
+                            solution.primary_solver_residual_source
+                        ),
+                        primary_solver_residual_required_for_acceptance=(
+                            solution.primary_solver_residual_required_for_acceptance
+                        ),
+                        primary_solver_residual_required_for_assurance=(
+                            solution.primary_solver_residual_required_for_assurance
+                        ),
                         horizon_assurance_status=(
                             solution.horizon_assurance_status
                         ),
@@ -816,11 +860,27 @@ def run_coupled_simulation(
         ),
         "primary_solver_primal_residual": np.asarray(
             primary_solver_primal_residual_history,
-            dtype=float,
+            dtype=object,
         ),
         "primary_solver_dual_residual": np.asarray(
             primary_solver_dual_residual_history,
-            dtype=float,
+            dtype=object,
+        ),
+        "primary_solver_primal_residual_status": np.asarray(
+            primary_solver_primal_residual_status_history,
+            dtype=str,
+        ),
+        "primary_solver_dual_residual_status": np.asarray(
+            primary_solver_dual_residual_status_history,
+            dtype=str,
+        ),
+        "primary_solver_residual_gate_status": np.asarray(
+            primary_solver_residual_gate_status_history,
+            dtype=str,
+        ),
+        "primary_solver_residual_source": np.asarray(
+            primary_solver_residual_source_history,
+            dtype=str,
         ),
         "command_source": np.asarray(command_source_history, dtype=str),
         "solution_accepted": np.asarray(
@@ -887,3 +947,4 @@ if __name__ == "__main__":
     print("min clearance:", result["clearance"].min())
     print("collided (real contact):", result["collided"])
     print("any NaN:", np.isnan(result["pos"]).any())
+

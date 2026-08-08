@@ -1,4 +1,4 @@
-"""Bounded native telemetry, deterministic recording and replay loading."""
+﻿"""Bounded native telemetry, deterministic recording and replay loading."""
 
 from __future__ import annotations
 
@@ -142,11 +142,33 @@ def step_to_sample(step: Any) -> dict[str, Any]:
         "primary_solver_iterations": int(
             getattr(step, "primary_solver_iterations", 0)
         ),
-        "primary_solver_primal_residual": float(
-            getattr(step, "primary_solver_primal_residual", 0.0)
+        "primary_solver_primal_residual": (
+            None
+            if getattr(step, "primary_solver_primal_residual", None) is None
+            else float(step.primary_solver_primal_residual)
         ),
-        "primary_solver_dual_residual": float(
-            getattr(step, "primary_solver_dual_residual", 0.0)
+        "primary_solver_dual_residual": (
+            None
+            if getattr(step, "primary_solver_dual_residual", None) is None
+            else float(step.primary_solver_dual_residual)
+        ),
+        "primary_solver_primal_residual_status": str(
+            getattr(step, "primary_solver_primal_residual_status", "UNAVAILABLE")
+        ),
+        "primary_solver_dual_residual_status": str(
+            getattr(step, "primary_solver_dual_residual_status", "UNAVAILABLE")
+        ),
+        "primary_solver_residual_gate_status": str(
+            getattr(step, "primary_solver_residual_gate_status", "UNKNOWN_UNAVAILABLE")
+        ),
+        "primary_solver_residual_source": str(
+            getattr(step, "primary_solver_residual_source", "")
+        ),
+        "primary_solver_residual_required_for_acceptance": bool(
+            getattr(step, "primary_solver_residual_required_for_acceptance", False)
+        ),
+        "primary_solver_residual_required_for_assurance": bool(
+            getattr(step, "primary_solver_residual_required_for_assurance", True)
         ),
         "command_source": str(
             getattr(step, "command_source", "PRIMARY_NMPC")
@@ -177,9 +199,7 @@ def step_to_sample(step: Any) -> dict[str, Any]:
         "horizon_assurance_failed_checks": list(
             getattr(step, "horizon_assurance_failed_checks", ())
         ),
-        "assurance_schema_version": int(
-            getattr(step, "assurance_schema_version", 2)
-        ),
+        "assurance_schema_version": int(getattr(step, "assurance_schema_version", 3)),
         "risk_semantics": str(getattr(step, "risk_semantics", "")),
         "risk_allocation_method": str(
             getattr(step, "risk_allocation_method", "")
@@ -542,27 +562,63 @@ class NativeRunRecorder:
             "episode_any_deadline_miss": any(
                 sample.get("deadline_missed", False) for sample in self.samples
             ),
+            "residual_available_count": sum(
+                1
+                for sample in self.samples
+                if sample.get("primary_solver_primal_residual_status", "")
+                == "AVAILABLE"
+            ),
+            "residual_unavailable_count": sum(
+                1
+                for sample in self.samples
+                if sample.get("primary_solver_primal_residual_status", "")
+                == "UNAVAILABLE"
+            ),
+            "residual_invalid_count": sum(
+                1
+                for sample in self.samples
+                if sample.get("primary_solver_primal_residual_status", "")
+                == "INVALID"
+            ),
+            "residual_gate_pass_rate": (
+                sum(
+                    1
+                    for sample in self.samples
+                    if sample.get("primary_solver_residual_gate_status")
+                    == "PASS"
+                )
+                / len(self.samples)
+                if self.samples
+                else 0.0
+            ),
+            "residual_gate_unknown_rate": (
+                sum(
+                    1
+                    for sample in self.samples
+                    if sample.get("primary_solver_residual_gate_status")
+                    == "UNKNOWN_UNAVAILABLE"
+                )
+                / len(self.samples)
+                if self.samples
+                else 0.0
+            ),
             "maximum_primary_solver_primal_residual": max(
                 (
-                    float(
-                        sample.get(
-                            "primary_solver_primal_residual",
-                            0.0,
-                        )
-                    )
+                    float(sample["primary_solver_primal_residual"])
                     for sample in self.samples
+                    if sample.get("primary_solver_primal_residual") is not None
+                    and sample.get("primary_solver_primal_residual_status")
+                    == "AVAILABLE"
                 ),
                 default=None,
             ),
             "maximum_primary_solver_dual_residual": max(
                 (
-                    float(
-                        sample.get(
-                            "primary_solver_dual_residual",
-                            0.0,
-                        )
-                    )
+                    float(sample["primary_solver_dual_residual"])
                     for sample in self.samples
+                    if sample.get("primary_solver_dual_residual") is not None
+                    and sample.get("primary_solver_dual_residual_status")
+                    == "AVAILABLE"
                 ),
                 default=None,
             ),
@@ -603,6 +659,10 @@ class NativeRunRecorder:
             "primary_solver_iterations",
             "primary_solver_primal_residual",
             "primary_solver_dual_residual",
+            "primary_solver_primal_residual_status",
+            "primary_solver_dual_residual_status",
+            "primary_solver_residual_gate_status",
+            "primary_solver_residual_source",
             "command_source",
             "solution_accepted",
             "fallback_active",
@@ -675,13 +735,31 @@ class NativeRunRecorder:
                             "primary_solver_iterations",
                             0,
                         ),
-                        "primary_solver_primal_residual": sample.get(
-                            "primary_solver_primal_residual",
-                            0.0,
+                        "primary_solver_primal_residual": (
+                            ""
+                            if sample.get("primary_solver_primal_residual") is None
+                            else sample["primary_solver_primal_residual"]
                         ),
-                        "primary_solver_dual_residual": sample.get(
-                            "primary_solver_dual_residual",
-                            0.0,
+                        "primary_solver_dual_residual": (
+                            ""
+                            if sample.get("primary_solver_dual_residual") is None
+                            else sample["primary_solver_dual_residual"]
+                        ),
+                        "primary_solver_primal_residual_status": sample.get(
+                            "primary_solver_primal_residual_status",
+                            "UNAVAILABLE",
+                        ),
+                        "primary_solver_dual_residual_status": sample.get(
+                            "primary_solver_dual_residual_status",
+                            "UNAVAILABLE",
+                        ),
+                        "primary_solver_residual_gate_status": sample.get(
+                            "primary_solver_residual_gate_status",
+                            "UNKNOWN_UNAVAILABLE",
+                        ),
+                        "primary_solver_residual_source": sample.get(
+                            "primary_solver_residual_source",
+                            "",
                         ),
                         "command_source": sample.get(
                             "command_source",
@@ -725,7 +803,7 @@ class NativeRunRecorder:
                             sample.get("horizon_assurance_failed_checks", ())
                         ),
                         "assurance_schema_version": int(
-                            sample.get("assurance_schema_version", 2)
+                            sample.get("assurance_schema_version", 3)
                         ),
                         "risk_semantics": sample.get("risk_semantics", ""),
                         "risk_allocation_method": sample.get(
@@ -871,3 +949,4 @@ def _stack_or_empty(items: list[np.ndarray], *, trailing_rank: int) -> np.ndarra
     if any(item.shape != shape for item in items):
         return np.empty((len(items),) + (0,) * trailing_rank, dtype=float)
     return np.stack(items).astype(float, copy=False)
+

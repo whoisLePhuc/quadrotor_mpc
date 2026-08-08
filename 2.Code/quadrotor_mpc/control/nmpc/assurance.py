@@ -28,6 +28,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from quadrotor_mpc.control.nmpc.residuals import ResidualGateStatus
+
 # ---------------------------------------------------------------------------
 # Normalized risk semantics
 # ---------------------------------------------------------------------------
@@ -35,9 +37,10 @@ DETERMINISTIC_SEMANTICS = "deterministic"
 INDIVIDUAL_SEMANTICS = "individual"
 JOINT_SEMANTICS = "joint"
 
-_RESIDUAL_AVAILABLE = "AVAILABLE"
-_RESIDUAL_UNAVAILABLE = "UNAVAILABLE"
-_RESIDUAL_INVALID = "INVALID"
+_GATE_PASS = ResidualGateStatus.PASS.value
+_GATE_FAIL_THRESHOLD = ResidualGateStatus.FAIL_THRESHOLD.value
+_GATE_FAIL_INVALID = ResidualGateStatus.FAIL_INVALID.value
+_GATE_UNKNOWN_UNAVAILABLE = ResidualGateStatus.UNKNOWN_UNAVAILABLE.value
 
 # Risk-budget statuses produced by control/nmpc/risk_budget.py.
 _BUDGET_OK = "BUDGET_OK"
@@ -49,7 +52,7 @@ LEGACY_STATUS_MAP: dict[str, str] = {
     "GUARANTEE_ELIGIBLE": "LEGACY_GUARANTEE_ELIGIBLE_UNVERIFIED",
 }
 
-ASSURANCE_SCHEMA_VERSION = 2
+ASSURANCE_SCHEMA_VERSION = 3
 
 
 class HorizonAssuranceStatus(str, Enum):
@@ -73,6 +76,9 @@ class HorizonAssuranceStatus(str, Enum):
         "NOT_GUARANTEED_RESIDUAL_UNAVAILABLE"
     )
     NOT_GUARANTEED_RESIDUAL_INVALID = "NOT_GUARANTEED_RESIDUAL_INVALID"
+    NOT_GUARANTEED_RESIDUAL_THRESHOLD_EXCEEDED = (
+        "NOT_GUARANTEED_RESIDUAL_THRESHOLD_EXCEEDED"
+    )
     NOT_GUARANTEED_POSITIVE_SLACK = "NOT_GUARANTEED_POSITIVE_SLACK"
     NOT_GUARANTEED_DEADLINE_MISS = "NOT_GUARANTEED_DEADLINE_MISS"
     NOT_GUARANTEED_FALLBACK_ACTIVE = "NOT_GUARANTEED_FALLBACK_ACTIVE"
@@ -92,6 +98,7 @@ _PRECEDENCE: tuple[tuple[HorizonAssuranceStatus, str], ...] = (
     (HorizonAssuranceStatus.NOT_GUARANTEED_PRIMARY_SOLVER_FAILURE, "primary_solver_failure"),
     (HorizonAssuranceStatus.NOT_GUARANTEED_RESIDUAL_UNAVAILABLE, "residual_unavailable"),
     (HorizonAssuranceStatus.NOT_GUARANTEED_RESIDUAL_INVALID, "residual_invalid"),
+    (HorizonAssuranceStatus.NOT_GUARANTEED_RESIDUAL_THRESHOLD_EXCEEDED, "residual_threshold_exceeded"),
     (HorizonAssuranceStatus.NOT_GUARANTEED_POSITIVE_SLACK, "positive_slack"),
     (HorizonAssuranceStatus.NOT_GUARANTEED_DEADLINE_MISS, "deadline_miss"),
     (HorizonAssuranceStatus.NOT_GUARANTEED_FALLBACK_ACTIVE, "fallback_active"),
@@ -107,11 +114,8 @@ class HorizonAssuranceInput:
     risk_semantics: str
     risk_budget_status: str | None
     primary_solver_success: bool
+    residual_gate_status: str
     residual_status: str
-    primal_residual: float | None
-    dual_residual: float | None
-    primal_residual_tolerance: float
-    dual_residual_tolerance: float
     maximum_slack: float
     slack_tolerance: float
     deadline_missed: bool
@@ -221,12 +225,7 @@ def classify_horizon_assurance(
     if semantics != JOINT_SEMANTICS:
         failed.append("risk_semantics_unknown")
 
-    numeric_values = (
-        data.maximum_slack,
-        data.slack_tolerance,
-        data.primal_residual_tolerance,
-        data.dual_residual_tolerance,
-    )
+    numeric_values = (data.maximum_slack, data.slack_tolerance)
     if not all(
         isinstance(value, (int, float)) and math.isfinite(value)
         for value in numeric_values
@@ -239,21 +238,13 @@ def classify_horizon_assurance(
     if not data.primary_solver_success:
         failed.append("primary_solver_failure")
 
-    if data.residual_status == _RESIDUAL_UNAVAILABLE:
+    if data.residual_gate_status == _GATE_UNKNOWN_UNAVAILABLE:
         failed.append("residual_unavailable")
-    elif data.residual_status != _RESIDUAL_AVAILABLE:
+    elif data.residual_gate_status == _GATE_FAIL_INVALID:
         failed.append("residual_invalid")
-    elif (
-        data.primal_residual is None
-        or data.dual_residual is None
-        or not math.isfinite(data.primal_residual)
-        or not math.isfinite(data.dual_residual)
-    ):
-        failed.append("residual_invalid")
-    elif (
-        data.primal_residual > data.primal_residual_tolerance
-        or data.dual_residual > data.dual_residual_tolerance
-    ):
+    elif data.residual_gate_status == _GATE_FAIL_THRESHOLD:
+        failed.append("residual_threshold_exceeded")
+    elif data.residual_gate_status != _GATE_PASS:
         failed.append("residual_invalid")
 
     if data.maximum_slack > data.slack_tolerance:

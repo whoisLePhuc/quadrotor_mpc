@@ -417,6 +417,20 @@ class NativeTrialResult:
     episode_any_deadline_miss: bool
     budget_failure_ticks: int
     maximum_budget_error: float
+    residual_available_count: int
+    residual_unavailable_count: int
+    residual_invalid_count: int
+    residual_available_rate: float
+    residual_invalid_rate: float
+    residual_gate_pass_rate: float
+    residual_gate_fail_rate: float
+    residual_gate_unknown_rate: float
+    primal_residual_p50: float | None
+    primal_residual_p95: float | None
+    primal_residual_p99: float | None
+    dual_residual_p50: float | None
+    dual_residual_p95: float | None
+    dual_residual_p99: float | None
 
     def to_mapping(self) -> dict[str, Any]:
         return asdict(self)
@@ -584,6 +598,61 @@ def summarize_native_trial(
     def rate(values: np.ndarray) -> float:
         return float(np.mean(values)) if values.size else 0.0
 
+    primal_status = np.asarray(
+        result.get("primary_solver_primal_residual_status", []),
+        dtype=str,
+    )
+    dual_status = np.asarray(
+        result.get("primary_solver_dual_residual_status", []),
+        dtype=str,
+    )
+    gate_status = np.asarray(
+        result.get("primary_solver_residual_gate_status", []),
+        dtype=str,
+    )
+    raw_primal = np.asarray(
+        result.get("primary_solver_primal_residual", []),
+        dtype=object,
+    )
+    available_primal = np.asarray(
+        [
+            float(value)
+            for value, status in zip(raw_primal, primal_status)
+            if status == "AVAILABLE" and isinstance(value, (int, float))
+        ],
+        dtype=float,
+    )
+    raw_dual = np.asarray(
+        result.get("primary_solver_dual_residual", []),
+        dtype=object,
+    )
+    available_dual = np.asarray(
+        [
+            float(value)
+            for value, status in zip(raw_dual, dual_status)
+            if status == "AVAILABLE" and isinstance(value, (int, float))
+        ],
+        dtype=float,
+    )
+    residual_available_count = int(np.sum(primal_status == "AVAILABLE"))
+    residual_unavailable_count = int(np.sum(primal_status == "UNAVAILABLE"))
+    residual_invalid_count = int(np.sum(primal_status == "INVALID"))
+    tick_count = len(primal_status) if len(primal_status) else 1
+    gate_pass_rate = float(np.mean(gate_status == "PASS")) if gate_status.size else 0.0
+    gate_fail_rate = float(
+        np.mean((gate_status == "FAIL_THRESHOLD") | (gate_status == "FAIL_INVALID"))
+    ) if gate_status.size else 0.0
+    gate_unknown_rate = (
+        float(np.mean(gate_status == "UNKNOWN_UNAVAILABLE"))
+        if gate_status.size
+        else 0.0
+    )
+
+    def available_percentile(values: np.ndarray, q: float) -> float | None:
+        if not values.size:
+            return None
+        return float(np.percentile(values, q))
+
     return NativeTrialResult(
         noise_label=noise_label,
         covariance_scale=float(covariance_scale),
@@ -627,6 +696,20 @@ def summarize_native_trial(
         episode_any_deadline_miss=bool(np.any(deadline_missed)),
         budget_failure_ticks=int(np.sum(budget_failures)),
         maximum_budget_error=maximum_budget_error,
+        residual_available_count=residual_available_count,
+        residual_unavailable_count=residual_unavailable_count,
+        residual_invalid_count=residual_invalid_count,
+        residual_available_rate=residual_available_count / tick_count,
+        residual_invalid_rate=residual_invalid_count / tick_count,
+        residual_gate_pass_rate=gate_pass_rate,
+        residual_gate_fail_rate=gate_fail_rate,
+        residual_gate_unknown_rate=gate_unknown_rate,
+        primal_residual_p50=available_percentile(available_primal, 50),
+        primal_residual_p95=available_percentile(available_primal, 95),
+        primal_residual_p99=available_percentile(available_primal, 99),
+        dual_residual_p50=available_percentile(available_dual, 50),
+        dual_residual_p95=available_percentile(available_dual, 95),
+        dual_residual_p99=available_percentile(available_dual, 99),
     )
 
 
