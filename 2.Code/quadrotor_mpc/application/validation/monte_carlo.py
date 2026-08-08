@@ -15,7 +15,7 @@ import platform
 import subprocess
 import sys
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 from importlib import metadata
 from pathlib import Path
@@ -25,6 +25,11 @@ from typing import Any
 import numpy as np
 import yaml
 
+from quadrotor_mpc.application.validation.modes import (
+    CANONICAL_MODES,
+    canonicalize_mode,
+    canonicalize_modes,
+)
 from quadrotor_mpc.core.collision import CollisionType, classify_collision
 from quadrotor_mpc.core.timing import (
     TIMING_FIELD_NAMES,
@@ -33,7 +38,7 @@ from quadrotor_mpc.core.timing import (
 )
 from quadrotor_mpc.interfaces.desktop.viewer import NativeMuJoCoConfig
 
-SUPPORTED_MODES = ("deterministic", "individual", "joint")
+SUPPORTED_MODES = CANONICAL_MODES
 _SENSOR_STD_FIELDS = (
     "position_std_m",
     "velocity_std_mps",
@@ -126,6 +131,8 @@ class NativeMonteCarloProtocol:
     protocol_type: str = "algorithmic_comparison"
     control_period_ms: float = 50.0
     deadline_clock: str = "solver_only"
+    requested_modes: tuple[str, ...] = ()
+    mode_aliases_used: bool = False
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -149,11 +156,15 @@ class NativeMonteCarloProtocol:
             raise ValueError("validation.timing_percentile must be 0.95 or 0.99")
         if not self.modes:
             raise ValueError("modes must contain at least one controller")
-        unsupported = set(self.modes) - set(SUPPORTED_MODES)
+        unsupported = set(self.modes) - set(CANONICAL_MODES)
         if unsupported:
             raise ValueError(f"unsupported native Monte Carlo modes: {sorted(unsupported)}")
         if len(set(self.modes)) != len(self.modes):
             raise ValueError("modes must not contain duplicates")
+        if self.requested_modes and len(self.requested_modes) != len(self.modes):
+            raise ValueError(
+                "requested_modes must match the number of canonical modes"
+            )
         if not self.noise_levels:
             raise ValueError("noise_levels must contain at least one level")
         labels = [level.label for level in self.noise_levels]
@@ -255,6 +266,9 @@ def load_native_monte_carlo_protocol(
     raw_modes = root.get("modes", SUPPORTED_MODES)
     if not isinstance(raw_modes, Sequence) or isinstance(raw_modes, (str, bytes)):
         raise TypeError("modes must be a list")
+    canonical_modes = canonicalize_modes(
+        [str(mode) for mode in raw_modes],
+    )
 
     def resolve_input(value: Any) -> Path:
         candidate = Path(str(value)).expanduser()
@@ -272,7 +286,9 @@ def load_native_monte_carlo_protocol(
         output_dir=resolve_output(
             root.get("output_dir", "outputs/native_monte_carlo")
         ),
-        modes=tuple(str(mode).lower() for mode in raw_modes),
+        modes=tuple(mode.canonical_mode for mode in canonical_modes),
+        requested_modes=tuple(mode.requested_mode for mode in canonical_modes),
+        mode_aliases_used=any(mode.legacy_alias_used for mode in canonical_modes),
         noise_levels=levels,
         trials=int(root.get("trials", 50)),
         first_seed=int(root.get("first_seed", 1000)),
@@ -342,9 +358,7 @@ def effective_native_config(
     protocol_type: str = "algorithmic_comparison",
 ) -> NativeMuJoCoConfig:
     """Build one paired-trial config without mutating the source configuration."""
-    normalized_mode = str(mode).lower()
-    if normalized_mode not in SUPPORTED_MODES:
-        raise ValueError(f"unsupported native Monte Carlo mode: {mode}")
+    normalized_mode = canonicalize_mode(mode).canonical_mode
     covariance_scale = _finite_positive(covariance_scale, "covariance_scale")
     mapping = base.to_mapping()
     mapping["name"] = f"{base.name}-mc-{normalized_mode}-cov{covariance_scale:g}-seed{seed}"
@@ -393,6 +407,7 @@ def effective_native_config(
         chance["risk_budget"]["semantics"] = (
             "individual" if normalized_mode == "individual" else "joint"
         )
+        chance["risk_budget"]["allocation"] = "uniform"
     return NativeMuJoCoConfig.from_mapping(mapping)
 
 
@@ -532,6 +547,11 @@ class NativeTrialResult:
     minimum_obstacle_clearance_m: float | None = None
     minimum_ground_clearance_m: float | None = None
     timing_stats: dict[str, dict[str, float | int | None]] | None = None
+    requested_mode: str = ""
+    legacy_mode_alias_used: bool = False
+    risk_semantics: str = ""
+    risk_allocation_method: str = ""
+    allocator_config_hash: str | None = None
 
     def to_mapping(self) -> dict[str, Any]:
         return asdict(self)
@@ -715,6 +735,18 @@ def summarize_native_trial(
         if isinstance(timing_series, (list, tuple))
         else None
     )
+    if mode == "deterministic":
+        risk_semantics = "deterministic"
+        risk_allocation_method = "not_applicable"
+    elif mode == "individual":
+        risk_semantics = "individual"
+        risk_allocation_method = "uniform"
+    else:
+        risk_semantics = "joint"
+        risk_allocation_method = "uniform"
+    requested_mode = str(result.get("requested_mode", mode))
+    legacy_alias_used = bool(result.get("legacy_mode_alias_used", False))
+    allocator_config_hash = result.get("allocator_config_hash")
     success = bool(
         completed
         and not collision
@@ -866,6 +898,11 @@ def summarize_native_trial(
         minimum_obstacle_clearance_m=result.get("minimum_obstacle_clearance_m"),
         minimum_ground_clearance_m=result.get("minimum_ground_clearance_m"),
         timing_stats=timing_stats,
+        requested_mode=requested_mode,
+        legacy_mode_alias_used=legacy_alias_used,
+        risk_semantics=risk_semantics,
+        risk_allocation_method=risk_allocation_method,
+        allocator_config_hash=allocator_config_hash,
         numerical_failure=numerical_failure,
         final_error_m=final_error,
         min_clearance_m=min_clearance,
@@ -1262,6 +1299,13 @@ def aggregate_native_trials(
         raise ValueError(
             "cannot aggregate UNKNOWN_LEGACY trials into a new protocol summary"
         )
+    trial_modes = {trial.mode for trial in trials}
+    unknown_modes = trial_modes - set(protocol.modes)
+    if unknown_modes:
+        raise ValueError(
+            "cannot aggregate trials with canonical modes outside the protocol: "
+            f"{sorted(unknown_modes)}; grouped runs must share canonical modes"
+        )
     numeric_fields = (
         "final_error_m",
         "min_clearance_m",
@@ -1289,8 +1333,13 @@ def aggregate_native_trials(
         "fallback_application_rate",
     )
     output: dict[str, Any] = {
-        "schema_version": 2,
+        "schema_version": 3,
+        "collision_schema_version": 1,
         "timing_schema": dict(TIMING_SCHEMA_METADATA),
+        "mode_schema_version": 2,
+        "controller_modes": list(protocol.modes),
+        "requested_modes": list(protocol.requested_modes) or list(protocol.modes),
+        "mode_aliases_used": bool(protocol.mode_aliases_used),
         "protocol": (
             active_protocols.pop() if active_protocols else "UNKNOWN_LEGACY"
         ),
@@ -1410,7 +1459,9 @@ def aggregate_native_trials(
         deterministic = {
             item.seed: item for item in level_items if item.mode == "deterministic"
         }
-        for mode in ("individual", "joint"):
+        for mode in protocol.modes:
+            if mode == "deterministic":
+                continue
             compared = {item.seed: item for item in level_items if item.mode == mode}
             common = sorted(set(deterministic) & set(compared))
             if not common:
@@ -1804,12 +1855,18 @@ def create_validation_directory(
         encoding="utf-8",
     )
     manifest = {
-        "schema_version": 2,
+        "schema_version": 3,
+        "collision_schema_version": 1,
+        "timing_schema": dict(TIMING_SCHEMA_METADATA),
+        "mode_schema_version": 2,
         "stage": 8,
         "run_id": directory.name,
         "created_at_utc": timestamp.isoformat(),
         "status": "RUNNING",
         "protocol_fingerprint": protocol_fingerprint(protocol, base_config),
+        "controller_modes": list(protocol.modes),
+        "requested_modes": list(protocol.requested_modes) or list(protocol.modes),
+        "mode_aliases_used": bool(protocol.mode_aliases_used),
         "git_commit": provenance["git_commit"],
         "source": provenance,
         "command": list(command if command is not None else sys.argv),
@@ -1835,6 +1892,22 @@ def append_trial_checkpoint(directory: Path, trial: NativeTrialResult) -> None:
         stream.write(json.dumps(trial.to_mapping(), separators=(",", ":")) + "\n")
 
 
+def _upgrade_legacy_trial_mode(trial: NativeTrialResult) -> NativeTrialResult:
+    """Canonicalize a legacy ``joint`` trial mode with provenance flags.
+
+    Legacy artifacts stored ``mode="joint"``; the reader keeps the requested
+    name for audit and promotes the canonical mode to ``joint_uniform``.
+    """
+    if trial.mode != "joint":
+        return trial
+    return replace(
+        trial,
+        mode="joint_uniform",
+        requested_mode="joint",
+        legacy_mode_alias_used=True,
+    )
+
+
 def load_trial_checkpoint(directory: str | Path) -> list[NativeTrialResult]:
     path = Path(directory) / "trials.jsonl"
     if not path.exists():
@@ -1844,11 +1917,12 @@ def load_trial_checkpoint(directory: str | Path) -> list[NativeTrialResult]:
         if not line.strip():
             continue
         try:
-            trials.append(NativeTrialResult(**json.loads(line)))
+            trial = NativeTrialResult(**json.loads(line))
         except (TypeError, json.JSONDecodeError) as exc:
             raise ValueError(
                 f"invalid trial checkpoint at {path}:{line_number}"
             ) from exc
+        trials.append(_upgrade_legacy_trial_mode(trial))
     return trials
 
 
@@ -1869,7 +1943,7 @@ def _save_plot(
     colors = {
         "deterministic": "#64748b",
         "individual": "#f59e0b",
-        "joint": "#2563eb",
+        "joint_uniform": "#2563eb",
     }
     figure, axes = plt.subplots(2, 3, figsize=(15, 8.5), constrained_layout=True)
     x = np.arange(len(labels), dtype=float)

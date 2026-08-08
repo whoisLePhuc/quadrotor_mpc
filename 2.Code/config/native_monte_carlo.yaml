@@ -10,7 +10,7 @@ first_seed: 1000
 modes:
   - deterministic
   - individual
-  - joint
+  - joint_uniform
 
 # These are covariance multipliers. The implementation multiplies every
 # affected standard deviation by sqrt(covariance_scale).

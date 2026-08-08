@@ -33,7 +33,7 @@ def protocol(*, trials: int = 30) -> NativeMonteCarloProtocol:
         name="unit-native-mc",
         base_config_path=ROOT / "config" / "mujoco_native_ccmpc.yaml",
         output_dir=ROOT / "outputs" / "test",
-        modes=("deterministic", "joint"),
+        modes=("deterministic", "joint_uniform"),
         noise_levels=(NoiseLevel("nominal", 1.0),),
         trials=trials,
         first_seed=10,
@@ -127,7 +127,14 @@ class NativeMonteCarloConfigurationTests(unittest.TestCase):
             ROOT / "config" / "native_monte_carlo.yaml"
         )
         self.assertEqual(loaded.trials, 50)
-        self.assertEqual(loaded.modes, ("deterministic", "individual", "joint"))
+        self.assertEqual(
+            loaded.modes, ("deterministic", "individual", "joint_uniform")
+        )
+        self.assertEqual(
+            loaded.requested_modes,
+            ("deterministic", "individual", "joint_uniform"),
+        )
+        self.assertFalse(loaded.mode_aliases_used)
         self.assertEqual(
             [level.covariance_scale for level in loaded.noise_levels],
             [0.25, 1.0, 4.0],
@@ -140,7 +147,7 @@ class NativeMonteCarloConfigurationTests(unittest.TestCase):
         )
         scaled = effective_native_config(
             base,
-            mode="joint",
+            mode="joint_uniform",
             covariance_scale=4.0,
             seed=44,
         )
@@ -166,7 +173,7 @@ class NativeMonteCarloConfigurationTests(unittest.TestCase):
             base, mode="individual", covariance_scale=1.0, seed=1
         )
         joint = effective_native_config(
-            base, mode="joint", covariance_scale=1.0, seed=1
+            base, mode="joint_uniform", covariance_scale=1.0, seed=1
         )
         self.assertFalse(deterministic.chance_constraints.enabled)
         self.assertFalse(deterministic.covariance_propagation.enabled)
@@ -189,7 +196,7 @@ class NativeMonteCarloMetricTests(unittest.TestCase):
             ROOT / "config" / "mujoco_native_ccmpc.yaml"
         )
         config = effective_native_config(
-            base, mode="joint", covariance_scale=1.0, seed=4
+            base, mode="joint_uniform", covariance_scale=1.0, seed=4
         )
         steps = 2
         result = {
@@ -242,7 +249,7 @@ class NativeMonteCarloMetricTests(unittest.TestCase):
             trial("deterministic", seed)
             for seed in range(10, 60)
         ] + [
-            trial("joint", seed, slack=True)
+            trial("joint_uniform", seed, slack=True)
             for seed in range(10, 60)
         ]
         aggregate = aggregate_native_trials(
@@ -250,7 +257,7 @@ class NativeMonteCarloMetricTests(unittest.TestCase):
             protocol(trials=50),
             controller_period_ms=50.0,
         )
-        joint = aggregate["noise_levels"]["nominal"]["controllers"]["joint"]
+        joint = aggregate["noise_levels"]["nominal"]["controllers"]["joint_uniform"]
         self.assertEqual(joint["collision_rate"]["events"], 0)
         self.assertEqual(joint["gates"]["claim_status"], "BLOCKED_POSITIVE_SLACK")
         self.assertEqual(
@@ -263,7 +270,7 @@ class NativeMonteCarloMetricTests(unittest.TestCase):
             trial("deterministic", seed)
             for seed in range(10, 40)
         ] + [
-            trial("joint", seed)
+            trial("joint_uniform", seed)
             for seed in range(10, 39)
         ]
         aggregate = aggregate_native_trials(
@@ -272,7 +279,7 @@ class NativeMonteCarloMetricTests(unittest.TestCase):
             controller_period_ms=50.0,
         )
         paired = aggregate["noise_levels"]["nominal"]["paired_comparisons"][
-            "joint_minus_deterministic"
+            "joint_uniform_minus_deterministic"
         ]
         self.assertEqual(len(paired["paired_seeds"]), 29)
         self.assertAlmostEqual(
@@ -363,7 +370,7 @@ class NativeMonteCarloArtifactTests(unittest.TestCase):
             ROOT / "config" / "mujoco_native_ccmpc.yaml"
         )
         configured = protocol(trials=1)
-        items = [trial("deterministic", 10), trial("joint", 10)]
+        items = [trial("deterministic", 10), trial("joint_uniform", 10)]
         with tempfile.TemporaryDirectory() as temporary:
             configured = NativeMonteCarloProtocol(
                 **{
@@ -411,7 +418,7 @@ class NativeMonteCarloArtifactTests(unittest.TestCase):
             manifest = __import__("yaml").safe_load(
                 (directory / "manifest.yaml").read_text(encoding="utf-8")
             )
-            self.assertEqual(manifest["schema_version"], 2)
+            self.assertEqual(manifest["schema_version"], 3)
             self.assertEqual(manifest["source"]["status"], "DIRTY_GIT_SNAPSHOT")
             self.assertTrue(artifacts["plot"].exists())
             self.assertTrue(artifacts["report"].exists())

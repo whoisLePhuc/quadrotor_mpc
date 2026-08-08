@@ -473,7 +473,7 @@ class TimingAggregationTests(unittest.TestCase):
         trial = summarize_native_trial(
             result,
             config,
-            mode="joint",
+            mode="joint_uniform",
             noise_label="nominal",
             covariance_scale=1.0,
             seed=1,
@@ -494,7 +494,7 @@ class TimingAggregationTests(unittest.TestCase):
             name="timing-aggregation",
             base_config_path=CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml",
             output_dir=CODE_ROOT / "outputs" / "test",
-            modes=("deterministic", "joint"),
+            modes=("deterministic", "joint_uniform"),
             noise_levels=(NoiseLevel("nominal", 1.0),),
             trials=30,
             first_seed=10,
@@ -511,7 +511,7 @@ class TimingAggregationTests(unittest.TestCase):
             protocol,
             controller_period_ms=50.0,
         )
-        timing = aggregate["noise_levels"]["nominal"]["controllers"]["joint"]["timing"]
+        timing = aggregate["noise_levels"]["nominal"]["controllers"]["joint_uniform"]["timing"]
         self.assertEqual(
             timing["total_controller_time_ms"]["count_available_trials"],
             1,

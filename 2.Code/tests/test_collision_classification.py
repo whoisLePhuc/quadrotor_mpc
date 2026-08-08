@@ -346,7 +346,7 @@ class CollisionPipelineIntegrationTests(unittest.TestCase):
         return summarize_native_trial(
             result,
             config,
-            mode="joint",
+            mode="joint_uniform",
             noise_label="nominal",
             covariance_scale=1.0,
             seed=1,
@@ -438,7 +438,7 @@ class CollisionPipelineIntegrationTests(unittest.TestCase):
             name="collision-integration",
             base_config_path=CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml",
             output_dir=CODE_ROOT / "outputs" / "test",
-            modes=("deterministic", "joint"),
+            modes=("deterministic", "joint_uniform"),
             noise_levels=(NoiseLevel("nominal", 1.0),),
             trials=30,
             first_seed=10,
@@ -455,7 +455,7 @@ class CollisionPipelineIntegrationTests(unittest.TestCase):
             protocol,
             controller_period_ms=50.0,
         )
-        summary = aggregate["noise_levels"]["nominal"]["controllers"]["joint"]
+        summary = aggregate["noise_levels"]["nominal"]["controllers"]["joint_uniform"]
         self.assertEqual(summary["collision_rate"]["events"], 2)
         self.assertEqual(summary["obstacle_collision_rate"]["events"], 1)
         self.assertEqual(summary["ground_collision_rate"]["events"], 1)
@@ -508,7 +508,7 @@ class CollisionPipelineIntegrationTests(unittest.TestCase):
             name="collision-double-count",
             base_config_path=CODE_ROOT / "config" / "mujoco_native_ccmpc.yaml",
             output_dir=CODE_ROOT / "outputs" / "test",
-            modes=("deterministic", "joint"),
+            modes=("deterministic", "joint_uniform"),
             noise_levels=(NoiseLevel("nominal", 1.0),),
             trials=30,
             first_seed=10,
@@ -525,7 +525,7 @@ class CollisionPipelineIntegrationTests(unittest.TestCase):
             protocol,
             controller_period_ms=50.0,
         )
-        summary = aggregate["noise_levels"]["nominal"]["controllers"]["joint"]
+        summary = aggregate["noise_levels"]["nominal"]["controllers"]["joint_uniform"]
         self.assertEqual(summary["collision_rate"]["events"], 2)
         self.assertEqual(summary["obstacle_collision_rate"]["events"], 2)
         self.assertEqual(summary["ground_collision_rate"]["events"], 1)
@@ -556,7 +556,7 @@ class LegacyCollisionMigrationTests(unittest.TestCase):
         trial = summarize_native_trial(
             legacy,
             config,
-            mode="joint",
+            mode="joint_uniform",
             noise_label="nominal",
             covariance_scale=1.0,
             seed=1,

@@ -384,7 +384,7 @@ class MonteCarloProtocolIntegrationTests(unittest.TestCase):
             name="test",
             base_config_path=Path("config/native_monte_carlo.yaml"),
             output_dir=Path("outputs/test"),
-            modes=("joint",),
+            modes=("joint_uniform",),
             noise_levels=(
                 __import__(
                     "quadrotor_mpc.application.validation.monte_carlo",
