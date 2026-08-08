@@ -31,10 +31,30 @@ BUDGET_INVALID = HorizonAssuranceStatus.NOT_GUARANTEED_RISK_BUDGET_INVALID
 SOLVER_FAILURE = HorizonAssuranceStatus.NOT_GUARANTEED_PRIMARY_SOLVER_FAILURE
 RESIDUAL_UNAVAILABLE = HorizonAssuranceStatus.NOT_GUARANTEED_RESIDUAL_UNAVAILABLE
 RESIDUAL_INVALID = HorizonAssuranceStatus.NOT_GUARANTEED_RESIDUAL_INVALID
+RESIDUAL_THRESHOLD_EXCEEDED = (
+    HorizonAssuranceStatus.NOT_GUARANTEED_RESIDUAL_THRESHOLD_EXCEEDED
+)
 POSITIVE_SLACK = HorizonAssuranceStatus.NOT_GUARANTEED_POSITIVE_SLACK
 DEADLINE_MISS = HorizonAssuranceStatus.NOT_GUARANTEED_DEADLINE_MISS
 FALLBACK_ACTIVE = HorizonAssuranceStatus.NOT_GUARANTEED_FALLBACK_ACTIVE
 INVALID_NUMERICS = HorizonAssuranceStatus.NOT_GUARANTEED_INVALID_NUMERICS
+
+
+def _residual_gate_from_overrides(overrides: dict[str, Any]) -> str:
+    if "residual_gate_status" in overrides:
+        return str(overrides["residual_gate_status"])
+    residual_status = str(overrides.get("residual_status", "AVAILABLE"))
+    if residual_status == "UNAVAILABLE":
+        return "UNKNOWN_UNAVAILABLE"
+    if residual_status == "INVALID":
+        return "FAIL_INVALID"
+    primal = overrides.get("primal_residual", 1e-7)
+    if primal is None or not isinstance(primal, (int, float)) or not math.isfinite(primal):
+        return "FAIL_INVALID"
+    tolerance = float(overrides.get("primal_residual_tolerance", 1e-3))
+    if float(primal) > tolerance:
+        return "FAIL_THRESHOLD"
+    return "PASS"
 
 
 def valid_joint_input(**overrides: Any) -> HorizonAssuranceInput:
@@ -48,23 +68,8 @@ def valid_joint_input(**overrides: Any) -> HorizonAssuranceInput:
         primary_solver_success=bool(
             overrides.get("primary_solver_success", True)
         ),
+        residual_gate_status=_residual_gate_from_overrides(overrides),
         residual_status=str(overrides.get("residual_status", "AVAILABLE")),
-        primal_residual=(
-            None
-            if "primal_residual" in overrides and overrides["primal_residual"] is None
-            else float(overrides.get("primal_residual", 1e-7))
-        ),
-        dual_residual=(
-            None
-            if "dual_residual" in overrides and overrides["dual_residual"] is None
-            else float(overrides.get("dual_residual", 2e-7))
-        ),
-        primal_residual_tolerance=float(
-            overrides.get("primal_residual_tolerance", 1e-3)
-        ),
-        dual_residual_tolerance=float(
-            overrides.get("dual_residual_tolerance", 1e-3)
-        ),
         maximum_slack=float(overrides.get("maximum_slack", 0.0)),
         slack_tolerance=float(overrides.get("slack_tolerance", 1e-6)),
         deadline_missed=bool(overrides.get("deadline_missed", False)),
@@ -142,7 +147,7 @@ class HorizonAssuranceEligibilityTests(unittest.TestCase):
     def test_residual_above_tolerance_blocks_horizon_eligibility(self):
         result = decision(valid_joint_input(primal_residual=2e-3))
         self.assertFalse(result.eligible)
-        self.assertEqual(result.status, RESIDUAL_INVALID)
+        self.assertEqual(result.status, RESIDUAL_THRESHOLD_EXCEEDED)
 
     def test_slack_above_tolerance_blocks_horizon_eligibility(self):
         result = decision(valid_joint_input(maximum_slack=2e-6))
@@ -193,7 +198,7 @@ class HorizonAssuranceBoundaryTests(unittest.TestCase):
             )
         )
         self.assertFalse(result.eligible)
-        self.assertEqual(result.status, RESIDUAL_INVALID)
+        self.assertEqual(result.status, RESIDUAL_THRESHOLD_EXCEEDED)
 
 
 class HorizonAssurancePrecedenceTests(unittest.TestCase):
@@ -323,8 +328,8 @@ class HorizonAssuranceContractTests(unittest.TestCase):
         for mapped in LEGACY_STATUS_MAP.values():
             self.assertNotEqual(mapped, "HORIZON_GUARANTEE_ELIGIBLE")
 
-    def test_schema_version_is_two(self):
-        self.assertEqual(ASSURANCE_SCHEMA_VERSION, 2)
+    def test_schema_version_is_three(self):
+        self.assertEqual(ASSURANCE_SCHEMA_VERSION, 3)
 
 
 class RiskSemanticsNormalizationTests(unittest.TestCase):
@@ -382,6 +387,9 @@ class SupervisorAssuranceIntegrationTests(unittest.TestCase):
             primary_solver_success=True,
             primary_solver_primal_residual=1e-7,
             primary_solver_dual_residual=1e-7,
+            primary_solver_primal_residual_status="AVAILABLE",
+            primary_solver_dual_residual_status="AVAILABLE",
+            primary_solver_residual_gate_status="PASS",
             residual_status="AVAILABLE",
             safety_assurance_status=decision.status.value,
             horizon_assurance_status=decision.status.value,

@@ -101,6 +101,20 @@ def trial(
         episode_any_deadline_miss=fallback,
         budget_failure_ticks=0,
         maximum_budget_error=1e-16,
+        residual_available_count=10,
+        residual_unavailable_count=0,
+        residual_invalid_count=0,
+        residual_available_rate=1.0,
+        residual_invalid_rate=0.0,
+        residual_gate_pass_rate=1.0,
+        residual_gate_fail_rate=0.0,
+        residual_gate_unknown_rate=0.0,
+        primal_residual_p50=1e-6,
+        primal_residual_p95=2e-6,
+        primal_residual_p99=3e-6,
+        dual_residual_p50=1e-6,
+        dual_residual_p95=2e-6,
+        dual_residual_p99=3e-6,
     )
 
 

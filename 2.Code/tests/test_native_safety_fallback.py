@@ -104,8 +104,14 @@ def solution(
         risk_budget_status=risk_status,
         primary_solver_status="Solve_Succeeded",
         primary_solver_success=primary_success,
-        primary_solver_primal_residual=1e-7 if residual_status == "AVAILABLE" else 0.0,
-        primary_solver_dual_residual=1e-7 if residual_status == "AVAILABLE" else 0.0,
+        primary_solver_primal_residual=(
+            1e-7 if residual_status == "AVAILABLE" else None
+        ),
+        primary_solver_dual_residual=(
+            1e-7 if residual_status == "AVAILABLE" else None
+        ),
+        primary_solver_primal_residual_status=residual_status,
+        primary_solver_dual_residual_status=residual_status,
         residual_status=residual_status,
     )
 
