@@ -276,6 +276,18 @@ def replay_native_recording(config: Any, recording: dict[str, Any], runtime: Any
                     assurance_schema_version=int(
                         row.get("assurance_schema_version", 3) or 3
                     ),
+                    chance_profile_schema_version=int(
+                        row.get("chance_profile_schema_version", 1) or 1
+                    ),
+                    chance_profile_application_status=str(
+                        row.get("chance_profile_application_status", "")
+                    ),
+                    chance_profile_enforced_profile_id=str(
+                        row.get("chance_profile_enforced_profile_id", "")
+                    ),
+                    chance_profile_solve_attempt_id=str(
+                        row.get("chance_profile_solve_attempt_id", "")
+                    ),
                     projected_uncertainties=(
                         recording["projected_uncertainty_horizons"][index]
                         if len(recording.get("projected_uncertainty_horizons", []))

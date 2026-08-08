@@ -431,6 +431,9 @@ class NativeTrialResult:
     dual_residual_p50: float | None
     dual_residual_p95: float | None
     dual_residual_p99: float | None
+    enforced_profile_count: int
+    missing_enforced_profile_count: int
+    post_solve_diagnostic_profile_count: int
 
     def to_mapping(self) -> dict[str, Any]:
         return asdict(self)
@@ -598,6 +601,25 @@ def summarize_native_trial(
     def rate(values: np.ndarray) -> float:
         return float(np.mean(values)) if values.size else 0.0
 
+    profile_status = np.asarray(
+        result.get("chance_profile_application_status", []),
+        dtype=str,
+    )
+    enforced_profile_count = int(
+        np.sum(profile_status == "APPLIED")
+    )
+    missing_enforced_profile_count = int(
+        np.sum(profile_status == "NOT_APPLICABLE_DETERMINISTIC")
+    )
+    diagnostic_profiles = result.get(
+        "post_solve_diagnostic_profile", []
+    )
+    post_solve_diagnostic_profile_count = (
+        len(diagnostic_profiles)
+        if isinstance(diagnostic_profiles, (list, tuple))
+        else 0
+    )
+
     primal_status = np.asarray(
         result.get("primary_solver_primal_residual_status", []),
         dtype=str,
@@ -710,6 +732,9 @@ def summarize_native_trial(
         dual_residual_p50=available_percentile(available_dual, 50),
         dual_residual_p95=available_percentile(available_dual, 95),
         dual_residual_p99=available_percentile(available_dual, 99),
+        enforced_profile_count=enforced_profile_count,
+        missing_enforced_profile_count=missing_enforced_profile_count,
+        post_solve_diagnostic_profile_count=post_solve_diagnostic_profile_count,
     )
 
 

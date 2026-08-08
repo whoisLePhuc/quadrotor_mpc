@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 import numpy as np
 
@@ -111,6 +111,12 @@ class CoupledStep:
     horizon_assurance_reason: str = ""
     horizon_assurance_failed_checks: tuple[str, ...] = ()
     assurance_schema_version: int = 3
+    chance_profile_schema_version: int = 1
+    enforced_chance_profile: Any | None = None
+    post_solve_diagnostic_profile: Any | None = None
+    chance_profile_application_status: str = ""
+    chance_profile_enforced_profile_id: str = ""
+    chance_profile_solve_attempt_id: str = ""
 
 
 class CoupledRuntime(Protocol):
@@ -755,6 +761,24 @@ def run_coupled_simulation(
                         ),
                         assurance_schema_version=(
                             solution.assurance_schema_version
+                        ),
+                        chance_profile_schema_version=(
+                            solution.chance_profile_schema_version
+                        ),
+                        enforced_chance_profile=(
+                            solution.enforced_chance_profile
+                        ),
+                        post_solve_diagnostic_profile=(
+                            solution.post_solve_diagnostic_profile
+                        ),
+                        chance_profile_application_status=(
+                            solution.chance_profile_application_status
+                        ),
+                        chance_profile_enforced_profile_id=(
+                            solution.chance_profile_enforced_profile_id
+                        ),
+                        chance_profile_solve_attempt_id=(
+                            solution.chance_profile_solve_attempt_id
                         ),
                     )
                 )

@@ -29,6 +29,12 @@ from quadrotor_mpc.control.nmpc.residuals import (
     SolverResidual,
     extract_residual,
 )
+from quadrotor_mpc.core.chance_profile import (
+    ENFORCED_PHASE,
+    POST_SOLVE_DIAGNOSTIC_PHASE,
+    ChanceProfileShapeError,
+    build_chance_profile_snapshot,
+)
 from quadrotor_mpc.core.contracts import (
     ControlGoal,
     ControlSolution,
@@ -124,6 +130,7 @@ class DeterministicNMPCController:
         )
         self._last_nominal_states: np.ndarray | None = None
         self._last_nominal_controls: np.ndarray | None = None
+        self._solve_attempt_counter = 0
 
         if cached is not None:
             if self._chance_options.enabled:
@@ -221,6 +228,52 @@ class DeterministicNMPCController:
         controls = np.zeros((self._horizon_steps, 4), dtype=float)
         return states, controls
 
+    def _validate_profile_shapes(
+        self,
+        seed_states: np.ndarray,
+        seed_controls: np.ndarray,
+        obstacle_predictions: np.ndarray,
+        chance_profile,
+    ) -> None:
+        """Reject invalid horizon shapes before the solver is ever called."""
+        expected_steps = self._horizon_steps + 1
+        if seed_states.shape != (expected_steps, 13):
+            raise ChanceProfileShapeError(
+                f"seed_states must have shape ({expected_steps}, 13), "
+                f"got {seed_states.shape}"
+            )
+        if seed_controls.shape != (self._horizon_steps, 4):
+            raise ChanceProfileShapeError(
+                f"seed_controls must have shape ({self._horizon_steps}, 4), "
+                f"got {seed_controls.shape}"
+            )
+        if obstacle_predictions.shape != (
+            len(self._obstacle_specs),
+            expected_steps,
+            3,
+        ):
+            raise ChanceProfileShapeError(
+                "obstacle_predictions must have shape "
+                f"({len(self._obstacle_specs)}, {expected_steps}, 3), "
+                f"got {obstacle_predictions.shape}"
+            )
+        expected_constraint_shape = (
+            expected_steps,
+            len(self._obstacle_specs),
+        )
+        if chance_profile.risk_allocations.shape != expected_constraint_shape:
+            raise ChanceProfileShapeError(
+                "risk_allocations must have shape "
+                f"{expected_constraint_shape}, got "
+                f"{chance_profile.risk_allocations.shape}"
+            )
+        if chance_profile.safety_radii_m.shape != expected_constraint_shape:
+            raise ChanceProfileShapeError(
+                "safety_radii_m must have shape "
+                f"{expected_constraint_shape}, got "
+                f"{chance_profile.safety_radii_m.shape}"
+            )
+
     def solve(
         self,
         belief: VehicleBelief,
@@ -279,6 +332,45 @@ class DeterministicNMPCController:
             obstacle_covariances=tightening_obstacle_covariances,
             base_safety_radii_m=base_safety_radii,
             options=self._chance_options,
+        )
+
+        self._validate_profile_shapes(
+            seed_states,
+            seed_controls,
+            obstacle_predictions,
+            chance_profile,
+        )
+
+        self._solve_attempt_counter += 1
+        solve_attempt_id = f"{self._solve_attempt_counter:06d}"
+        obstacle_ids = tuple(
+            str(getattr(obstacle, "name", "")) or f"obstacle_{index}"
+            for index, obstacle in enumerate(obstacles)
+        )
+        node_indices = tuple(range(prediction_steps))
+        enforced_profile = (
+            build_chance_profile_snapshot(
+                control_tick=0,
+                solve_attempt_id=solve_attempt_id,
+                phase=ENFORCED_PHASE,
+                trajectory_source="seed_trajectory",
+                allocation_method=chance_profile.risk_allocation_method,
+                risk_semantics=chance_profile.risk_semantics,
+                node_indices=node_indices,
+                obstacle_ids=obstacle_ids,
+                epsilon=chance_profile.risk_allocations,
+                projected_sigma=chance_profile.projected_sigmas_m,
+                tightening_margin=chance_profile.tightenings_m,
+                tightened_radius=chance_profile.safety_radii_m,
+                active_mask=np.ones(
+                    (prediction_steps, len(obstacles)), dtype=bool
+                ),
+                joint_budget=chance_profile.configured_total_epsilon,
+                allocated_budget=chance_profile.allocated_epsilon,
+                remaining_budget=chance_profile.remaining_epsilon,
+            )
+            if self._chance_options.enabled
+            else None
         )
 
         self._goal_state["pos"] = {
@@ -370,10 +462,15 @@ class DeterministicNMPCController:
         used_risks = chance_profile.risk_allocations
         used_safety_radii = chance_profile.safety_radii_m
         used_risk_metadata = chance_profile
-        if horizon_length != prediction_steps:
+        post_solve_diagnostic_profile = None
+        if horizon_length != prediction_steps and self._chance_options.enabled:
+            # Post-solve diagnostic: re-evaluate the chance profile on the
+            # optimized trajectory.  This is never written back into the
+            # enforced fields above, which must describe what the solver
+            # actually received.
             target = np.linspace(0.0, 1.0, horizon_length)
             source = np.linspace(0.0, 1.0, prediction_steps)
-            used_obstacle_predictions = np.asarray(
+            diagnostic_obstacle_predictions = np.asarray(
                 [
                     np.column_stack(
                         [
@@ -385,30 +482,77 @@ class DeterministicNMPCController:
                 ],
                 dtype=float,
             )
-            used_sigmas = np.column_stack(
-                [
-                    np.interp(target, source, chance_profile.projected_sigmas_m[:, index])
-                    for index in range(len(obstacles))
-                ]
-            )
-            # Reallocate for the actual output horizon.  Interpolating a joint
-            # allocation would change its sum whenever the number of returned
-            # nodes differs from the configured grid.
-            used_risk_metadata = build_spherical_chance_profile(
+            diagnostic_metadata = build_spherical_chance_profile(
                 vehicle_positions=nominal_states[:, :3],
-                obstacle_positions=used_obstacle_predictions,
+                obstacle_positions=diagnostic_obstacle_predictions,
                 vehicle_covariances=predicted_covariances,
                 obstacle_covariances=predicted_obstacle_covariances,
                 base_safety_radii_m=base_safety_radii,
                 options=self._chance_options,
             )
-            used_sigmas = used_risk_metadata.projected_sigmas_m
-            used_risks = used_risk_metadata.risk_allocations
-            used_safety_radii = used_risk_metadata.safety_radii_m
+            post_solve_diagnostic_profile = build_chance_profile_snapshot(
+                control_tick=0,
+                solve_attempt_id=solve_attempt_id,
+                phase=POST_SOLVE_DIAGNOSTIC_PHASE,
+                trajectory_source="optimized_trajectory",
+                allocation_method=diagnostic_metadata.risk_allocation_method,
+                risk_semantics=diagnostic_metadata.risk_semantics,
+                node_indices=tuple(range(horizon_length)),
+                obstacle_ids=obstacle_ids,
+                epsilon=diagnostic_metadata.risk_allocations,
+                projected_sigma=diagnostic_metadata.projected_sigmas_m,
+                tightening_margin=diagnostic_metadata.tightenings_m,
+                tightened_radius=diagnostic_metadata.safety_radii_m,
+                active_mask=np.ones(
+                    (horizon_length, len(obstacles)), dtype=bool
+                ),
+                joint_budget=diagnostic_metadata.configured_total_epsilon,
+                allocated_budget=diagnostic_metadata.allocated_epsilon,
+                remaining_budget=diagnostic_metadata.remaining_epsilon,
+            )
+            # Legacy display fields are resampled from the ENFORCED profile so
+            # they keep the solver's constraint shape, while the diagnostic
+            # profile keeps its own rebuilt values under a separate field.
+            target = np.linspace(0.0, 1.0, horizon_length)
+            source = np.linspace(0.0, 1.0, prediction_steps)
+            used_sigmas = np.column_stack(
+                [
+                    np.interp(
+                        target,
+                        source,
+                        chance_profile.projected_sigmas_m[:, index],
+                    )
+                    for index in range(len(obstacles))
+                ]
+            )
+            used_risks = np.column_stack(
+                [
+                    np.interp(
+                        target,
+                        source,
+                        chance_profile.risk_allocations[:, index],
+                    )
+                    for index in range(len(obstacles))
+                ]
+            )
+            used_safety_radii = np.column_stack(
+                [
+                    np.interp(
+                        target,
+                        source,
+                        chance_profile.safety_radii_m[:, index],
+                    )
+                    for index in range(len(obstacles))
+                ]
+            )
+            used_obstacle_predictions = diagnostic_obstacle_predictions
+            evaluation_radii = used_safety_radii
+        else:
+            evaluation_radii = used_safety_radii
         margins, slacks = evaluate_spherical_constraints(
             vehicle_positions=nominal_states[:, :3],
             obstacle_positions=used_obstacle_predictions,
-            safety_radii_m=used_safety_radii,
+            safety_radii_m=evaluation_radii,
             distance_smoothing_m2=self._chance_options.distance_smoothing_m2,
         )
         if self._chance_options.enabled:
@@ -450,4 +594,21 @@ class DeterministicNMPCController:
             primary_solver_residual_source="ipopt_iteration_history",
             primary_solver_residual_required_for_acceptance=False,
             primary_solver_residual_required_for_assurance=True,
+            enforced_chance_profile=(
+                enforced_profile
+                if enforced_profile is not None
+                else None
+            ),
+            post_solve_diagnostic_profile=post_solve_diagnostic_profile,
+            chance_profile_application_status=(
+                "APPLIED"
+                if enforced_profile is not None
+                else "NOT_APPLICABLE_DETERMINISTIC"
+            ),
+            chance_profile_enforced_profile_id=(
+                enforced_profile.provenance.profile_id
+                if enforced_profile is not None
+                else ""
+            ),
+            chance_profile_solve_attempt_id=solve_attempt_id,
         )

@@ -200,6 +200,24 @@ def step_to_sample(step: Any) -> dict[str, Any]:
             getattr(step, "horizon_assurance_failed_checks", ())
         ),
         "assurance_schema_version": int(getattr(step, "assurance_schema_version", 3)),
+        "chance_profile_schema_version": int(
+            getattr(step, "chance_profile_schema_version", 1)
+        ),
+        "enforced_chance_profile": _profile_to_mapping(
+            getattr(step, "enforced_chance_profile", None)
+        ),
+        "post_solve_diagnostic_profile": _profile_to_mapping(
+            getattr(step, "post_solve_diagnostic_profile", None)
+        ),
+        "chance_profile_application_status": str(
+            getattr(step, "chance_profile_application_status", "")
+        ),
+        "chance_profile_enforced_profile_id": str(
+            getattr(step, "chance_profile_enforced_profile_id", "")
+        ),
+        "chance_profile_solve_attempt_id": str(
+            getattr(step, "chance_profile_solve_attempt_id", "")
+        ),
         "risk_semantics": str(getattr(step, "risk_semantics", "")),
         "risk_allocation_method": str(
             getattr(step, "risk_allocation_method", "")
@@ -238,6 +256,13 @@ def step_to_sample(step: Any) -> dict[str, Any]:
 
 def _slug(value: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_-]+", "-", value).strip("-").lower() or "run"
+
+
+def _profile_to_mapping(profile: Any) -> dict[str, Any] | None:
+    if profile is None:
+        return None
+    result = profile.to_mapping() if hasattr(profile, "to_mapping") else None
+    return result if isinstance(result, dict) else None
 
 
 def _reason_counts(samples: Sequence[Mapping[str, Any]]) -> dict[str, int]:
@@ -543,6 +568,22 @@ class NativeRunRecorder:
             "horizon_ineligible_reason_counts": _reason_counts(
                 self.samples
             ),
+            "enforced_profile_count": sum(
+                1
+                for sample in self.samples
+                if sample.get("enforced_chance_profile") is not None
+            ),
+            "missing_enforced_profile_count": sum(
+                1
+                for sample in self.samples
+                if sample.get("chance_profile_application_status")
+                == "NOT_APPLICABLE_DETERMINISTIC"
+            ),
+            "post_solve_diagnostic_profile_count": sum(
+                1
+                for sample in self.samples
+                if sample.get("post_solve_diagnostic_profile") is not None
+            ),
             "episode_all_ticks_horizon_eligible": bool(
                 self.samples
                 and all(
@@ -677,6 +718,10 @@ class NativeRunRecorder:
             "horizon_assurance_reason",
             "horizon_assurance_failed_checks",
             "assurance_schema_version",
+            "chance_profile_schema_version",
+            "chance_profile_application_status",
+            "chance_profile_enforced_profile_id",
+            "chance_profile_solve_attempt_id",
             "risk_semantics",
             "risk_allocation_method",
             "risk_budget_total",
@@ -804,6 +849,21 @@ class NativeRunRecorder:
                         ),
                         "assurance_schema_version": int(
                             sample.get("assurance_schema_version", 3)
+                        ),
+                        "chance_profile_schema_version": int(
+                            sample.get("chance_profile_schema_version", 1)
+                        ),
+                        "chance_profile_application_status": sample.get(
+                            "chance_profile_application_status",
+                            "",
+                        ),
+                        "chance_profile_enforced_profile_id": sample.get(
+                            "chance_profile_enforced_profile_id",
+                            "",
+                        ),
+                        "chance_profile_solve_attempt_id": sample.get(
+                            "chance_profile_solve_attempt_id",
+                            "",
                         ),
                         "risk_semantics": sample.get("risk_semantics", ""),
                         "risk_allocation_method": sample.get(

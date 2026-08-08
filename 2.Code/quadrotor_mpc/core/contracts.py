@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 
@@ -234,6 +234,12 @@ class ControlSolution:
     horizon_assurance_reason: str = ""
     horizon_assurance_failed_checks: tuple[str, ...] = ()
     assurance_schema_version: int = 3
+    chance_profile_schema_version: int = 1
+    enforced_chance_profile: Any | None = None
+    post_solve_diagnostic_profile: Any | None = None
+    chance_profile_application_status: str = ""
+    chance_profile_enforced_profile_id: str = ""
+    chance_profile_solve_attempt_id: str = ""
 
     def __post_init__(self) -> None:
         command = _readonly_array(self.command, (CONTROL_SIZE,), "ControlSolution.command")
@@ -503,6 +509,26 @@ class ControlSolution:
             self,
             "assurance_schema_version",
             int(self.assurance_schema_version),
+        )
+        object.__setattr__(
+            self,
+            "chance_profile_schema_version",
+            int(self.chance_profile_schema_version),
+        )
+        object.__setattr__(
+            self,
+            "chance_profile_application_status",
+            str(self.chance_profile_application_status),
+        )
+        object.__setattr__(
+            self,
+            "chance_profile_enforced_profile_id",
+            str(self.chance_profile_enforced_profile_id),
+        )
+        object.__setattr__(
+            self,
+            "chance_profile_solve_attempt_id",
+            str(self.chance_profile_solve_attempt_id),
         )
 
     @property
