@@ -25,6 +25,7 @@ from typing import Any
 import numpy as np
 import yaml
 
+from quadrotor_mpc.core.collision import CollisionType, classify_collision
 from quadrotor_mpc.interfaces.desktop.viewer import NativeMuJoCoConfig
 
 SUPPORTED_MODES = ("deterministic", "individual", "joint")
@@ -516,6 +517,15 @@ class NativeTrialResult:
     primary_application_rate: float = 0.0
     fallback_application_rate: float = 0.0
     max_deadline_overrun_ms: float = 0.0
+    collision_type: str = "none"
+    first_collision_type: str = "none"
+    obstacle_collision: bool = False
+    ground_collision: bool = False
+    first_collision_time_s: float | None = None
+    first_obstacle_collision_time_s: float | None = None
+    first_ground_collision_time_s: float | None = None
+    minimum_obstacle_clearance_m: float | None = None
+    minimum_ground_clearance_m: float | None = None
 
     def to_mapping(self) -> dict[str, Any]:
         return asdict(self)
@@ -662,6 +672,32 @@ def summarize_native_trial(
         and str(result.get("termination_reason", "")) == "completed"
     )
     collision = bool(result.get("collided", False))
+    if "obstacle_collided" in result or "ground_collided" in result:
+        obstacle_collision = bool(result.get("obstacle_collided", False))
+        ground_collision = bool(result.get("ground_collided", False))
+        collision_type = classify_collision(
+            obstacle_collision,
+            ground_collision,
+        ).value
+    else:
+        # Legacy result dicts only know a single cumulative boolean: a true
+        # legacy collision must never be guessed to be obstacle-specific.
+        obstacle_collision = False
+        ground_collision = False
+        collision_type = (
+            CollisionType.UNKNOWN_LEGACY.value
+            if collision
+            else CollisionType.NONE.value
+        )
+    first_collision_time_s = result.get("first_collision_time_s")
+    first_obstacle_collision_time_s = result.get("first_obstacle_collision_time_s")
+    first_ground_collision_time_s = result.get("first_ground_collision_time_s")
+    first_collision_type = str(
+        result.get(
+            "first_collision_type",
+            collision_type,
+        )
+    )
     success = bool(
         completed
         and not collision
@@ -803,6 +839,15 @@ def summarize_native_trial(
         termination_reason=str(result.get("termination_reason", "unknown")),
         success=success,
         collision=collision,
+        collision_type=collision_type,
+        first_collision_type=first_collision_type,
+        obstacle_collision=obstacle_collision,
+        ground_collision=ground_collision,
+        first_collision_time_s=first_collision_time_s,
+        first_obstacle_collision_time_s=first_obstacle_collision_time_s,
+        first_ground_collision_time_s=first_ground_collision_time_s,
+        minimum_obstacle_clearance_m=result.get("minimum_obstacle_clearance_m"),
+        minimum_ground_clearance_m=result.get("minimum_ground_clearance_m"),
         numerical_failure=numerical_failure,
         final_error_m=final_error,
         min_clearance_m=min_clearance,
@@ -1159,6 +1204,8 @@ def aggregate_native_trials(
     numeric_fields = (
         "final_error_m",
         "min_clearance_m",
+        "minimum_obstacle_clearance_m",
+        "minimum_ground_clearance_m",
         "path_length_m",
         "tracking_rmse_m",
         "control_effort",
@@ -1217,6 +1264,26 @@ def aggregate_native_trials(
                 "collision_rate": _rate_summary(
                     items,
                     lambda item: item.collision,
+                    protocol.confidence_level,
+                ),
+                "obstacle_collision_rate": _rate_summary(
+                    items,
+                    lambda item: item.obstacle_collision,
+                    protocol.confidence_level,
+                ),
+                "ground_collision_rate": _rate_summary(
+                    items,
+                    lambda item: item.ground_collision,
+                    protocol.confidence_level,
+                ),
+                "both_collision_rate": _rate_summary(
+                    items,
+                    lambda item: item.collision_type == "obstacle_and_ground",
+                    protocol.confidence_level,
+                ),
+                "unknown_legacy_collision_rate": _rate_summary(
+                    items,
+                    lambda item: item.collision_type == "unknown_legacy",
                     protocol.confidence_level,
                 ),
                 "incomplete_rate": _rate_summary(

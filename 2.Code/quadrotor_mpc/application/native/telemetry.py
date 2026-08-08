@@ -113,6 +113,22 @@ def step_to_sample(step: Any) -> dict[str, Any]:
         "min_clearance_m": float(step.min_clearance_m),
         "solver_time_ms": float(step.solver_time_ms),
         "collided": bool(step.collided),
+        "obstacle_collision_detected": bool(
+            getattr(step, "obstacle_collision_detected", False)
+        ),
+        "ground_collision_detected": bool(
+            getattr(step, "ground_collision_detected", False)
+        ),
+        "minimum_obstacle_clearance_m": (
+            None
+            if getattr(step, "minimum_obstacle_clearance_m", None) is None
+            else float(step.minimum_obstacle_clearance_m)
+        ),
+        "minimum_ground_clearance_m": (
+            None
+            if getattr(step, "minimum_ground_clearance_m", None) is None
+            else float(step.minimum_ground_clearance_m)
+        ),
         "paused": bool(getattr(step, "paused", False)),
         "estimated_state": None if estimated is None else estimated.tolist(),
         "position_sigma": position_sigma,
@@ -521,6 +537,31 @@ class NativeRunRecorder:
             "control_period_ms": float(getattr(self, "control_period_ms", 50.0)),
             "termination_reason": str(result.get("termination_reason", "unknown")),
             "collision": bool(result.get("collided", False)),
+            "collision_type": str(
+                result.get(
+                    "collision_type",
+                    "unknown_legacy" if result.get("collided", False) else "none",
+                )
+            ),
+            "first_collision_type": str(
+                result.get(
+                    "first_collision_type",
+                    "unknown_legacy" if result.get("collided", False) else "none",
+                )
+            ),
+            "obstacle_collided": bool(result.get("obstacle_collided", False)),
+            "ground_collided": bool(result.get("ground_collided", False)),
+            "first_collision_time_s": result.get("first_collision_time_s"),
+            "first_obstacle_collision_time_s": result.get(
+                "first_obstacle_collision_time_s"
+            ),
+            "first_ground_collision_time_s": result.get(
+                "first_ground_collision_time_s"
+            ),
+            "minimum_obstacle_clearance_m": result.get(
+                "minimum_obstacle_clearance_m"
+            ),
+            "minimum_ground_clearance_m": result.get("minimum_ground_clearance_m"),
             "min_clearance_m": (
                 float(np.min(result["clearance"])) if len(result.get("clearance", [])) else None
             ),
@@ -712,6 +753,10 @@ class NativeRunRecorder:
             "tau_z",
             "goal_distance_m",
             "min_clearance_m",
+            "obstacle_collision_detected",
+            "ground_collision_detected",
+            "minimum_obstacle_clearance_m",
+            "minimum_ground_clearance_m",
             "solver_time_ms",
             "solver_status",
             "primary_solver_status",
@@ -791,6 +836,18 @@ class NativeRunRecorder:
                         "tau_z": control[3],
                         "goal_distance_m": sample["goal_distance_m"],
                         "min_clearance_m": sample["min_clearance_m"],
+                        "obstacle_collision_detected": int(
+                            sample.get("obstacle_collision_detected", False)
+                        ),
+                        "ground_collision_detected": int(
+                            sample.get("ground_collision_detected", False)
+                        ),
+                        "minimum_obstacle_clearance_m": sample.get(
+                            "minimum_obstacle_clearance_m"
+                        ),
+                        "minimum_ground_clearance_m": sample.get(
+                            "minimum_ground_clearance_m"
+                        ),
                         "solver_time_ms": sample["solver_time_ms"],
                         "solver_status": sample.get("solver_status", ""),
                         "primary_solver_status": sample.get(

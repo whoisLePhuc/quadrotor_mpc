@@ -115,6 +115,22 @@ def replay_native_recording(config: Any, recording: dict[str, Any], runtime: Any
             )
             collided = collided or bool(int(row["collided"]))
             clearance = float(row["min_clearance_m"])
+            obstacle_collision_detected = bool(
+                int(row.get("obstacle_collision_detected", 0))
+            )
+            ground_collision_detected = bool(
+                int(row.get("ground_collision_detected", 0))
+            )
+            minimum_obstacle_clearance_m = (
+                None
+                if row.get("minimum_obstacle_clearance_m") in (None, "")
+                else float(row["minimum_obstacle_clearance_m"])
+            )
+            minimum_ground_clearance_m = (
+                None
+                if row.get("minimum_ground_clearance_m") in (None, "")
+                else float(row["minimum_ground_clearance_m"])
+            )
             keep_running = runtime.on_step(
                 CoupledStep(
                     step_index=int(row["step_index"]),
@@ -149,6 +165,10 @@ def replay_native_recording(config: Any, recording: dict[str, Any], runtime: Any
                     goal_distance_m=float(row["goal_distance_m"]),
                     solver_time_ms=float(row["solver_time_ms"]),
                     collided=collided,
+                    obstacle_collision_detected=obstacle_collision_detected,
+                    ground_collision_detected=ground_collision_detected,
+                    minimum_obstacle_clearance_m=minimum_obstacle_clearance_m,
+                    minimum_ground_clearance_m=minimum_ground_clearance_m,
                     paused=paused,
                     predicted_covariances=(
                         recording["predicted_error_covariance_horizons"][index]

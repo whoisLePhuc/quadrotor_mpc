@@ -25,6 +25,7 @@ from quadrotor_mpc.control.nmpc.safety import (
     SafeFallbackController,
     SafetyFallbackOptions,
 )
+from quadrotor_mpc.core.collision import CollisionAccumulator, CollisionObservation
 from quadrotor_mpc.core.contracts import ControlGoal, Controller, VehicleBelief
 from quadrotor_mpc.core.obstacle_motion import predict_obstacle_positions
 from quadrotor_mpc.core.vehicle import DEFAULT_QUADROTOR
@@ -70,6 +71,10 @@ class CoupledStep:
     goal_distance_m: float
     solver_time_ms: float
     collided: bool
+    obstacle_collision_detected: bool = False
+    ground_collision_detected: bool = False
+    minimum_obstacle_clearance_m: float | None = None
+    minimum_ground_clearance_m: float | None = None
     paused: bool = False
     predicted_covariances: np.ndarray | None = None
     chance_margins: np.ndarray | None = None
@@ -334,6 +339,7 @@ def run_coupled_simulation(
     vehicle_measurement_history, obstacle_measurement_history = [], []
     vehicle_measurements, obstacle_measurements = [], []
     collided = False
+    collision_accumulator = CollisionAccumulator()
     termination_reason = "completed"
     x_curr = x0
     t = 0.0
@@ -471,6 +477,7 @@ def run_coupled_simulation(
                 vehicle_measurements.clear()
                 obstacle_measurements.clear()
                 collided = False
+                collision_accumulator.reset()
                 t = 0.0
                 k = 0
                 holding_reason = None
@@ -712,12 +719,28 @@ def run_coupled_simulation(
                 else current_vehicle_measurement_state.copy()
             )
             obstacle_measurements.append(current_obstacle_measurement_positions.copy())
-            min_clear = np.inf
+            obstacle_collision_detected = plant.check_obstacle_collision()
+            ground_collision_detected = plant.check_ground_collision()
+            min_obstacle_clear = np.inf
             for obs, obstacle_position in zip(obstacles, obstacle_positions):
                 d = np.linalg.norm(position - obstacle_position) - obs["radius"] - DRONE_RADIUS
-                min_clear = min(min_clear, float(d))
-            clearances.append(min_clear)
-            collided = collided or plant.check_collision()
+                min_obstacle_clear = min(min_obstacle_clear, float(d))
+            min_ground_clear = float(position[2]) - DRONE_RADIUS
+            collision_accumulator.observe(
+                CollisionObservation(
+                    obstacle_collision_detected=obstacle_collision_detected,
+                    ground_collision_detected=ground_collision_detected,
+                    minimum_obstacle_clearance_m=(
+                        None if not obstacles else float(min_obstacle_clear)
+                    ),
+                    minimum_ground_clearance_m=min_ground_clear,
+                ),
+                time_s=step_time,
+            )
+            clearances.append(min_obstacle_clear)
+            collided = (
+                collided or obstacle_collision_detected or ground_collision_detected
+            )
             goal_distance = float(np.linalg.norm(position - goal_array))
 
             if renderer is not None and k % render_every == 0:
@@ -742,10 +765,16 @@ def run_coupled_simulation(
                         vehicle_measurement_state_13=current_vehicle_measurement_state,
                         obstacle_measurement_positions=(current_obstacle_measurement_positions),
                         predicted_positions=solution.predicted_positions,
-                        min_clearance_m=float(min_clear),
+                        min_clearance_m=float(min_obstacle_clear),
                         goal_distance_m=goal_distance,
                         solver_time_ms=solver_time_ms,
                         collided=collided,
+                        obstacle_collision_detected=obstacle_collision_detected,
+                        ground_collision_detected=ground_collision_detected,
+                        minimum_obstacle_clearance_m=(
+                            None if not obstacles else float(min_obstacle_clear)
+                        ),
+                        minimum_ground_clearance_m=min_ground_clear,
                         paused=paused,
                         predicted_covariances=solution.predicted_covariances,
                         chance_margins=solution.chance_margins,
@@ -878,6 +907,8 @@ def run_coupled_simulation(
         if renderer is not None:
             renderer.close()
 
+    collision_summary = collision_accumulator.finalize()
+
     return {
         "t": np.array(ts),
         "pos": np.array(poss),
@@ -886,6 +917,23 @@ def run_coupled_simulation(
         "clearance": np.array(clearances),
         "dt": mpc_dt,
         "collided": collided,
+        "obstacle_collided": collision_summary.obstacle_collision_detected,
+        "ground_collided": collision_summary.ground_collision_detected,
+        "collision_type": collision_summary.collision_type.value,
+        "first_collision_type": collision_summary.first_collision_type.value,
+        "first_collision_time_s": collision_summary.first_collision_time_s,
+        "first_obstacle_collision_time_s": (
+            collision_summary.first_obstacle_collision_time_s
+        ),
+        "first_ground_collision_time_s": (
+            collision_summary.first_ground_collision_time_s
+        ),
+        "minimum_obstacle_clearance_m": (
+            collision_summary.minimum_obstacle_clearance_m
+        ),
+        "minimum_ground_clearance_m": (
+            collision_summary.minimum_ground_clearance_m
+        ),
         "frames": frames,
         "render_error": render_err,
         "termination_reason": termination_reason,
