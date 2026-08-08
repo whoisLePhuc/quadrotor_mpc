@@ -5,9 +5,13 @@ from __future__ import annotations
 
 import json
 import sys
+from importlib.metadata import entry_points
 from pathlib import Path
 
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python < 3.11
+    tomllib = None  # type: ignore[assignment]
 
 CODE_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = CODE_ROOT.parent
@@ -35,8 +39,43 @@ def require(condition: bool, message: str) -> None:
 
 
 def main() -> int:
-    project = tomllib.loads((CODE_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    require(project["project"]["version"] == EXPECTED_VERSION, "pyproject version mismatch")
+    scripts = {
+        entry.name
+        for entry in entry_points(group="console_scripts")
+    }
+    expected_scripts = {
+        "quadrotor-mpc-run",
+        "quadrotor-mpc-sim",
+        "quadrotor-mpc-sweep",
+        "quadrotor-mpc-native",
+        "quadrotor-mpc-monte-carlo",
+        "quadrotor-mpc-dashboard",
+    }
+    if tomllib is not None:
+        project = tomllib.loads(
+            (CODE_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        )
+        require(
+            project["project"]["version"] == EXPECTED_VERSION,
+            "pyproject version mismatch",
+        )
+        require(
+            expected_scripts <= set(project["project"].get("scripts", {})),
+            "console-script packaging is incomplete",
+        )
+        require(
+            all(
+                target.startswith("quadrotor_mpc.interfaces.cli.")
+                for target in project["project"].get("scripts", {}).values()
+            ),
+            "console scripts must target packaged CLI adapters",
+        )
+    else:
+        require(
+            expected_scripts <= scripts,
+            "installed console scripts are incomplete",
+        )
+        print("pyproject TOML checks skipped on Python < 3.11; entry points verified")
     require(__version__ == EXPECTED_VERSION, "package version mismatch")
     require(
         f"## {EXPECTED_VERSION} " in (CODE_ROOT / "CHANGELOG.md").read_text(encoding="utf-8"),
@@ -48,24 +87,6 @@ def main() -> int:
     require((CODE_ROOT / "uv.lock").is_file(), "uv.lock is missing")
     require((CODE_ROOT / "quadrotor_mpc/__init__.py").is_file(), "package root is missing")
     require(not list(CODE_ROOT.glob("*.py")), "runtime modules leaked into 2.Code root")
-
-    scripts = project["project"].get("scripts", {})
-    expected_scripts = {
-        "quadrotor-mpc-run",
-        "quadrotor-mpc-sim",
-        "quadrotor-mpc-sweep",
-        "quadrotor-mpc-native",
-        "quadrotor-mpc-monte-carlo",
-        "quadrotor-mpc-dashboard",
-    }
-    require(expected_scripts <= set(scripts), "console-script packaging is incomplete")
-    require(
-        all(
-            target.startswith("quadrotor_mpc.interfaces.cli.")
-            for target in scripts.values()
-        ),
-        "console scripts must target packaged CLI adapters",
-    )
 
     config_summaries: dict[str, dict[str, float | bool]] = {}
     for filename in NATIVE_CONFIGS:

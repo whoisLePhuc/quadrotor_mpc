@@ -3,7 +3,10 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python < 3.11
+    tomllib = None  # type: ignore[assignment]
 
 from quadrotor_mpc.application.validation.monte_carlo import load_native_monte_carlo_protocol
 from quadrotor_mpc.infrastructure.resources import resolve_input_path, resource_root
@@ -14,7 +17,9 @@ REPOSITORY_ROOT = CODE_ROOT.parent
 
 
 class ReleaseStabilizationTests(unittest.TestCase):
+    @unittest.skipIf(tomllib is None, "tomllib requires Python 3.11+")
     def test_version_console_scripts_ci_and_license_are_present(self):
+        assert tomllib is not None
         project = tomllib.loads(
             (CODE_ROOT / "pyproject.toml").read_text(encoding="utf-8")
         )

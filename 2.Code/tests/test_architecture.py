@@ -6,7 +6,10 @@ import ast
 import unittest
 from pathlib import Path
 
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python < 3.11
+    tomllib = None  # type: ignore[assignment]
 
 CODE_ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_ROOT = CODE_ROOT / "quadrotor_mpc"
@@ -31,7 +34,9 @@ class LayerArchitectureTests(unittest.TestCase):
             "runtime modules belong under quadrotor_mpc/, not at the 2.Code root",
         )
 
+    @unittest.skipIf(tomllib is None, "tomllib requires Python 3.11+")
     def test_console_scripts_target_packaged_cli_adapters(self):
+        assert tomllib is not None
         project = tomllib.loads(
             (CODE_ROOT / "pyproject.toml").read_text(encoding="utf-8")
         )
