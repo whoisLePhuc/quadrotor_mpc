@@ -58,7 +58,12 @@ def _safe_sample() -> dict[str, object]:
         "fallback_level": 0,
         "fallback_reason": "",
         "deadline_missed": False,
-        "safety_assurance_status": "GUARANTEE_ELIGIBLE",
+        "safety_assurance_status": "HORIZON_GUARANTEE_ELIGIBLE",
+        "horizon_assurance_status": "HORIZON_GUARANTEE_ELIGIBLE",
+        "horizon_assurance_eligible": True,
+        "horizon_assurance_reason": "eligible",
+        "horizon_assurance_failed_checks": [],
+        "residual_status": "AVAILABLE",
         "risk_semantics": "joint",
         "risk_allocation_method": "uniform",
         "risk_budget_total": 0.10,
@@ -113,7 +118,7 @@ class PanelViewProjectionTests(unittest.TestCase):
         view = build_panel_view(_safe_sample(), _ccmpc_context())
         self.assertEqual(view.card("controller").value, "PRIMARY NMPC")
         self.assertEqual(view.card("controller").tone, OK)
-        self.assertEqual(view.card("assurance").value, "GUARANTEE ELIGIBLE")
+        self.assertEqual(view.card("assurance").value, "HORIZON ELIGIBLE")
         self.assertEqual(view.card("assurance").tone, OK)
         self.assertEqual(view.card("risk").value, "BUDGET_OK")
         self.assertEqual(view.card("slack").value, "HARD-SAFE")
@@ -127,6 +132,10 @@ class PanelViewProjectionTests(unittest.TestCase):
                 "maximum_slack_m": 0.03,
                 "minimum_chance_residual_m": -0.03,
                 "safety_assurance_status": "NOT_GUARANTEED_POSITIVE_SLACK",
+                "horizon_assurance_status": "NOT_GUARANTEED_POSITIVE_SLACK",
+                "horizon_assurance_eligible": False,
+                "horizon_assurance_reason": "positive_slack",
+                "horizon_assurance_failed_checks": ["positive_slack"],
             }
         )
         view = build_panel_view(sample, _ccmpc_context())
@@ -148,6 +157,10 @@ class PanelViewProjectionTests(unittest.TestCase):
                 "fallback_reason": "DEADLINE_MISSED",
                 "deadline_missed": True,
                 "safety_assurance_status": "NOT_GUARANTEED_FALLBACK_ACTIVE",
+                "horizon_assurance_status": "NOT_GUARANTEED_FALLBACK_ACTIVE",
+                "horizon_assurance_eligible": False,
+                "horizon_assurance_reason": "fallback_active",
+                "horizon_assurance_failed_checks": ["fallback_active", "deadline_miss"],
             }
         )
         view = build_panel_view(sample, _ccmpc_context())
@@ -214,6 +227,10 @@ class PanelViewProjectionTests(unittest.TestCase):
                 "fallback_level": 2,
                 "deadline_missed": True,
                 "safety_assurance_status": "NOT_GUARANTEED_FALLBACK_ACTIVE",
+                "horizon_assurance_status": "NOT_GUARANTEED_FALLBACK_ACTIVE",
+                "horizon_assurance_eligible": False,
+                "horizon_assurance_reason": "fallback_active",
+                "horizon_assurance_failed_checks": ["fallback_active", "deadline_miss"],
             }
         )
         current = build_panel_view(sample, _ccmpc_context())

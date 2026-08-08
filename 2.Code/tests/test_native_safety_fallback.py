@@ -66,6 +66,7 @@ def solution(
     slack=0.0,
     primary_success=True,
     risk_status="BUDGET_OK",
+    residual_status="AVAILABLE",
 ) -> ControlSolution:
     steps = 3
     nominal = np.repeat(
@@ -103,6 +104,9 @@ def solution(
         risk_budget_status=risk_status,
         primary_solver_status="Solve_Succeeded",
         primary_solver_success=primary_success,
+        primary_solver_primal_residual=1e-7 if residual_status == "AVAILABLE" else 0.0,
+        primary_solver_dual_residual=1e-7 if residual_status == "AVAILABLE" else 0.0,
+        residual_status=residual_status,
     )
 
 
@@ -193,7 +197,15 @@ class SafetySupervisorTests(unittest.TestCase):
         self.assertTrue(result.solution_accepted)
         self.assertFalse(result.fallback_active)
         self.assertEqual(result.command_source, "PRIMARY_NMPC")
-        self.assertEqual(result.safety_assurance_status, "GUARANTEE_ELIGIBLE")
+        self.assertEqual(
+            result.safety_assurance_status,
+            "HORIZON_GUARANTEE_ELIGIBLE",
+        )
+        self.assertTrue(result.horizon_assurance_eligible)
+        self.assertEqual(
+            result.horizon_assurance_status,
+            "HORIZON_GUARANTEE_ELIGIBLE",
+        )
 
     def test_positive_slack_can_be_applied_only_as_not_guaranteed(self):
         controller = supervisor(ScriptedController([solution(slack=0.02)]))

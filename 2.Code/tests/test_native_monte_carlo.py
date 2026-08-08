@@ -90,6 +90,15 @@ def trial(
         guarantee_eligible_ticks=9 if slack else 10,
         guarantee_eligible_rate=0.9 if slack else 1.0,
         guarantee_eligible_episode=mode != "deterministic" and not slack and not fallback,
+        horizon_eligible_tick_count=9 if slack else 10,
+        horizon_eligible_tick_rate=0.9 if slack else 1.0,
+        horizon_ineligible_reason_counts={},
+        episode_all_ticks_horizon_eligible=(
+            mode != "deterministic" and not slack and not fallback
+        ),
+        episode_any_fallback=fallback,
+        episode_any_positive_slack=slack,
+        episode_any_deadline_miss=fallback,
         budget_failure_ticks=0,
         maximum_budget_error=1e-16,
     )
@@ -177,6 +186,11 @@ class NativeMonteCarloMetricTests(unittest.TestCase):
             "fallback_active": np.array([False, True]),
             "safety_assurance_status": np.array(
                 ["GUARANTEE_ELIGIBLE", "NOT_GUARANTEED_FALLBACK_ACTIVE"]
+            ),
+            "horizon_assurance_eligible": np.array([True, False]),
+            "horizon_assurance_reason": np.array(["eligible", "fallback_active"]),
+            "horizon_assurance_failed_checks": np.array(
+                [[], ["fallback_active"]], dtype=object
             ),
             "slack_horizon": np.array([[[0.0]], [[0.02]]]),
             "chance_residual_horizon": np.array([[[0.1]], [[-0.02]]]),
