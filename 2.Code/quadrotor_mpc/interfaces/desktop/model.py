@@ -142,6 +142,7 @@ class PanelViewState:
     deadline_missed: bool
     solution_accepted: bool
     safety_assurance_status: str
+    horizon_assurance_eligible: bool
     risk_budget_status: str
     collided: bool
     completed: bool
@@ -215,7 +216,9 @@ def _controller_card(sample: Mapping[str, Any]) -> StatusCard:
 
 
 def _assurance_card(sample: Mapping[str, Any], context: PanelRuntimeContext) -> StatusCard:
-    status = str(sample.get("safety_assurance_status", ""))
+    status = str(sample.get("horizon_assurance_status", ""))
+    reason = str(sample.get("horizon_assurance_reason", ""))
+    eligible = bool(sample.get("horizon_assurance_eligible", False))
     if not context.chance_constraints_enabled:
         return StatusCard(
             "assurance",
@@ -224,15 +227,15 @@ def _assurance_card(sample: Mapping[str, Any], context: PanelRuntimeContext) -> 
             "Chance constraints are disabled",
             MUTED,
         )
-    if status == "GUARANTEE_ELIGIBLE":
+    if eligible:
         return StatusCard(
             "assurance",
             "Safety assurance",
-            "GUARANTEE ELIGIBLE",
-            "No fallback and slack is within guarantee tolerance",
+            "HORIZON ELIGIBLE",
+            "Joint chance constraints satisfied on the current prediction horizon",
             OK,
         )
-    if status == "NOT_GUARANTEED_POSITIVE_SLACK":
+    if status == "NOT_GUARANTEED_POSITIVE_SLACK" or reason == "positive_slack":
         return StatusCard(
             "assurance",
             "Safety assurance",
@@ -240,7 +243,7 @@ def _assurance_card(sample: Mapping[str, Any], context: PanelRuntimeContext) -> 
             "A degraded primary solution uses positive slack",
             WARNING,
         )
-    if status == "NOT_GUARANTEED_FALLBACK_ACTIVE":
+    if status == "NOT_GUARANTEED_FALLBACK_ACTIVE" or reason == "fallback_active":
         return StatusCard(
             "assurance",
             "Safety assurance",
@@ -251,10 +254,16 @@ def _assurance_card(sample: Mapping[str, Any], context: PanelRuntimeContext) -> 
     return StatusCard(
         "assurance",
         "Safety assurance",
-        status or "UNAVAILABLE",
-        "No probabilistic assurance label was reported",
+        _assurance_short_label(status, reason),
+        "No joint-horizon assurance on the current prediction horizon",
         MUTED,
     )
+
+
+def _assurance_short_label(status: str, reason: str) -> str:
+    if status:
+        return status.replace("NOT_GUARANTEED_", "NOT GUARANTEED ").replace("_", " ")
+    return reason or "UNAVAILABLE"
 
 
 def _risk_card(sample: Mapping[str, Any], context: PanelRuntimeContext) -> StatusCard:
@@ -370,6 +379,9 @@ def build_panel_view(
         deadline_missed=bool(sample.get("deadline_missed", False)),
         solution_accepted=bool(sample.get("solution_accepted", True)),
         safety_assurance_status=str(sample.get("safety_assurance_status", "")),
+        horizon_assurance_eligible=bool(
+            sample.get("horizon_assurance_eligible", False)
+        ),
         risk_budget_status=str(sample.get("risk_budget_status", "")),
         collided=bool(sample.get("collided", False)),
         completed=bool(sample.get("completed", False)),
@@ -417,15 +429,15 @@ def panel_transition_alerts(
             PanelAlert("risk_budget", current.time_s, DANGER, "Joint risk budget exceeded")
         )
     if previous is not None and (
-        previous.safety_assurance_status == "GUARANTEE_ELIGIBLE"
-        and current.safety_assurance_status != "GUARANTEE_ELIGIBLE"
+        previous.horizon_assurance_eligible
+        and not current.horizon_assurance_eligible
     ):
         alerts.append(
             PanelAlert(
                 "assurance_lost",
                 current.time_s,
                 WARNING,
-                f"Guarantee eligibility lost: {current.safety_assurance_status or 'unavailable'}",
+                f"Horizon eligibility lost: {current.safety_assurance_status or 'unavailable'}",
             )
         )
     if current.completed and (previous is None or not previous.completed):

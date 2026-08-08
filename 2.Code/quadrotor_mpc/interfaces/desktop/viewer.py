@@ -455,13 +455,15 @@ class NativeMuJoCoViewer:
 
         position = np.asarray(step.state_13[:3], dtype=float)
         fallback_active = bool(getattr(step, "fallback_active", False))
-        assurance_status = str(getattr(step, "safety_assurance_status", ""))
+        assurance_status = str(getattr(step, "horizon_assurance_status", ""))
+        assurance_reason = str(getattr(step, "horizon_assurance_reason", ""))
+        horizon_eligible = bool(getattr(step, "horizon_assurance_eligible", False))
         if fallback_active:
             prediction_color = (1.00, 0.18, 0.22, 0.82)
-        elif assurance_status == "NOT_GUARANTEED_POSITIVE_SLACK":
-            prediction_color = (1.00, 0.72, 0.10, 0.80)
-        elif assurance_status == "GUARANTEE_ELIGIBLE":
+        elif horizon_eligible:
             prediction_color = (0.15, 1.00, 0.35, 0.78)
+        elif assurance_reason == "positive_slack" or assurance_status == "NOT_GUARANTEED_POSITIVE_SLACK":
+            prediction_color = (1.00, 0.72, 0.10, 0.80)
         else:
             prediction_color = (0.20, 0.65, 1.00, 0.72)
         self._trail.append(position.copy())
@@ -524,7 +526,7 @@ class NativeMuJoCoViewer:
                 )
             if fallback_active:
                 self._add_sphere(position, 0.28, (1.0, 0.10, 0.12, 0.18))
-            elif assurance_status == "NOT_GUARANTEED_POSITIVE_SLACK":
+            elif assurance_reason == "positive_slack" or assurance_status == "NOT_GUARANTEED_POSITIVE_SLACK":
                 self._add_sphere(position, 0.24, (1.0, 0.72, 0.05, 0.12))
             if step.collided:
                 self._add_sphere(position, 0.46, (1.0, 0.05, 0.05, 0.24))

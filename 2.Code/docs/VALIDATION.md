@@ -244,7 +244,10 @@ Verify:
 - every Bernoulli episode metric reports its event count, rate and Wilson
   confidence interval;
 - risk-budget failures, slack and fallback remain separate metrics;
-- `GUARANTEE_ELIGIBLE` requires every completed tick to be eligible;
+- `HORIZON_GUARANTEE_ELIGIBLE` requires every completed tick to be eligible
+  under the full gate set: joint semantics, valid budget, primary solver
+  success, available in-tolerance residuals, slack within tolerance, no
+  deadline miss and no fallback;
 - any positive slack or fallback blocks the finite-sample chance claim;
 - no per-horizon joint budget is reinterpreted as episode collision
   probability;

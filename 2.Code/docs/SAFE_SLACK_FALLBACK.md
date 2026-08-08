@@ -60,7 +60,7 @@ Therefore:
 
 ```text
 slack <= guarantee tolerance
-    -> primary may be GUARANTEE_ELIGIBLE
+    -> primary may be HORIZON_GUARANTEE_ELIGIBLE
 
 guarantee tolerance < slack <= acceptable limit
     -> primary may run, explicitly not guaranteed
@@ -69,8 +69,13 @@ slack > acceptable limit
     -> reject primary and activate fallback
 ```
 
-`GUARANTEE_ELIGIBLE` is not itself a proof of episode-wide safety. It only
-means the local runtime gates did not invalidate the chance-constraint claim.
+`HORIZON_GUARANTEE_ELIGIBLE` is not itself a proof of episode-wide safety.
+It only means every technical gate (joint risk semantics, valid risk budget,
+primary solver success, available finite in-tolerance residuals, slack within
+tolerance, on-time delivery, no fallback) passed for the current prediction
+horizon. Legacy artifacts carrying the old `GUARANTEE_ELIGIBLE` label are
+reported as `LEGACY_GUARANTEE_ELIGIBLE_UNVERIFIED` because the old data does
+not contain the gates introduced here.
 
 ## Fallback hierarchy
 

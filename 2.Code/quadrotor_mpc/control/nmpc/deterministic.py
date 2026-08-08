@@ -321,8 +321,28 @@ class DeterministicNMPCController:
                 else np.finfo(float).max
             )
 
+        def residual_status_for(name: str) -> str:
+            # A missing residual must never masquerade as a perfect 0.0.
+            values = iteration_history.get(name, ())
+            if not values:
+                return "UNAVAILABLE"
+            value = float(values[-1])
+            if not np.isfinite(value):
+                return "INVALID"
+            return "AVAILABLE"
+
         primal_residual = final_residual("inf_pr")
         dual_residual = final_residual("inf_du")
+        residual_statuses = {
+            residual_status_for("inf_pr"),
+            residual_status_for("inf_du"),
+        }
+        if residual_statuses == {"UNAVAILABLE"}:
+            residual_status = "UNAVAILABLE"
+        elif "INVALID" in residual_statuses:
+            residual_status = "INVALID"
+        else:
+            residual_status = "AVAILABLE"
         nominal_states = _extract_nominal_states(self.mpc, belief.mean_state_13)
         horizon_length = nominal_states.shape[0]
         nominal_controls = _extract_nominal_controls(
@@ -430,4 +450,5 @@ class DeterministicNMPCController:
             primary_solver_iterations=solver_iterations,
             primary_solver_primal_residual=primal_residual,
             primary_solver_dual_residual=dual_residual,
+            residual_status=residual_status,
         )

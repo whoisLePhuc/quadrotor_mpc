@@ -213,6 +213,7 @@ class ControlSolution:
     primary_solver_iterations: int = 0
     primary_solver_primal_residual: float = 0.0
     primary_solver_dual_residual: float = 0.0
+    residual_status: str = "UNAVAILABLE"
     command_source: str = "PRIMARY_NMPC"
     solution_accepted: bool = True
     fallback_active: bool = False
@@ -222,6 +223,11 @@ class ControlSolution:
     solve_time_ms: float = 0.0
     deadline_missed: bool = False
     safety_assurance_status: str = ""
+    horizon_assurance_status: str = ""
+    horizon_assurance_eligible: bool = False
+    horizon_assurance_reason: str = ""
+    horizon_assurance_failed_checks: tuple[str, ...] = ()
+    assurance_schema_version: int = 2
 
     def __post_init__(self) -> None:
         command = _readonly_array(self.command, (CONTROL_SIZE,), "ControlSolution.command")
@@ -417,10 +423,45 @@ class ControlSolution:
             "deadline_missed",
             bool(self.deadline_missed),
         )
+        residual_status = str(self.residual_status)
+        if residual_status not in {"AVAILABLE", "UNAVAILABLE", "INVALID"}:
+            raise ValueError(
+                "ControlSolution.residual_status must be "
+                "'AVAILABLE', 'UNAVAILABLE' or 'INVALID'"
+            )
+        object.__setattr__(self, "residual_status", residual_status)
         object.__setattr__(
             self,
             "safety_assurance_status",
             str(self.safety_assurance_status),
+        )
+        object.__setattr__(
+            self,
+            "horizon_assurance_status",
+            str(self.horizon_assurance_status),
+        )
+        object.__setattr__(
+            self,
+            "horizon_assurance_eligible",
+            bool(self.horizon_assurance_eligible),
+        )
+        object.__setattr__(
+            self,
+            "horizon_assurance_reason",
+            str(self.horizon_assurance_reason),
+        )
+        failed_checks = tuple(
+            str(check) for check in self.horizon_assurance_failed_checks
+        )
+        object.__setattr__(
+            self,
+            "horizon_assurance_failed_checks",
+            failed_checks,
+        )
+        object.__setattr__(
+            self,
+            "assurance_schema_version",
+            int(self.assurance_schema_version),
         )
 
     @property

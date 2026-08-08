@@ -91,6 +91,7 @@ class CoupledStep:
     primary_solver_iterations: int = 0
     primary_solver_primal_residual: float = 0.0
     primary_solver_dual_residual: float = 0.0
+    residual_status: str = "UNAVAILABLE"
     command_source: str = "PRIMARY_NMPC"
     solution_accepted: bool = True
     fallback_active: bool = False
@@ -99,6 +100,11 @@ class CoupledStep:
     consecutive_rejections: int = 0
     deadline_missed: bool = False
     safety_assurance_status: str = ""
+    horizon_assurance_status: str = ""
+    horizon_assurance_eligible: bool = False
+    horizon_assurance_reason: str = ""
+    horizon_assurance_failed_checks: tuple[str, ...] = ()
+    assurance_schema_version: int = 2
 
 
 class CoupledRuntime(Protocol):
@@ -291,6 +297,11 @@ def run_coupled_simulation(
     consecutive_rejection_history: list[int] = []
     deadline_missed_history: list[bool] = []
     safety_assurance_status_history: list[str] = []
+    horizon_assurance_status_history: list[str] = []
+    horizon_assurance_eligible_history: list[bool] = []
+    horizon_assurance_reason_history: list[str] = []
+    horizon_assurance_failed_checks_history: list[tuple[str, ...]] = []
+    residual_status_history: list[str] = []
     solver_time_history: list[float] = []
     vehicle_measurement_history, obstacle_measurement_history = [], []
     vehicle_measurements, obstacle_measurements = [], []
@@ -412,6 +423,11 @@ def run_coupled_simulation(
                 consecutive_rejection_history.clear()
                 deadline_missed_history.clear()
                 safety_assurance_status_history.clear()
+                horizon_assurance_status_history.clear()
+                horizon_assurance_eligible_history.clear()
+                horizon_assurance_reason_history.clear()
+                horizon_assurance_failed_checks_history.clear()
+                residual_status_history.clear()
                 solver_time_history.clear()
                 vehicle_measurement_history.clear()
                 obstacle_measurement_history.clear()
@@ -512,6 +528,19 @@ def run_coupled_simulation(
             safety_assurance_status_history.append(
                 solution.safety_assurance_status
             )
+            horizon_assurance_status_history.append(
+                solution.horizon_assurance_status
+            )
+            horizon_assurance_eligible_history.append(
+                solution.horizon_assurance_eligible
+            )
+            horizon_assurance_reason_history.append(
+                solution.horizon_assurance_reason
+            )
+            horizon_assurance_failed_checks_history.append(
+                solution.horizon_assurance_failed_checks
+            )
+            residual_status_history.append(solution.residual_status)
             measured_solver_time_ms = (
                 time.perf_counter() - solver_start
             ) * 1000.0
@@ -667,6 +696,22 @@ def run_coupled_simulation(
                         safety_assurance_status=(
                             solution.safety_assurance_status
                         ),
+                        residual_status=solution.residual_status,
+                        horizon_assurance_status=(
+                            solution.horizon_assurance_status
+                        ),
+                        horizon_assurance_eligible=(
+                            solution.horizon_assurance_eligible
+                        ),
+                        horizon_assurance_reason=(
+                            solution.horizon_assurance_reason
+                        ),
+                        horizon_assurance_failed_checks=(
+                            solution.horizon_assurance_failed_checks
+                        ),
+                        assurance_schema_version=(
+                            solution.assurance_schema_version
+                        ),
                     )
                 )
                 if not keep_running:
@@ -794,6 +839,23 @@ def run_coupled_simulation(
             safety_assurance_status_history,
             dtype=str,
         ),
+        "horizon_assurance_status": np.asarray(
+            horizon_assurance_status_history,
+            dtype=str,
+        ),
+        "horizon_assurance_eligible": np.asarray(
+            horizon_assurance_eligible_history,
+            dtype=bool,
+        ),
+        "horizon_assurance_reason": np.asarray(
+            horizon_assurance_reason_history,
+            dtype=str,
+        ),
+        "horizon_assurance_failed_checks": np.asarray(
+            horizon_assurance_failed_checks_history,
+            dtype=object,
+        ),
+        "residual_status": np.asarray(residual_status_history, dtype=str),
         "solver_time_ms": np.asarray(solver_time_history, dtype=float),
         "vehicle_measurement_available": np.asarray(vehicle_measurement_history, dtype=bool),
         "obstacle_measurement_available": np.asarray(obstacle_measurement_history, dtype=bool),

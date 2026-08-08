@@ -408,6 +408,13 @@ class NativeTrialResult:
     guarantee_eligible_ticks: int
     guarantee_eligible_rate: float
     guarantee_eligible_episode: bool
+    horizon_eligible_tick_count: int
+    horizon_eligible_tick_rate: float
+    horizon_ineligible_reason_counts: dict[str, int]
+    episode_all_ticks_horizon_eligible: bool
+    episode_any_fallback: bool
+    episode_any_positive_slack: bool
+    episode_any_deadline_miss: bool
     budget_failure_ticks: int
     maximum_budget_error: float
 
@@ -490,7 +497,33 @@ def summarize_native_trial(
     deadline_missed = np.asarray(result.get("deadline_missed", []), dtype=bool)
     fallback = np.asarray(result.get("fallback_active", []), dtype=bool)
     assurance = np.asarray(result.get("safety_assurance_status", []), dtype=str)
-    guarantee_eligible = assurance == "GUARANTEE_ELIGIBLE"
+    guarantee_eligible = (assurance == "GUARANTEE_ELIGIBLE") | (
+        assurance == "HORIZON_GUARANTEE_ELIGIBLE"
+    )
+    horizon_eligible = np.asarray(
+        result.get("horizon_assurance_eligible", []),
+        dtype=bool,
+    )
+    horizon_reasons = np.asarray(
+        result.get("horizon_assurance_reason", []),
+        dtype=str,
+    )
+    horizon_failed_checks = np.asarray(
+        result.get("horizon_assurance_failed_checks", []),
+        dtype=object,
+    )
+
+    def reason_counts() -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for reason, checks in zip(horizon_reasons, horizon_failed_checks):
+            if not reason or reason == "eligible":
+                continue
+            if isinstance(checks, (list, tuple)) and checks:
+                for check in checks:
+                    counts[str(check)] = counts.get(str(check), 0) + 1
+            else:
+                counts[str(reason)] = counts.get(str(reason), 0) + 1
+        return counts
 
     slack = np.asarray(result.get("slack_horizon", []), dtype=float)
     if config.chance_constraints.enabled and slack.ndim >= 2 and len(slack):
@@ -541,6 +574,12 @@ def summarize_native_trial(
         and len(guarantee_eligible) == completed_steps
         and np.all(guarantee_eligible)
     )
+    episode_all_ticks_horizon_eligible = bool(
+        config.chance_constraints.enabled
+        and completed_steps > 0
+        and len(horizon_eligible) == completed_steps
+        and np.all(horizon_eligible)
+    )
 
     def rate(values: np.ndarray) -> float:
         return float(np.mean(values)) if values.size else 0.0
@@ -579,6 +618,13 @@ def summarize_native_trial(
         guarantee_eligible_ticks=int(np.sum(guarantee_eligible)),
         guarantee_eligible_rate=rate(guarantee_eligible),
         guarantee_eligible_episode=guarantee_episode,
+        horizon_eligible_tick_count=int(np.sum(horizon_eligible)),
+        horizon_eligible_tick_rate=rate(horizon_eligible),
+        horizon_ineligible_reason_counts=reason_counts(),
+        episode_all_ticks_horizon_eligible=episode_all_ticks_horizon_eligible,
+        episode_any_fallback=bool(np.any(fallback)),
+        episode_any_positive_slack=bool(np.any(positive_slack)),
+        episode_any_deadline_miss=bool(np.any(deadline_missed)),
         budget_failure_ticks=int(np.sum(budget_failures)),
         maximum_budget_error=maximum_budget_error,
     )
@@ -857,6 +903,7 @@ def aggregate_native_trials(
         "chance_violation_rate",
         "fallback_rate",
         "guarantee_eligible_rate",
+        "horizon_eligible_tick_rate",
         "maximum_budget_error",
     )
     output: dict[str, Any] = {
@@ -913,6 +960,11 @@ def aggregate_native_trials(
                 "guarantee_eligible_episode_rate": _rate_summary(
                     items,
                     lambda item: item.guarantee_eligible_episode,
+                    protocol.confidence_level,
+                ),
+                "horizon_eligible_episode_rate": _rate_summary(
+                    items,
+                    lambda item: item.episode_all_ticks_horizon_eligible,
                     protocol.confidence_level,
                 ),
                 "budget_failure_episode_rate": _rate_summary(

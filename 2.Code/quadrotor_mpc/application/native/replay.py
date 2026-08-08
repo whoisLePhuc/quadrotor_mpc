@@ -225,6 +225,28 @@ def replay_native_recording(config: Any, recording: dict[str, Any], runtime: Any
                     safety_assurance_status=str(
                         row.get("safety_assurance_status", "")
                     ),
+                    residual_status=str(
+                        row.get("residual_status", "UNAVAILABLE")
+                    ),
+                    horizon_assurance_status=str(
+                        row.get("horizon_assurance_status", "")
+                    ),
+                    horizon_assurance_eligible=bool(
+                        int(row.get("horizon_assurance_eligible", 0) or 0)
+                    ),
+                    horizon_assurance_reason=str(
+                        row.get("horizon_assurance_reason", "")
+                    ),
+                    horizon_assurance_failed_checks=tuple(
+                        check
+                        for check in str(
+                            row.get("horizon_assurance_failed_checks", "")
+                        ).split(";")
+                        if check
+                    ),
+                    assurance_schema_version=int(
+                        row.get("assurance_schema_version", 2) or 2
+                    ),
                     projected_uncertainties=(
                         recording["projected_uncertainty_horizons"][index]
                         if len(recording.get("projected_uncertainty_horizons", []))

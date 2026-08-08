@@ -427,6 +427,7 @@ class SafeFallbackController:
             tightened_safety_radii=matrix,
             primary_solver_status=primary_status,
             primary_solver_success=False,
+            residual_status="UNAVAILABLE",
             risk_budget_status="FALLBACK_NO_PRIMARY_SOLUTION",
         )
 
@@ -468,10 +469,25 @@ class SafeFallbackController:
             self.options.solve_deadline_s > 0.0
             and elapsed_s > self.options.solve_deadline_s
         )
+        maximum_slack = (
+            0.0
+            if not primary_solution.slacks.size
+            else float(np.max(primary_solution.slacks))
+        )
+
         if not self.options.enabled:
-            return replace(
+            return self._assured_solution(
                 primary_solution,
-                solve_time_ms=elapsed_s * 1000.0,
+                command=primary_solution.command,
+                solver_status=primary_solution.solver_status,
+                command_source=primary_solution.command_source,
+                solution_accepted=True,
+                fallback_active=False,
+                fallback_level=0,
+                fallback_reason="",
+                consecutive_rejections=primary_solution.consecutive_rejections,
+                maximum_slack=maximum_slack,
+                elapsed_s=elapsed_s,
                 deadline_missed=deadline_missed,
             )
 
@@ -480,33 +496,23 @@ class SafeFallbackController:
             self._fallback_position = None
             self._fallback_yaw = None
             self._consecutive_rejections = 0
-            maximum_slack = (
-                0.0
-                if not primary_solution.slacks.size
-                else float(np.max(primary_solution.slacks))
-            )
-            if deadline_missed:
-                assurance = "NOT_GUARANTEED_DEADLINE_MISS"
-            elif maximum_slack <= self.options.guarantee_slack_tolerance_m:
-                assurance = "GUARANTEE_ELIGIBLE"
-            else:
-                assurance = "NOT_GUARANTEED_POSITIVE_SLACK"
-            return replace(
+            return self._assured_solution(
                 primary_solution,
                 command=np.clip(
                     primary_solution.command,
                     self._limits_lower,
                     self._limits_upper,
                 ),
+                solver_status=primary_solution.solver_status,
                 command_source="PRIMARY_NMPC",
                 solution_accepted=True,
                 fallback_active=False,
                 fallback_level=0,
                 fallback_reason="",
                 consecutive_rejections=0,
-                solve_time_ms=elapsed_s * 1000.0,
+                maximum_slack=maximum_slack,
+                elapsed_s=elapsed_s,
                 deadline_missed=deadline_missed,
-                safety_assurance_status=assurance,
             )
 
         self._consecutive_rejections += 1
@@ -514,7 +520,7 @@ class SafeFallbackController:
         fallback_command, fallback_level, command_source = self._fallback_command(
             belief
         )
-        return replace(
+        return self._assured_solution(
             primary_solution,
             command=fallback_command,
             solver_status=f"FALLBACK_{command_source}",
@@ -524,7 +530,66 @@ class SafeFallbackController:
             fallback_level=fallback_level,
             fallback_reason=rejection_reason,
             consecutive_rejections=self._consecutive_rejections,
+            maximum_slack=maximum_slack,
+            elapsed_s=elapsed_s,
+            deadline_missed=deadline_missed,
+        )
+
+    def _assured_solution(
+        self,
+        primary_solution: ControlSolution,
+        *,
+        command: np.ndarray,
+        solver_status: str,
+        command_source: str,
+        solution_accepted: bool,
+        fallback_active: bool,
+        fallback_level: int,
+        fallback_reason: str,
+        consecutive_rejections: int,
+        maximum_slack: float,
+        elapsed_s: float,
+        deadline_missed: bool,
+    ) -> ControlSolution:
+        """Attach the assurance decision to the final supervisor output."""
+        from quadrotor_mpc.control.nmpc.assurance import (
+            ASSURANCE_SCHEMA_VERSION,
+            HorizonAssuranceInput,
+            classify_horizon_assurance,
+        )
+
+        decision = classify_horizon_assurance(
+            HorizonAssuranceInput(
+                risk_semantics=primary_solution.risk_semantics,
+                risk_budget_status=primary_solution.risk_budget_status,
+                primary_solver_success=primary_solution.primary_solver_success,
+                residual_status=primary_solution.residual_status,
+                primal_residual=primary_solution.primary_solver_primal_residual,
+                dual_residual=primary_solution.primary_solver_dual_residual,
+                primal_residual_tolerance=self.options.maximum_solver_residual,
+                dual_residual_tolerance=self.options.maximum_solver_residual,
+                maximum_slack=maximum_slack,
+                slack_tolerance=self.options.guarantee_slack_tolerance_m,
+                deadline_missed=deadline_missed,
+                fallback_active=fallback_active,
+            )
+        )
+        return replace(
+            primary_solution,
+            command=command,
+            solver_status=solver_status,
+            command_source=command_source,
+            solution_accepted=solution_accepted,
+            fallback_active=fallback_active,
+            fallback_level=fallback_level,
+            fallback_reason=fallback_reason,
+            consecutive_rejections=consecutive_rejections,
             solve_time_ms=elapsed_s * 1000.0,
             deadline_missed=deadline_missed,
-            safety_assurance_status="NOT_GUARANTEED_FALLBACK_ACTIVE",
+            safety_assurance_status=decision.status.value,
+            horizon_assurance_status=decision.status.value,
+            horizon_assurance_eligible=decision.eligible,
+            horizon_assurance_reason=decision.reason_code,
+            horizon_assurance_failed_checks=decision.failed_checks,
+            assurance_schema_version=ASSURANCE_SCHEMA_VERSION,
         )

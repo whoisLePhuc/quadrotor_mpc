@@ -7,7 +7,7 @@ import json
 import re
 import threading
 from collections import deque
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -164,6 +164,22 @@ def step_to_sample(step: Any) -> dict[str, Any]:
         "safety_assurance_status": str(
             getattr(step, "safety_assurance_status", "")
         ),
+        "residual_status": str(getattr(step, "residual_status", "UNAVAILABLE")),
+        "horizon_assurance_status": str(
+            getattr(step, "horizon_assurance_status", "")
+        ),
+        "horizon_assurance_eligible": bool(
+            getattr(step, "horizon_assurance_eligible", False)
+        ),
+        "horizon_assurance_reason": str(
+            getattr(step, "horizon_assurance_reason", "")
+        ),
+        "horizon_assurance_failed_checks": list(
+            getattr(step, "horizon_assurance_failed_checks", ())
+        ),
+        "assurance_schema_version": int(
+            getattr(step, "assurance_schema_version", 2)
+        ),
         "risk_semantics": str(getattr(step, "risk_semantics", "")),
         "risk_allocation_method": str(
             getattr(step, "risk_allocation_method", "")
@@ -202,6 +218,16 @@ def step_to_sample(step: Any) -> dict[str, Any]:
 
 def _slug(value: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_-]+", "-", value).strip("-").lower() or "run"
+
+
+def _reason_counts(samples: Sequence[Mapping[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for sample in samples:
+        reason = str(sample.get("horizon_assurance_reason", ""))
+        if not reason or reason == "eligible":
+            continue
+        counts[reason] = counts.get(reason, 0) + 1
+    return counts
 
 
 class NativeRunRecorder:
@@ -479,11 +505,42 @@ class NativeRunRecorder:
                 for sample in self.samples
                 if not sample.get("solution_accepted", True)
             ),
-            "guarantee_eligible_samples": sum(
+            "horizon_eligible_tick_count": sum(
                 1
                 for sample in self.samples
-                if sample.get("safety_assurance_status")
-                == "GUARANTEE_ELIGIBLE"
+                if sample.get("horizon_assurance_eligible", False)
+            ),
+            "horizon_eligible_tick_rate": (
+                sum(
+                    1
+                    for sample in self.samples
+                    if sample.get("horizon_assurance_eligible", False)
+                )
+                / len(self.samples)
+                if self.samples
+                else 0.0
+            ),
+            "horizon_ineligible_reason_counts": _reason_counts(
+                self.samples
+            ),
+            "episode_all_ticks_horizon_eligible": bool(
+                self.samples
+                and all(
+                    sample.get("horizon_assurance_eligible", False)
+                    for sample in self.samples
+                )
+            ),
+            "episode_any_fallback": any(
+                sample.get("fallback_active", False) for sample in self.samples
+            ),
+            "episode_any_positive_slack": any(
+                sample.get("maximum_slack_m") is not None
+                and float(sample["maximum_slack_m"])
+                > float(sample.get("slack_tolerance_m", 0.0))
+                for sample in self.samples
+            ),
+            "episode_any_deadline_miss": any(
+                sample.get("deadline_missed", False) for sample in self.samples
             ),
             "maximum_primary_solver_primal_residual": max(
                 (
@@ -554,6 +611,12 @@ class NativeRunRecorder:
             "consecutive_rejections",
             "deadline_missed",
             "safety_assurance_status",
+            "residual_status",
+            "horizon_assurance_status",
+            "horizon_assurance_eligible",
+            "horizon_assurance_reason",
+            "horizon_assurance_failed_checks",
+            "assurance_schema_version",
             "risk_semantics",
             "risk_allocation_method",
             "risk_budget_total",
@@ -642,6 +705,27 @@ class NativeRunRecorder:
                         "safety_assurance_status": sample.get(
                             "safety_assurance_status",
                             "",
+                        ),
+                        "residual_status": sample.get(
+                            "residual_status",
+                            "UNAVAILABLE",
+                        ),
+                        "horizon_assurance_status": sample.get(
+                            "horizon_assurance_status",
+                            "",
+                        ),
+                        "horizon_assurance_eligible": int(
+                            sample.get("horizon_assurance_eligible", False)
+                        ),
+                        "horizon_assurance_reason": sample.get(
+                            "horizon_assurance_reason",
+                            "",
+                        ),
+                        "horizon_assurance_failed_checks": ";".join(
+                            sample.get("horizon_assurance_failed_checks", ())
+                        ),
+                        "assurance_schema_version": int(
+                            sample.get("assurance_schema_version", 2)
                         ),
                         "risk_semantics": sample.get("risk_semantics", ""),
                         "risk_allocation_method": sample.get(
