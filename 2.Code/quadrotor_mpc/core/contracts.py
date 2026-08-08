@@ -226,6 +226,7 @@ class ControlSolution:
     fallback_level: int = 0
     fallback_reason: str = ""
     consecutive_rejections: int = 0
+    usable_without_deadline_gate: bool = True
     solve_time_ms: float = 0.0
     deadline_missed: bool = False
     safety_assurance_status: str = ""
@@ -403,6 +404,11 @@ class ControlSolution:
             self,
             "solution_accepted",
             bool(self.solution_accepted),
+        )
+        object.__setattr__(
+            self,
+            "usable_without_deadline_gate",
+            bool(self.usable_without_deadline_gate),
         )
         object.__setattr__(
             self,

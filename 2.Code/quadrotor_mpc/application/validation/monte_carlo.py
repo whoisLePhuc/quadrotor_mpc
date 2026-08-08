@@ -117,6 +117,9 @@ class NativeMonteCarloProtocol:
     require_zero_fallback: bool
     require_zero_budget_failures: bool
     timing_percentile: float
+    protocol_type: str = "algorithmic_comparison"
+    control_period_ms: float = 50.0
+    deadline_clock: str = "solver_only"
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -150,6 +153,37 @@ class NativeMonteCarloProtocol:
         labels = [level.label for level in self.noise_levels]
         if len(set(labels)) != len(labels):
             raise ValueError("noise-level labels must be unique")
+        self._validate_protocol()
+
+    def _validate_protocol(self) -> None:
+        from quadrotor_mpc.application.validation.protocol import (
+            DeadlineClock,
+            MonteCarloProtocol,
+            validate_control_period,
+            validate_protocol_policy,
+        )
+
+        protocol = MonteCarloProtocol(self.protocol_type)
+        derived_policy = deadline_policy_from_protocol(protocol)
+        validate_protocol_policy(protocol, derived_policy)
+        validate_control_period(self.control_period_ms)
+        if self.deadline_clock not in {clock.value for clock in DeadlineClock}:
+            raise ValueError(
+                f"validation.monte_carlo.deadline_clock must be one of "
+                f"{[clock.value for clock in DeadlineClock]}"
+            )
+
+    @property
+    def protocol(self):
+        from quadrotor_mpc.application.validation.protocol import (
+            MonteCarloProtocol,
+        )
+
+        return MonteCarloProtocol(self.protocol_type)
+
+    @property
+    def deadline_policy(self) -> str:
+        return deadline_policy_from_protocol(self.protocol).value
 
     @property
     def seeds(self) -> tuple[int, ...]:
@@ -182,6 +216,11 @@ class NativeMonteCarloProtocol:
                 "require_zero_fallback": self.require_zero_fallback,
                 "require_zero_budget_failures": self.require_zero_budget_failures,
                 "timing_percentile": self.timing_percentile,
+            },
+            "monte_carlo": {
+                "protocol": self.protocol_type,
+                "control_period_ms": self.control_period_ms,
+                "deadline_clock": self.deadline_clock,
             },
         }
 
@@ -248,7 +287,34 @@ def load_native_monte_carlo_protocol(
             validation.get("require_zero_budget_failures", True)
         ),
         timing_percentile=float(validation.get("timing_percentile", 0.99)),
+        protocol_type=str(
+            _mapping(root.get("monte_carlo", {}), "monte_carlo").get(
+                "protocol", "algorithmic_comparison"
+            )
+        ),
+        control_period_ms=float(
+            _mapping(root.get("monte_carlo", {}), "monte_carlo").get(
+                "control_period_ms", 50.0
+            )
+        ),
+        deadline_clock=str(
+            _mapping(root.get("monte_carlo", {}), "monte_carlo").get(
+                "deadline_clock", "solver_only"
+            )
+        ),
     )
+
+
+def deadline_policy_from_protocol(protocol):
+    from quadrotor_mpc.application.validation.protocol import (
+        DeadlinePolicy,
+    )
+
+    if protocol.value == "algorithmic_comparison":
+        return DeadlinePolicy.RECORD_ONLY
+    if protocol.value == "realtime_qualification":
+        return DeadlinePolicy.REJECT_TO_FALLBACK
+    raise ValueError(f"Unsupported protocol: {protocol}")
 
 
 def _scale_fields(
@@ -267,6 +333,7 @@ def effective_native_config(
     mode: str,
     covariance_scale: float,
     seed: int,
+    protocol_type: str = "algorithmic_comparison",
 ) -> NativeMuJoCoConfig:
     """Build one paired-trial config without mutating the source configuration."""
     normalized_mode = str(mode).lower()
@@ -301,11 +368,16 @@ def effective_native_config(
     )
 
     chance = mapping["controller"]["chance_constraints"]
-    # The desktop profile treats the 50 ms target as monitor-only so a slow
-    # research workstation does not freeze at the initial position. Monte
-    # Carlo validation is a strict timing experiment: late commands must be
-    # rejected and counted as fallback evidence.
-    mapping["controller"]["safety_fallback"]["reject_on_deadline_miss"] = True
+    # Deadline handling is protocol-derived: algorithmic comparison records
+    # deadline facts but applies late-but-valid primary commands so allocator
+    # quality is not hidden by deadline rejection; realtime qualification
+    # rejects late commands to fallback as the strict policy requires.
+    reject_on_deadline = (
+        protocol_type == "realtime_qualification"
+    )
+    mapping["controller"]["safety_fallback"]["reject_on_deadline_miss"] = (
+        reject_on_deadline
+    )
     if normalized_mode == "deterministic":
         chance["enabled"] = False
         propagation["enabled"] = False
@@ -434,6 +506,16 @@ class NativeTrialResult:
     enforced_profile_count: int
     missing_enforced_profile_count: int
     post_solve_diagnostic_profile_count: int
+    protocol: str = "algorithmic_comparison"
+    total_ticks: int = 0
+    deadline_miss_count: int = 0
+    primary_applied_on_time_count: int = 0
+    primary_applied_late_count: int = 0
+    fallback_deadline_count: int = 0
+    fallback_primary_invalid_count: int = 0
+    primary_application_rate: float = 0.0
+    fallback_application_rate: float = 0.0
+    max_deadline_overrun_ms: float = 0.0
 
     def to_mapping(self) -> dict[str, Any]:
         return asdict(self)
@@ -447,6 +529,7 @@ def summarize_native_trial(
     noise_label: str,
     covariance_scale: float,
     seed: int,
+    protocol: str = "algorithmic_comparison",
 ) -> NativeTrialResult:
     """Reduce native time-series output to a transparent trial-level record."""
     positions = np.asarray(result.get("pos", []), dtype=float)
@@ -601,6 +684,40 @@ def summarize_native_trial(
     def rate(values: np.ndarray) -> float:
         return float(np.mean(values)) if values.size else 0.0
 
+    dispositions = np.asarray(
+        result.get("primary_disposition", []),
+        dtype=str,
+    )
+    deadline_overruns = np.asarray(
+        result.get("deadline_overrun_ms", []),
+        dtype=float,
+    )
+    total_ticks = max(0, int(len(dispositions)))
+    primary_applied_on_time_count = int(
+        np.sum(dispositions == "PRIMARY_APPLIED_ON_TIME")
+    )
+    primary_applied_late_count = int(
+        np.sum(dispositions == "PRIMARY_APPLIED_LATE")
+    )
+    fallback_deadline_count = int(
+        np.sum(dispositions == "FALLBACK_APPLIED_DEADLINE_MISS")
+    )
+    fallback_primary_invalid_count = int(
+        np.sum(dispositions == "FALLBACK_APPLIED_PRIMARY_INVALID")
+    )
+    primary_applied_total = (
+        primary_applied_on_time_count + primary_applied_late_count
+    )
+    fallback_applied_total = (
+        fallback_deadline_count + fallback_primary_invalid_count
+    )
+    deadline_miss_count = int(np.sum(deadline_missed)) if deadline_missed.size else 0
+    max_deadline_overrun_ms = (
+        float(np.max(deadline_overruns))
+        if deadline_overruns.size
+        else 0.0
+    )
+
     profile_status = np.asarray(
         result.get("chance_profile_application_status", []),
         dtype=str,
@@ -735,14 +852,34 @@ def summarize_native_trial(
         enforced_profile_count=enforced_profile_count,
         missing_enforced_profile_count=missing_enforced_profile_count,
         post_solve_diagnostic_profile_count=post_solve_diagnostic_profile_count,
+        protocol=protocol,
+        total_ticks=total_ticks,
+        deadline_miss_count=deadline_miss_count,
+        primary_applied_on_time_count=primary_applied_on_time_count,
+        primary_applied_late_count=primary_applied_late_count,
+        fallback_deadline_count=fallback_deadline_count,
+        fallback_primary_invalid_count=fallback_primary_invalid_count,
+        primary_application_rate=(
+            primary_applied_total / total_ticks if total_ticks else 0.0
+        ),
+        fallback_application_rate=(
+            fallback_applied_total / total_ticks if total_ticks else 0.0
+        ),
+        max_deadline_overrun_ms=max_deadline_overrun_ms,
     )
 
 
 class NativeMonteCarloRunner:
     """Reuse one compiled controller per mode/noise combination."""
 
-    def __init__(self, base_config: NativeMuJoCoConfig):
+    def __init__(
+        self,
+        base_config: NativeMuJoCoConfig,
+        *,
+        protocol_type: str = "algorithmic_comparison",
+    ):
         self.base_config = base_config
+        self.protocol_type = str(protocol_type)
         self._controllers: dict[tuple[str, float], Any] = {}
 
     def run_trial(
@@ -759,6 +896,7 @@ class NativeMonteCarloRunner:
             mode=mode,
             covariance_scale=noise_level.covariance_scale,
             seed=seed,
+            protocol_type=self.protocol_type,
         )
         key = (mode, noise_level.covariance_scale)
         if key not in self._controllers:
@@ -784,6 +922,7 @@ class NativeMonteCarloRunner:
             covariance_options=config.covariance_propagation,
             chance_options=config.chance_constraints,
             safety_fallback_options=config.safety_fallback,
+            protocol_type=self.protocol_type,
         )
         return summarize_native_trial(
             result,
@@ -792,6 +931,7 @@ class NativeMonteCarloRunner:
             noise_label=noise_level.label,
             covariance_scale=noise_level.covariance_scale,
             seed=seed,
+            protocol=self.protocol_type,
         )
 
 
@@ -802,6 +942,7 @@ def run_native_trial_batch(
     noise_label: str,
     covariance_scale: float,
     seeds: Sequence[int],
+    protocol_type: str = "algorithmic_comparison",
 ) -> list[dict[str, Any]]:
     """Process-safe batch entry point; one compiled controller serves all seeds."""
     import warnings
@@ -813,7 +954,8 @@ def run_native_trial_batch(
         message="The approximateMPC feature requires PyTorch.*",
     )
     runner = NativeMonteCarloRunner(
-        NativeMuJoCoConfig.from_mapping(base_config_mapping)
+        NativeMuJoCoConfig.from_mapping(base_config_mapping),
+        protocol_type=protocol_type,
     )
     level = NoiseLevel(noise_label, covariance_scale)
     return [
@@ -904,6 +1046,13 @@ def _group_gates(
         float(timing_summary["p95"]) if timing_summary is not None else float("inf")
     )
     timing_ok = timing_value <= controller_period_ms
+    # A real-time qualification claim requires the realtime protocol, an
+    # end-to-end deadline clock, and the timing gate.  Algorithmic runs are
+    # never allowed to produce a real-time pass.
+    realtime_claim_eligible = bool(
+        protocol.protocol_type == "realtime_qualification"
+        and protocol.deadline_clock == "end_to_end_controller"
+    )
 
     claim_blockers: list[str] = []
     if not enough_trials:
@@ -949,6 +1098,7 @@ def _group_gates(
         or not empirical_collision_ok
         or not timing_ok
         or claim_status.startswith("BLOCKED_")
+        or not realtime_claim_eligible
     ):
         validation_status = "VALIDATED_WITH_LIMITATIONS"
     else:
@@ -968,6 +1118,7 @@ def _group_gates(
             else ("INSUFFICIENT" if not enough_trials else "FAIL")
         ),
         "real_time_p99": "PASS" if timing_ok else "FAIL",
+        "realtime_claim_eligible": realtime_claim_eligible,
         "claim_status": claim_status,
         "claim_blockers": claim_blockers if mode != "deterministic" else [],
         "validation_status": validation_status,
@@ -992,6 +1143,19 @@ def aggregate_native_trials(
     """Aggregate by noise and controller with paired deltas and claim gates."""
     if not trials:
         raise ValueError("at least one native Monte Carlo trial is required")
+    active_protocols = {
+        trial.protocol for trial in trials if trial.protocol != "UNKNOWN_LEGACY"
+    }
+    if len(active_protocols) > 1:
+        raise ValueError(
+            "cannot aggregate trials from multiple validation protocols: "
+            f"{sorted(active_protocols)}; run separate campaigns per protocol"
+        )
+    legacy_trials = [trial for trial in trials if trial.protocol == "UNKNOWN_LEGACY"]
+    if legacy_trials:
+        raise ValueError(
+            "cannot aggregate UNKNOWN_LEGACY trials into a new protocol summary"
+        )
     numeric_fields = (
         "final_error_m",
         "min_clearance_m",
@@ -1013,9 +1177,19 @@ def aggregate_native_trials(
         "guarantee_eligible_rate",
         "horizon_eligible_tick_rate",
         "maximum_budget_error",
+        "primary_application_rate",
+        "fallback_application_rate",
     )
     output: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
+        "protocol": (
+            active_protocols.pop() if active_protocols else "UNKNOWN_LEGACY"
+        ),
+        "deadline_policy": (
+            deadline_policy_from_protocol(protocol.protocol).value
+        ),
+        "deadline_clock": protocol.deadline_clock,
+        "control_period_ms": controller_period_ms,
         "confidence_level": protocol.confidence_level,
         "minimum_trials_for_claim": protocol.minimum_trials_for_claim,
         "noise_levels": {},
@@ -1063,6 +1237,16 @@ def aggregate_native_trials(
                 "fallback_episode_rate": _rate_summary(
                     items,
                     lambda item: item.fallback_ticks > 0,
+                    protocol.confidence_level,
+                ),
+                "deadline_miss_episode_rate": _rate_summary(
+                    items,
+                    lambda item: item.deadline_miss_count > 0,
+                    protocol.confidence_level,
+                ),
+                "primary_application_episode_rate": _rate_summary(
+                    items,
+                    lambda item: item.primary_application_rate >= 1.0,
                     protocol.confidence_level,
                 ),
                 "guarantee_eligible_episode_rate": _rate_summary(

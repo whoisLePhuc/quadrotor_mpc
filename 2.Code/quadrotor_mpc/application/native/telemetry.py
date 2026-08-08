@@ -183,6 +183,21 @@ def step_to_sample(step: Any) -> dict[str, Any]:
             getattr(step, "consecutive_rejections", 0)
         ),
         "deadline_missed": bool(getattr(step, "deadline_missed", False)),
+        "applied_command_source": str(
+            getattr(step, "applied_command_source", "")
+        ),
+        "primary_disposition": str(
+            getattr(step, "primary_disposition", "")
+        ),
+        "rejection_reasons": list(
+            getattr(step, "rejection_reasons", ())
+        ),
+        "deadline_overrun_ms": float(
+            getattr(step, "deadline_overrun_ms", 0.0)
+        ),
+        "total_controller_time_ms": float(
+            getattr(step, "total_controller_time_ms", 0.0)
+        ),
         "safety_assurance_status": str(
             getattr(step, "safety_assurance_status", "")
         ),
@@ -500,6 +515,10 @@ class NativeRunRecorder:
             "scenario": self.scenario_name,
             "created_utc": datetime.now(timezone.utc).isoformat(),
             "samples": len(self.samples),
+            "protocol": str(getattr(self, "protocol", "")),
+            "deadline_policy": str(getattr(self, "deadline_policy", "")),
+            "deadline_clock": str(getattr(self, "deadline_clock", "")),
+            "control_period_ms": float(getattr(self, "control_period_ms", 50.0)),
             "termination_reason": str(result.get("termination_reason", "unknown")),
             "collision": bool(result.get("collided", False)),
             "min_clearance_m": (
@@ -711,6 +730,11 @@ class NativeRunRecorder:
             "fallback_reason",
             "consecutive_rejections",
             "deadline_missed",
+            "applied_command_source",
+            "primary_disposition",
+            "rejection_reasons",
+            "deadline_overrun_ms",
+            "total_controller_time_ms",
             "safety_assurance_status",
             "residual_status",
             "horizon_assurance_status",
@@ -824,6 +848,21 @@ class NativeRunRecorder:
                         ),
                         "deadline_missed": int(
                             sample.get("deadline_missed", False)
+                        ),
+                        "applied_command_source": sample.get(
+                            "applied_command_source", ""
+                        ),
+                        "primary_disposition": sample.get(
+                            "primary_disposition", ""
+                        ),
+                        "rejection_reasons": ";".join(
+                            sample.get("rejection_reasons", ())
+                        ),
+                        "deadline_overrun_ms": float(
+                            sample.get("deadline_overrun_ms", 0.0)
+                        ),
+                        "total_controller_time_ms": float(
+                            sample.get("total_controller_time_ms", 0.0)
                         ),
                         "safety_assurance_status": sample.get(
                             "safety_assurance_status",

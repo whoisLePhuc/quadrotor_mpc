@@ -117,6 +117,11 @@ class CoupledStep:
     chance_profile_application_status: str = ""
     chance_profile_enforced_profile_id: str = ""
     chance_profile_solve_attempt_id: str = ""
+    applied_command_source: str = ""
+    primary_disposition: str = ""
+    rejection_reasons: tuple[str, ...] = ()
+    deadline_overrun_ms: float = 0.0
+    total_controller_time_ms: float = 0.0
 
 
 class CoupledRuntime(Protocol):
@@ -164,6 +169,8 @@ def run_coupled_simulation(
     covariance_options: CovariancePropagationOptions | None = None,
     chance_options: ChanceConstraintOptions | None = None,
     safety_fallback_options: SafetyFallbackOptions | None = None,
+    protocol_type: str = "algorithmic_comparison",
+    control_period_ms: float = 50.0,
 ):
     """
     `cached`: optional (model, mpc, dyn_idx, goal_state) tuple from
@@ -318,6 +325,11 @@ def run_coupled_simulation(
     horizon_assurance_reason_history: list[str] = []
     horizon_assurance_failed_checks_history: list[tuple[str, ...]] = []
     residual_status_history: list[str] = []
+    applied_command_source_history: list[str] = []
+    primary_disposition_history: list[str] = []
+    rejection_reasons_history: list[tuple[str, ...]] = []
+    deadline_overrun_history: list[float] = []
+    total_controller_time_history: list[float] = []
     solver_time_history: list[float] = []
     vehicle_measurement_history, obstacle_measurement_history = [], []
     vehicle_measurements, obstacle_measurements = [], []
@@ -442,6 +454,11 @@ def run_coupled_simulation(
                 fallback_reason_history.clear()
                 consecutive_rejection_history.clear()
                 deadline_missed_history.clear()
+                applied_command_source_history.clear()
+                primary_disposition_history.clear()
+                rejection_reasons_history.clear()
+                deadline_overrun_history.clear()
+                total_controller_time_history.clear()
                 safety_assurance_status_history.clear()
                 horizon_assurance_status_history.clear()
                 horizon_assurance_eligible_history.clear()
@@ -501,6 +518,39 @@ def run_coupled_simulation(
                 control_goal,
                 t,
             )
+            total_controller_time_ms = (
+                time.perf_counter() - solver_start
+            ) * 1000.0
+            from quadrotor_mpc.application.validation.protocol import (
+                MonteCarloProtocol,
+                deadline_facts,
+                select_applied_command,
+            )
+
+            protocol = MonteCarloProtocol(protocol_type)
+            deadline_missed, deadline_overrun_ms = deadline_facts(
+                total_controller_time_ms,
+                control_period_ms,
+            )
+            decision = select_applied_command(
+                protocol=protocol,
+                primary_valid=bool(
+                    getattr(
+                        solution,
+                        "usable_without_deadline_gate",
+                        solution.primary_solver_success
+                        and solution.solution_accepted,
+                    )
+                ),
+                deadline_missed=deadline_missed,
+                rejection_reasons=(
+                    (solution.fallback_reason,)
+                    if solution.fallback_reason
+                    else ()
+                ),
+            )
+            applied_command_source = decision.applied_command_source
+            primary_disposition = decision.primary_disposition
             u0 = solution.command
             horizon_vehicle_covariances.append(solution.predicted_covariances.copy())
             horizon_obstacle_covariances.append(solution.predicted_obstacle_covariances.copy())
@@ -557,6 +607,13 @@ def run_coupled_simulation(
                 solution.consecutive_rejections
             )
             deadline_missed_history.append(solution.deadline_missed)
+            applied_command_source_history.append(applied_command_source)
+            primary_disposition_history.append(primary_disposition)
+            rejection_reasons_history.append(
+                tuple(str(reason) for reason in decision.rejection_reasons)
+            )
+            deadline_overrun_history.append(deadline_overrun_ms)
+            total_controller_time_history.append(total_controller_time_ms)
             safety_assurance_status_history.append(
                 solution.safety_assurance_status
             )
@@ -780,6 +837,11 @@ def run_coupled_simulation(
                         chance_profile_solve_attempt_id=(
                             solution.chance_profile_solve_attempt_id
                         ),
+                        applied_command_source=applied_command_source,
+                        primary_disposition=primary_disposition,
+                        rejection_reasons=decision.rejection_reasons,
+                        deadline_overrun_ms=deadline_overrun_ms,
+                        total_controller_time_ms=total_controller_time_ms,
                     )
                 )
                 if not keep_running:
@@ -919,6 +981,21 @@ def run_coupled_simulation(
             dtype=int,
         ),
         "deadline_missed": np.asarray(deadline_missed_history, dtype=bool),
+        "applied_command_source": np.asarray(
+            applied_command_source_history, dtype=str
+        ),
+        "primary_disposition": np.asarray(
+            primary_disposition_history, dtype=str
+        ),
+        "rejection_reasons": np.asarray(
+            rejection_reasons_history, dtype=object
+        ),
+        "deadline_overrun_ms": np.asarray(
+            deadline_overrun_history, dtype=float
+        ),
+        "total_controller_time_ms": np.asarray(
+            total_controller_time_history, dtype=float
+        ),
         "safety_assurance_status": np.asarray(
             safety_assurance_status_history,
             dtype=str,

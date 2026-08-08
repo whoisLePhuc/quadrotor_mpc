@@ -454,6 +454,7 @@ class SafeFallbackController:
             tightened_safety_radii=matrix,
             primary_solver_status=primary_status,
             primary_solver_success=False,
+            usable_without_deadline_gate=False,
             residual_status="UNAVAILABLE",
             risk_budget_status="FALLBACK_NO_PRIMARY_SOLUTION",
         )
@@ -605,6 +606,9 @@ class SafeFallbackController:
             solver_status=solver_status,
             command_source=command_source,
             solution_accepted=solution_accepted,
+            usable_without_deadline_gate=bool(
+                solution_accepted or fallback_reason == "DEADLINE_MISSED"
+            ),
             fallback_active=fallback_active,
             fallback_level=fallback_level,
             fallback_reason=fallback_reason,
