@@ -13,6 +13,8 @@ from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 
+from quadrotor_mpc.core.timing import ControllerTiming
+
 VEHICLE_STATE_SIZE = 13
 VEHICLE_ERROR_STATE_SIZE = 12
 OBSTACLE_STATE_SIZE = 6
@@ -241,6 +243,7 @@ class ControlSolution:
     chance_profile_application_status: str = ""
     chance_profile_enforced_profile_id: str = ""
     chance_profile_solve_attempt_id: str = ""
+    controller_timing: ControllerTiming | None = None
 
     def __post_init__(self) -> None:
         command = _readonly_array(self.command, (CONTROL_SIZE,), "ControlSolution.command")
@@ -536,6 +539,13 @@ class ControlSolution:
             "chance_profile_solve_attempt_id",
             str(self.chance_profile_solve_attempt_id),
         )
+        if self.controller_timing is not None and not isinstance(
+            self.controller_timing,
+            ControllerTiming,
+        ):
+            raise ValueError(
+                "ControlSolution.controller_timing must be a ControllerTiming or None"
+            )
 
     @property
     def predicted_positions(self) -> np.ndarray:

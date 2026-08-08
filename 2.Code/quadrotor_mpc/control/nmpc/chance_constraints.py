@@ -14,6 +14,7 @@ individual constraint risk or a joint receding-horizon budget.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from statistics import NormalDist
 from typing import Any
@@ -25,6 +26,7 @@ from quadrotor_mpc.control.nmpc.risk_budget import (
     RiskBudgetOptions,
     allocate_risk_budget,
 )
+from quadrotor_mpc.core.timing import TimingRecorder
 
 
 def _positive(value: Any, label: str, *, allow_zero: bool = False) -> float:
@@ -233,6 +235,7 @@ def build_spherical_chance_profile(
     obstacle_covariances: np.ndarray,
     base_safety_radii_m: np.ndarray,
     options: ChanceConstraintOptions,
+    timing_recorder: TimingRecorder | None = None,
 ) -> SphericalChanceProfile:
     """Project relative covariance and build deterministic tightened radii.
 
@@ -290,15 +293,27 @@ def build_spherical_chance_profile(
             normals[step, obstacle] = normal
             sigmas[step, obstacle] = np.sqrt(max(variance, 0.0))
 
-    risk: RiskAllocation = allocate_risk_budget(
-        steps=steps,
-        obstacle_count=obstacle_count,
-        enabled=options.enabled,
-        individual_epsilon=options.individual_epsilon,
-        options=options.risk_budget,
+    risk_context = (
+        timing_recorder.measure("risk_allocation_time_ms")
+        if timing_recorder is not None
+        else nullcontext()
     )
-    tightening = risk.gaussian_quantiles * sigmas
-    safety_radii = base_radii[None, :] + tightening
+    with risk_context:
+        risk: RiskAllocation = allocate_risk_budget(
+            steps=steps,
+            obstacle_count=obstacle_count,
+            enabled=options.enabled,
+            individual_epsilon=options.individual_epsilon,
+            options=options.risk_budget,
+        )
+    tightening_context = (
+        timing_recorder.measure("tightening_time_ms")
+        if timing_recorder is not None
+        else nullcontext()
+    )
+    with tightening_context:
+        tightening = risk.gaussian_quantiles * sigmas
+        safety_radii = base_radii[None, :] + tightening
     return SphericalChanceProfile(
         collision_normals=normals,
         projected_sigmas_m=sigmas,

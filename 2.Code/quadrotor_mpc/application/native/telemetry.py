@@ -129,6 +129,11 @@ def step_to_sample(step: Any) -> dict[str, Any]:
             if getattr(step, "minimum_ground_clearance_m", None) is None
             else float(step.minimum_ground_clearance_m)
         ),
+        "controller_timing": (
+            None
+            if getattr(step, "controller_timing", None) is None
+            else step.controller_timing.to_mapping()
+        ),
         "paused": bool(getattr(step, "paused", False)),
         "estimated_state": None if estimated is None else estimated.tolist(),
         "position_sigma": position_sigma,
@@ -730,6 +735,16 @@ class NativeRunRecorder:
         self._finalized = True
         return self.run_dir
 
+    @staticmethod
+    def _timing_value(sample: Mapping[str, Any], field: str) -> str | float:
+        timing = sample.get("controller_timing")
+        if not isinstance(timing, dict):
+            return ""
+        value = timing.get(field)
+        if value is None:
+            return ""
+        return float(value)
+
     def _write_csv(self, path: Path) -> None:
         fields = [
             "step_index",
@@ -757,6 +772,16 @@ class NativeRunRecorder:
             "ground_collision_detected",
             "minimum_obstacle_clearance_m",
             "minimum_ground_clearance_m",
+            "seed_trajectory_time_ms",
+            "covariance_propagation_time_ms",
+            "geometry_context_time_ms",
+            "risk_allocation_time_ms",
+            "tightening_time_ms",
+            "chance_profile_time_ms",
+            "tvp_update_time_ms",
+            "nlp_solve_time_ms",
+            "post_solve_diagnostic_time_ms",
+            "safety_supervisor_time_ms",
             "solver_time_ms",
             "solver_status",
             "primary_solver_status",
@@ -847,6 +872,36 @@ class NativeRunRecorder:
                         ),
                         "minimum_ground_clearance_m": sample.get(
                             "minimum_ground_clearance_m"
+                        ),
+                        "seed_trajectory_time_ms": self._timing_value(
+                            sample, "seed_trajectory_time_ms"
+                        ),
+                        "covariance_propagation_time_ms": self._timing_value(
+                            sample, "covariance_propagation_time_ms"
+                        ),
+                        "geometry_context_time_ms": self._timing_value(
+                            sample, "geometry_context_time_ms"
+                        ),
+                        "risk_allocation_time_ms": self._timing_value(
+                            sample, "risk_allocation_time_ms"
+                        ),
+                        "tightening_time_ms": self._timing_value(
+                            sample, "tightening_time_ms"
+                        ),
+                        "chance_profile_time_ms": self._timing_value(
+                            sample, "chance_profile_time_ms"
+                        ),
+                        "tvp_update_time_ms": self._timing_value(
+                            sample, "tvp_update_time_ms"
+                        ),
+                        "nlp_solve_time_ms": self._timing_value(
+                            sample, "nlp_solve_time_ms"
+                        ),
+                        "post_solve_diagnostic_time_ms": self._timing_value(
+                            sample, "post_solve_diagnostic_time_ms"
+                        ),
+                        "safety_supervisor_time_ms": self._timing_value(
+                            sample, "safety_supervisor_time_ms"
                         ),
                         "solver_time_ms": sample["solver_time_ms"],
                         "solver_status": sample.get("solver_status", ""),

@@ -26,6 +26,11 @@ import numpy as np
 import yaml
 
 from quadrotor_mpc.core.collision import CollisionType, classify_collision
+from quadrotor_mpc.core.timing import (
+    TIMING_FIELD_NAMES,
+    TIMING_SCHEMA_METADATA,
+    summarize_timing_series,
+)
 from quadrotor_mpc.interfaces.desktop.viewer import NativeMuJoCoConfig
 
 SUPPORTED_MODES = ("deterministic", "individual", "joint")
@@ -526,6 +531,7 @@ class NativeTrialResult:
     first_ground_collision_time_s: float | None = None
     minimum_obstacle_clearance_m: float | None = None
     minimum_ground_clearance_m: float | None = None
+    timing_stats: dict[str, dict[str, float | int | None]] | None = None
 
     def to_mapping(self) -> dict[str, Any]:
         return asdict(self)
@@ -698,6 +704,17 @@ def summarize_native_trial(
             collision_type,
         )
     )
+    timing_series = result.get("controller_timing")
+    timing_stats = (
+        summarize_timing_series(
+            [
+                item if isinstance(item, dict) else None
+                for item in timing_series
+            ]
+        )
+        if isinstance(timing_series, (list, tuple))
+        else None
+    )
     success = bool(
         completed
         and not collision
@@ -848,6 +865,7 @@ def summarize_native_trial(
         first_ground_collision_time_s=first_ground_collision_time_s,
         minimum_obstacle_clearance_m=result.get("minimum_obstacle_clearance_m"),
         minimum_ground_clearance_m=result.get("minimum_ground_clearance_m"),
+        timing_stats=timing_stats,
         numerical_failure=numerical_failure,
         final_error_m=final_error,
         min_clearance_m=min_clearance,
@@ -1063,6 +1081,49 @@ def _rate_summary(
     }
 
 
+def _timing_group_summary(
+    items: Sequence[NativeTrialResult],
+) -> dict[str, Any]:
+    """Pool per-episode timing statistics across trials for each phase field."""
+    output: dict[str, Any] = {}
+    for field in TIMING_FIELD_NAMES:
+        available = [
+            item.timing_stats[field]
+            for item in items
+            if item.timing_stats is not None
+            and item.timing_stats.get(field) is not None
+            and item.timing_stats[field].get("count_available", 0) > 0
+        ]
+        if not available:
+            output[field] = {
+                "count_available_trials": 0,
+                "count_missing_trials": len(items),
+                "mean_ms": None,
+                "median_ms": None,
+                "p95_ms": None,
+                "p99_ms": None,
+                "max_ms": None,
+            }
+            continue
+        pooled: dict[str, list[float]] = {
+            key: [] for key in ("mean_ms", "median_ms", "p95_ms", "p99_ms", "max_ms")
+        }
+        for entry in available:
+            for key in pooled:
+                value = entry.get(key)
+                if value is not None:
+                    pooled[key].append(float(value))
+        summary: dict[str, float | None] = {}
+        for key, values in pooled.items():
+            summary[key] = float(np.mean(values)) if values else None
+        output[field] = {
+            "count_available_trials": len(available),
+            "count_missing_trials": len(items) - len(available),
+            **summary,
+        }
+    return output
+
+
 def _group_gates(
     items: Sequence[NativeTrialResult],
     summary: Mapping[str, Any],
@@ -1229,6 +1290,7 @@ def aggregate_native_trials(
     )
     output: dict[str, Any] = {
         "schema_version": 2,
+        "timing_schema": dict(TIMING_SCHEMA_METADATA),
         "protocol": (
             active_protocols.pop() if active_protocols else "UNKNOWN_LEGACY"
         ),
@@ -1336,6 +1398,7 @@ def aggregate_native_trials(
                 summary[name] = _numeric_summary(
                     getattr(item, name) for item in items
                 )
+            summary["timing"] = _timing_group_summary(items)
             summary["gates"] = _group_gates(
                 items,
                 summary,

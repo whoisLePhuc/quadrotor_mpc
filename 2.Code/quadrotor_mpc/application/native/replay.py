@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Mapping
 from typing import Any
 
 import numpy as np
@@ -11,7 +12,15 @@ from quadrotor_mpc.application.native.commands import CommandName
 from quadrotor_mpc.application.native.runtime import CoupledRunContext, CoupledStep
 from quadrotor_mpc.control.nmpc.core import DRONE_RADIUS
 from quadrotor_mpc.core.obstacle_motion import predict_obstacle_positions
+from quadrotor_mpc.core.timing import ControllerTiming
 from quadrotor_mpc.infrastructure.mujoco.plant import MuJoCoPlant
+
+
+def _optional(row: Mapping[str, Any], field: str) -> float | None:
+    value = row.get(field)
+    if value is None or str(value).strip() == "":
+        return None
+    return float(value)
 
 
 def replay_native_recording(config: Any, recording: dict[str, Any], runtime: Any) -> dict[str, Any]:
@@ -131,6 +140,35 @@ def replay_native_recording(config: Any, recording: dict[str, Any], runtime: Any
                 if row.get("minimum_ground_clearance_m") in (None, "")
                 else float(row["minimum_ground_clearance_m"])
             )
+            controller_timing = ControllerTiming.from_mapping(
+                {
+                    "seed_trajectory_time_ms": _optional(row, "seed_trajectory_time_ms"),
+                    "covariance_propagation_time_ms": _optional(
+                        row, "covariance_propagation_time_ms"
+                    ),
+                    "geometry_context_time_ms": _optional(
+                        row, "geometry_context_time_ms"
+                    ),
+                    "risk_allocation_time_ms": _optional(
+                        row, "risk_allocation_time_ms"
+                    ),
+                    "tightening_time_ms": _optional(row, "tightening_time_ms"),
+                    "chance_profile_time_ms": _optional(
+                        row, "chance_profile_time_ms"
+                    ),
+                    "tvp_update_time_ms": _optional(row, "tvp_update_time_ms"),
+                    "nlp_solve_time_ms": _optional(row, "nlp_solve_time_ms"),
+                    "post_solve_diagnostic_time_ms": _optional(
+                        row, "post_solve_diagnostic_time_ms"
+                    ),
+                    "safety_supervisor_time_ms": _optional(
+                        row, "safety_supervisor_time_ms"
+                    ),
+                    "total_controller_time_ms": _optional(
+                        row, "total_controller_time_ms"
+                    ),
+                }
+            )
             keep_running = runtime.on_step(
                 CoupledStep(
                     step_index=int(row["step_index"]),
@@ -169,6 +207,7 @@ def replay_native_recording(config: Any, recording: dict[str, Any], runtime: Any
                     ground_collision_detected=ground_collision_detected,
                     minimum_obstacle_clearance_m=minimum_obstacle_clearance_m,
                     minimum_ground_clearance_m=minimum_ground_clearance_m,
+                    controller_timing=controller_timing,
                     paused=paused,
                     predicted_covariances=(
                         recording["predicted_error_covariance_horizons"][index]

@@ -28,6 +28,7 @@ from quadrotor_mpc.control.nmpc.safety import (
 from quadrotor_mpc.core.collision import CollisionAccumulator, CollisionObservation
 from quadrotor_mpc.core.contracts import ControlGoal, Controller, VehicleBelief
 from quadrotor_mpc.core.obstacle_motion import predict_obstacle_positions
+from quadrotor_mpc.core.timing import ControllerTiming, merge_controller_timing
 from quadrotor_mpc.core.vehicle import DEFAULT_QUADROTOR
 from quadrotor_mpc.estimation.native import EstimationOptions, NativeBeliefEstimator
 from quadrotor_mpc.estimation.truth import exact_obstacle_beliefs
@@ -127,6 +128,7 @@ class CoupledStep:
     rejection_reasons: tuple[str, ...] = ()
     deadline_overrun_ms: float = 0.0
     total_controller_time_ms: float = 0.0
+    controller_timing: ControllerTiming | None = None
 
 
 class CoupledRuntime(Protocol):
@@ -335,6 +337,7 @@ def run_coupled_simulation(
     rejection_reasons_history: list[tuple[str, ...]] = []
     deadline_overrun_history: list[float] = []
     total_controller_time_history: list[float] = []
+    controller_timing_history: list[ControllerTiming | None] = []
     solver_time_history: list[float] = []
     vehicle_measurement_history, obstacle_measurement_history = [], []
     vehicle_measurements, obstacle_measurements = [], []
@@ -465,6 +468,7 @@ def run_coupled_simulation(
                 rejection_reasons_history.clear()
                 deadline_overrun_history.clear()
                 total_controller_time_history.clear()
+                controller_timing_history.clear()
                 safety_assurance_status_history.clear()
                 horizon_assurance_status_history.clear()
                 horizon_assurance_eligible_history.clear()
@@ -518,7 +522,7 @@ def run_coupled_simulation(
                 time.sleep(0.01)
                 continue
 
-            solver_start = time.perf_counter()
+            controller_tick_start_ns = time.perf_counter_ns()
             solution = active_controller.solve(
                 current_belief,
                 current_obstacle_beliefs,
@@ -526,8 +530,8 @@ def run_coupled_simulation(
                 t,
             )
             total_controller_time_ms = (
-                time.perf_counter() - solver_start
-            ) * 1000.0
+                time.perf_counter_ns() - controller_tick_start_ns
+            ) / 1_000_000.0
             from quadrotor_mpc.application.validation.protocol import (
                 MonteCarloProtocol,
                 deadline_facts,
@@ -638,14 +642,19 @@ def run_coupled_simulation(
             )
             residual_status_history.append(solution.residual_status)
             measured_solver_time_ms = (
-                time.perf_counter() - solver_start
-            ) * 1000.0
+                time.perf_counter_ns() - controller_tick_start_ns
+            ) / 1_000_000.0
             solver_time_ms = (
                 solution.solve_time_ms
                 if solution.solve_time_ms > 0.0
                 else measured_solver_time_ms
             )
             solver_time_history.append(solver_time_ms)
+            controller_timing = merge_controller_timing(
+                solution.controller_timing,
+                total_controller_time_ms=total_controller_time_ms,
+            )
+            controller_timing_history.append(controller_timing)
             plant.apply_control_and_step(u0, n_substeps, t)  # MuJoCo "true" plant
             x_curr = plant.get_state_13()
 
@@ -871,6 +880,7 @@ def run_coupled_simulation(
                         rejection_reasons=decision.rejection_reasons,
                         deadline_overrun_ms=deadline_overrun_ms,
                         total_controller_time_ms=total_controller_time_ms,
+                        controller_timing=controller_timing,
                     )
                 )
                 if not keep_running:
@@ -1044,6 +1054,10 @@ def run_coupled_simulation(
         "total_controller_time_ms": np.asarray(
             total_controller_time_history, dtype=float
         ),
+        "controller_timing": [
+            item.to_mapping() if item is not None else None
+            for item in controller_timing_history
+        ],
         "safety_assurance_status": np.asarray(
             safety_assurance_status_history,
             dtype=str,

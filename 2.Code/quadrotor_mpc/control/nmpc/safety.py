@@ -22,6 +22,11 @@ from quadrotor_mpc.core.contracts import (
     ObstacleBelief,
     VehicleBelief,
 )
+from quadrotor_mpc.core.timing import (
+    ControllerTiming,
+    TimingRecorder,
+    merge_controller_timing,
+)
 from quadrotor_mpc.core.vehicle import DEFAULT_QUADROTOR
 
 
@@ -493,74 +498,87 @@ class SafeFallbackController:
                 else None
             )
 
-        deadline_missed = (
-            self.options.solve_deadline_s > 0.0
-            and elapsed_s > self.options.solve_deadline_s
-        )
-        maximum_slack = (
-            0.0
-            if not primary_solution.slacks.size
-            else float(np.max(primary_solution.slacks))
-        )
-
-        if not self.options.enabled:
-            return self._assured_solution(
-                primary_solution,
-                command=primary_solution.command,
-                solver_status=primary_solution.solver_status,
-                command_source=primary_solution.command_source,
-                solution_accepted=True,
-                fallback_active=False,
-                fallback_level=0,
-                fallback_reason="",
-                consecutive_rejections=primary_solution.consecutive_rejections,
-                maximum_slack=maximum_slack,
-                elapsed_s=elapsed_s,
-                deadline_missed=deadline_missed,
+        supervisor_recorder = TimingRecorder()
+        with supervisor_recorder.measure("safety_supervisor_time_ms"):
+            deadline_missed = (
+                self.options.solve_deadline_s > 0.0
+                and elapsed_s > self.options.solve_deadline_s
+            )
+            maximum_slack = (
+                0.0
+                if not primary_solution.slacks.size
+                else float(np.max(primary_solution.slacks))
             )
 
-        if rejection_reason is None:
-            self._last_accepted_command = primary_solution.command.copy()
-            self._fallback_position = None
-            self._fallback_yaw = None
-            self._consecutive_rejections = 0
-            return self._assured_solution(
-                primary_solution,
-                command=np.clip(
-                    primary_solution.command,
-                    self._limits_lower,
-                    self._limits_upper,
-                ),
-                solver_status=primary_solution.solver_status,
-                command_source="PRIMARY_NMPC",
-                solution_accepted=True,
-                fallback_active=False,
-                fallback_level=0,
-                fallback_reason="",
-                consecutive_rejections=0,
-                maximum_slack=maximum_slack,
-                elapsed_s=elapsed_s,
-                deadline_missed=deadline_missed,
-            )
+            if not self.options.enabled:
+                decision_values: dict[str, Any] = dict(
+                    command=primary_solution.command,
+                    solver_status=primary_solution.solver_status,
+                    command_source=primary_solution.command_source,
+                    solution_accepted=True,
+                    fallback_active=False,
+                    fallback_level=0,
+                    fallback_reason="",
+                    consecutive_rejections=(
+                        primary_solution.consecutive_rejections
+                    ),
+                )
+            elif rejection_reason is None:
+                self._last_accepted_command = primary_solution.command.copy()
+                self._fallback_position = None
+                self._fallback_yaw = None
+                self._consecutive_rejections = 0
+                decision_values: dict[str, Any] = dict(
+                    command=np.clip(
+                        primary_solution.command,
+                        self._limits_lower,
+                        self._limits_upper,
+                    ),
+                    solver_status=primary_solution.solver_status,
+                    command_source="PRIMARY_NMPC",
+                    solution_accepted=True,
+                    fallback_active=False,
+                    fallback_level=0,
+                    fallback_reason="",
+                    consecutive_rejections=0,
+                )
+            else:
+                self._consecutive_rejections += 1
+                self._latch_fallback_reference(belief)
+                fallback_command, fallback_level, command_source = (
+                    self._fallback_command(belief)
+                )
+                decision_values: dict[str, Any] = dict(
+                    command=fallback_command,
+                    solver_status=f"FALLBACK_{command_source}",
+                    command_source=command_source,
+                    solution_accepted=False,
+                    fallback_active=True,
+                    fallback_level=fallback_level,
+                    fallback_reason=rejection_reason,
+                    consecutive_rejections=self._consecutive_rejections,
+                )
 
-        self._consecutive_rejections += 1
-        self._latch_fallback_reference(belief)
-        fallback_command, fallback_level, command_source = self._fallback_command(
-            belief
+        supervisor_time_ms = (
+            supervisor_recorder.snapshot().safety_supervisor_time_ms
         )
         return self._assured_solution(
             primary_solution,
-            command=fallback_command,
-            solver_status=f"FALLBACK_{command_source}",
-            command_source=command_source,
-            solution_accepted=False,
-            fallback_active=True,
-            fallback_level=fallback_level,
-            fallback_reason=rejection_reason,
-            consecutive_rejections=self._consecutive_rejections,
+            command=decision_values["command"],
+            solver_status=decision_values["solver_status"],
+            command_source=decision_values["command_source"],
+            solution_accepted=decision_values["solution_accepted"],
+            fallback_active=decision_values["fallback_active"],
+            fallback_level=decision_values["fallback_level"],
+            fallback_reason=decision_values["fallback_reason"],
+            consecutive_rejections=decision_values["consecutive_rejections"],
             maximum_slack=maximum_slack,
             elapsed_s=elapsed_s,
             deadline_missed=deadline_missed,
+            controller_timing=merge_controller_timing(
+                primary_solution.controller_timing,
+                safety_supervisor_time_ms=supervisor_time_ms,
+            ),
         )
 
     def _assured_solution(
@@ -578,6 +596,7 @@ class SafeFallbackController:
         maximum_slack: float,
         elapsed_s: float,
         deadline_missed: bool,
+        controller_timing: ControllerTiming | None = None,
     ) -> ControlSolution:
         """Attach the assurance decision to the final supervisor output."""
         from quadrotor_mpc.control.nmpc.assurance import (
@@ -622,4 +641,5 @@ class SafeFallbackController:
             horizon_assurance_reason=decision.reason_code,
             horizon_assurance_failed_checks=decision.failed_checks,
             assurance_schema_version=ASSURANCE_SCHEMA_VERSION,
+            controller_timing=controller_timing,
         )

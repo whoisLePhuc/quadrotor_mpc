@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 import numpy as np
@@ -41,6 +41,7 @@ from quadrotor_mpc.core.contracts import (
     ObstacleBelief,
     VehicleBelief,
 )
+from quadrotor_mpc.core.timing import TimingRecorder
 
 
 def _extract_nominal_states(mpc, fallback_state: np.ndarray) -> np.ndarray:
@@ -105,11 +106,13 @@ class DeterministicNMPCController:
         cached=None,
         covariance_options: CovariancePropagationOptions | None = None,
         chance_options: ChanceConstraintOptions | None = None,
+        clock_ns: Callable[[], int] | None = None,
     ):
         self._obstacle_specs = tuple(dict(item) for item in obstacle_specs)
         self._margin = float(margin)
         self._horizon_steps = int(horizon_steps)
         self._timestep_s = float(timestep_s)
+        self._clock_ns = clock_ns
         if self._horizon_steps < 1:
             raise ValueError("horizon_steps must be >= 1")
         if self._timestep_s <= 0.0:
@@ -286,116 +289,126 @@ class DeterministicNMPCController:
                 f"controller expects {len(self._obstacle_specs)} obstacle beliefs, "
                 f"got {len(obstacles)}"
             )
+        timing_recorder = TimingRecorder(clock_ns=getattr(self, "_clock_ns", None))
         prediction_steps = self._horizon_steps + 1
-        if obstacles:
-            obstacle_predictions = np.asarray(
+        with timing_recorder.measure("seed_trajectory_time_ms"):
+            if obstacles:
+                obstacle_predictions = np.asarray(
+                    [
+                        obstacle.mean_positions(prediction_steps, self._timestep_s)
+                        for obstacle in obstacles
+                    ],
+                    dtype=float,
+                )
+            else:
+                obstacle_predictions = np.empty(
+                    (0, prediction_steps, 3), dtype=float
+                )
+
+            seed_states, seed_controls = self._seed_nominal(belief, goal)
+        with timing_recorder.measure("covariance_propagation_time_ms"):
+            if self._covariance_options.enabled:
+                (
+                    tightening_vehicle_covariances,
+                    tightening_obstacle_covariances,
+                ) = self._covariance_propagator.propagate(
+                    belief,
+                    obstacles,
+                    seed_states,
+                    seed_controls,
+                )
+            else:
+                tightening_vehicle_covariances = np.zeros(
+                    (prediction_steps, 12, 12),
+                    dtype=float,
+                )
+                tightening_obstacle_covariances = np.zeros(
+                    (prediction_steps, len(obstacles), 6, 6),
+                    dtype=float,
+                )
+        with timing_recorder.measure("chance_profile_time_ms"):
+            base_safety_radii = np.asarray(
                 [
-                    obstacle.mean_positions(prediction_steps, self._timestep_s)
+                    obstacle.shape.bounding_radius_m + self._margin + DRONE_RADIUS
                     for obstacle in obstacles
                 ],
                 dtype=float,
             )
-        else:
-            obstacle_predictions = np.empty((0, prediction_steps, 3), dtype=float)
+            chance_profile = build_spherical_chance_profile(
+                vehicle_positions=seed_states[:, :3],
+                obstacle_positions=obstacle_predictions,
+                vehicle_covariances=tightening_vehicle_covariances,
+                obstacle_covariances=tightening_obstacle_covariances,
+                base_safety_radii_m=base_safety_radii,
+                options=self._chance_options,
+                timing_recorder=timing_recorder,
+            )
 
-        seed_states, seed_controls = self._seed_nominal(belief, goal)
-        if self._covariance_options.enabled:
-            (
-                tightening_vehicle_covariances,
-                tightening_obstacle_covariances,
-            ) = self._covariance_propagator.propagate(
-                belief,
-                obstacles,
+            self._validate_profile_shapes(
                 seed_states,
                 seed_controls,
+                obstacle_predictions,
+                chance_profile,
             )
-        else:
-            tightening_vehicle_covariances = np.zeros(
-                (prediction_steps, 12, 12),
+
+            self._solve_attempt_counter += 1
+            solve_attempt_id = f"{self._solve_attempt_counter:06d}"
+            obstacle_ids = tuple(
+                str(getattr(obstacle, "name", "")) or f"obstacle_{index}"
+                for index, obstacle in enumerate(obstacles)
+            )
+            node_indices = tuple(range(prediction_steps))
+            enforced_profile = (
+                build_chance_profile_snapshot(
+                    control_tick=0,
+                    solve_attempt_id=solve_attempt_id,
+                    phase=ENFORCED_PHASE,
+                    trajectory_source="seed_trajectory",
+                    allocation_method=chance_profile.risk_allocation_method,
+                    risk_semantics=chance_profile.risk_semantics,
+                    node_indices=node_indices,
+                    obstacle_ids=obstacle_ids,
+                    epsilon=chance_profile.risk_allocations,
+                    projected_sigma=chance_profile.projected_sigmas_m,
+                    tightening_margin=chance_profile.tightenings_m,
+                    tightened_radius=chance_profile.safety_radii_m,
+                    active_mask=np.ones(
+                        (prediction_steps, len(obstacles)), dtype=bool
+                    ),
+                    joint_budget=chance_profile.configured_total_epsilon,
+                    allocated_budget=chance_profile.allocated_epsilon,
+                    remaining_budget=chance_profile.remaining_epsilon,
+                )
+                if self._chance_options.enabled
+                else None
+            )
+
+        with timing_recorder.measure("tvp_update_time_ms"):
+            self._goal_state["pos"] = {
+                axis: float(value)
+                for axis, value in zip(("x", "y", "z"), goal.position)
+            }
+            # The TVP helper accepts a quaternion directly to avoid an unnecessary
+            # quaternion -> Euler -> quaternion conversion at the interface boundary.
+            self._goal_state["quaternion_wxyz"] = goal.quaternion_wxyz
+            self._goal_state["obstacle_predictions"] = obstacle_predictions
+            self._goal_state["obstacle_projected_sigmas"] = (
+                chance_profile.projected_sigmas_m.T
+            )
+            self._goal_state["obstacle_betas"] = chance_profile.gaussian_quantiles.T
+            self._goal_state["obstacle_risk_allocations"] = (
+                chance_profile.risk_allocations.T
+            )
+            self._goal_state["obstacle_safe_distances"] = (
+                chance_profile.safety_radii_m.T
+            )
+            self._goal_state["prediction_time_s"] = float(time_s)
+
+        with timing_recorder.measure("nlp_solve_time_ms"):
+            command = np.asarray(
+                self.mpc.make_step(belief.mean_state_13.reshape(-1, 1)),
                 dtype=float,
-            )
-            tightening_obstacle_covariances = np.zeros(
-                (prediction_steps, len(obstacles), 6, 6),
-                dtype=float,
-            )
-        base_safety_radii = np.asarray(
-            [
-                obstacle.shape.bounding_radius_m + self._margin + DRONE_RADIUS
-                for obstacle in obstacles
-            ],
-            dtype=float,
-        )
-        chance_profile = build_spherical_chance_profile(
-            vehicle_positions=seed_states[:, :3],
-            obstacle_positions=obstacle_predictions,
-            vehicle_covariances=tightening_vehicle_covariances,
-            obstacle_covariances=tightening_obstacle_covariances,
-            base_safety_radii_m=base_safety_radii,
-            options=self._chance_options,
-        )
-
-        self._validate_profile_shapes(
-            seed_states,
-            seed_controls,
-            obstacle_predictions,
-            chance_profile,
-        )
-
-        self._solve_attempt_counter += 1
-        solve_attempt_id = f"{self._solve_attempt_counter:06d}"
-        obstacle_ids = tuple(
-            str(getattr(obstacle, "name", "")) or f"obstacle_{index}"
-            for index, obstacle in enumerate(obstacles)
-        )
-        node_indices = tuple(range(prediction_steps))
-        enforced_profile = (
-            build_chance_profile_snapshot(
-                control_tick=0,
-                solve_attempt_id=solve_attempt_id,
-                phase=ENFORCED_PHASE,
-                trajectory_source="seed_trajectory",
-                allocation_method=chance_profile.risk_allocation_method,
-                risk_semantics=chance_profile.risk_semantics,
-                node_indices=node_indices,
-                obstacle_ids=obstacle_ids,
-                epsilon=chance_profile.risk_allocations,
-                projected_sigma=chance_profile.projected_sigmas_m,
-                tightening_margin=chance_profile.tightenings_m,
-                tightened_radius=chance_profile.safety_radii_m,
-                active_mask=np.ones(
-                    (prediction_steps, len(obstacles)), dtype=bool
-                ),
-                joint_budget=chance_profile.configured_total_epsilon,
-                allocated_budget=chance_profile.allocated_epsilon,
-                remaining_budget=chance_profile.remaining_epsilon,
-            )
-            if self._chance_options.enabled
-            else None
-        )
-
-        self._goal_state["pos"] = {
-            axis: float(value) for axis, value in zip(("x", "y", "z"), goal.position)
-        }
-        # The TVP helper accepts a quaternion directly to avoid an unnecessary
-        # quaternion -> Euler -> quaternion conversion at the interface boundary.
-        self._goal_state["quaternion_wxyz"] = goal.quaternion_wxyz
-        self._goal_state["obstacle_predictions"] = obstacle_predictions
-        self._goal_state["obstacle_projected_sigmas"] = (
-            chance_profile.projected_sigmas_m.T
-        )
-        self._goal_state["obstacle_betas"] = chance_profile.gaussian_quantiles.T
-        self._goal_state["obstacle_risk_allocations"] = (
-            chance_profile.risk_allocations.T
-        )
-        self._goal_state["obstacle_safe_distances"] = (
-            chance_profile.safety_radii_m.T
-        )
-        self._goal_state["prediction_time_s"] = float(time_s)
-
-        command = np.asarray(
-            self.mpc.make_step(belief.mean_state_13.reshape(-1, 1)),
-            dtype=float,
-        ).reshape(4)
+            ).reshape(4)
         solver_stats = getattr(self.mpc, "solver_stats", {})
         primary_solver_success = bool(solver_stats.get("success", True))
         primary_solver_status = str(
@@ -462,99 +475,100 @@ class DeterministicNMPCController:
         used_risks = chance_profile.risk_allocations
         used_safety_radii = chance_profile.safety_radii_m
         used_risk_metadata = chance_profile
-        post_solve_diagnostic_profile = None
-        if horizon_length != prediction_steps and self._chance_options.enabled:
-            # Post-solve diagnostic: re-evaluate the chance profile on the
-            # optimized trajectory.  This is never written back into the
-            # enforced fields above, which must describe what the solver
-            # actually received.
-            target = np.linspace(0.0, 1.0, horizon_length)
-            source = np.linspace(0.0, 1.0, prediction_steps)
-            diagnostic_obstacle_predictions = np.asarray(
-                [
-                    np.column_stack(
-                        [
-                            np.interp(target, source, positions[:, axis])
-                            for axis in range(3)
-                        ]
-                    )
-                    for positions in obstacle_predictions
-                ],
-                dtype=float,
-            )
-            diagnostic_metadata = build_spherical_chance_profile(
+        with timing_recorder.measure("post_solve_diagnostic_time_ms"):
+            post_solve_diagnostic_profile = None
+            if horizon_length != prediction_steps and self._chance_options.enabled:
+                # Post-solve diagnostic: re-evaluate the chance profile on the
+                # optimized trajectory.  This is never written back into the
+                # enforced fields above, which must describe what the solver
+                # actually received.
+                target = np.linspace(0.0, 1.0, horizon_length)
+                source = np.linspace(0.0, 1.0, prediction_steps)
+                diagnostic_obstacle_predictions = np.asarray(
+                    [
+                        np.column_stack(
+                            [
+                                np.interp(target, source, positions[:, axis])
+                                for axis in range(3)
+                            ]
+                        )
+                        for positions in obstacle_predictions
+                    ],
+                    dtype=float,
+                )
+                diagnostic_metadata = build_spherical_chance_profile(
+                    vehicle_positions=nominal_states[:, :3],
+                    obstacle_positions=diagnostic_obstacle_predictions,
+                    vehicle_covariances=predicted_covariances,
+                    obstacle_covariances=predicted_obstacle_covariances,
+                    base_safety_radii_m=base_safety_radii,
+                    options=self._chance_options,
+                )
+                post_solve_diagnostic_profile = build_chance_profile_snapshot(
+                    control_tick=0,
+                    solve_attempt_id=solve_attempt_id,
+                    phase=POST_SOLVE_DIAGNOSTIC_PHASE,
+                    trajectory_source="optimized_trajectory",
+                    allocation_method=diagnostic_metadata.risk_allocation_method,
+                    risk_semantics=diagnostic_metadata.risk_semantics,
+                    node_indices=tuple(range(horizon_length)),
+                    obstacle_ids=obstacle_ids,
+                    epsilon=diagnostic_metadata.risk_allocations,
+                    projected_sigma=diagnostic_metadata.projected_sigmas_m,
+                    tightening_margin=diagnostic_metadata.tightenings_m,
+                    tightened_radius=diagnostic_metadata.safety_radii_m,
+                    active_mask=np.ones(
+                        (horizon_length, len(obstacles)), dtype=bool
+                    ),
+                    joint_budget=diagnostic_metadata.configured_total_epsilon,
+                    allocated_budget=diagnostic_metadata.allocated_epsilon,
+                    remaining_budget=diagnostic_metadata.remaining_epsilon,
+                )
+                # Legacy display fields are resampled from the ENFORCED profile so
+                # they keep the solver's constraint shape, while the diagnostic
+                # profile keeps its own rebuilt values under a separate field.
+                target = np.linspace(0.0, 1.0, horizon_length)
+                source = np.linspace(0.0, 1.0, prediction_steps)
+                used_sigmas = np.column_stack(
+                    [
+                        np.interp(
+                            target,
+                            source,
+                            chance_profile.projected_sigmas_m[:, index],
+                        )
+                        for index in range(len(obstacles))
+                    ]
+                )
+                used_risks = np.column_stack(
+                    [
+                        np.interp(
+                            target,
+                            source,
+                            chance_profile.risk_allocations[:, index],
+                        )
+                        for index in range(len(obstacles))
+                    ]
+                )
+                used_safety_radii = np.column_stack(
+                    [
+                        np.interp(
+                            target,
+                            source,
+                            chance_profile.safety_radii_m[:, index],
+                        )
+                        for index in range(len(obstacles))
+                    ]
+                )
+                used_obstacle_predictions = diagnostic_obstacle_predictions
+                evaluation_radii = used_safety_radii
+            else:
+                evaluation_radii = used_safety_radii
+            margins, slacks = evaluate_spherical_constraints(
                 vehicle_positions=nominal_states[:, :3],
-                obstacle_positions=diagnostic_obstacle_predictions,
-                vehicle_covariances=predicted_covariances,
-                obstacle_covariances=predicted_obstacle_covariances,
-                base_safety_radii_m=base_safety_radii,
-                options=self._chance_options,
+                obstacle_positions=used_obstacle_predictions,
+                safety_radii_m=evaluation_radii,
+                distance_smoothing_m2=self._chance_options.distance_smoothing_m2,
             )
-            post_solve_diagnostic_profile = build_chance_profile_snapshot(
-                control_tick=0,
-                solve_attempt_id=solve_attempt_id,
-                phase=POST_SOLVE_DIAGNOSTIC_PHASE,
-                trajectory_source="optimized_trajectory",
-                allocation_method=diagnostic_metadata.risk_allocation_method,
-                risk_semantics=diagnostic_metadata.risk_semantics,
-                node_indices=tuple(range(horizon_length)),
-                obstacle_ids=obstacle_ids,
-                epsilon=diagnostic_metadata.risk_allocations,
-                projected_sigma=diagnostic_metadata.projected_sigmas_m,
-                tightening_margin=diagnostic_metadata.tightenings_m,
-                tightened_radius=diagnostic_metadata.safety_radii_m,
-                active_mask=np.ones(
-                    (horizon_length, len(obstacles)), dtype=bool
-                ),
-                joint_budget=diagnostic_metadata.configured_total_epsilon,
-                allocated_budget=diagnostic_metadata.allocated_epsilon,
-                remaining_budget=diagnostic_metadata.remaining_epsilon,
-            )
-            # Legacy display fields are resampled from the ENFORCED profile so
-            # they keep the solver's constraint shape, while the diagnostic
-            # profile keeps its own rebuilt values under a separate field.
-            target = np.linspace(0.0, 1.0, horizon_length)
-            source = np.linspace(0.0, 1.0, prediction_steps)
-            used_sigmas = np.column_stack(
-                [
-                    np.interp(
-                        target,
-                        source,
-                        chance_profile.projected_sigmas_m[:, index],
-                    )
-                    for index in range(len(obstacles))
-                ]
-            )
-            used_risks = np.column_stack(
-                [
-                    np.interp(
-                        target,
-                        source,
-                        chance_profile.risk_allocations[:, index],
-                    )
-                    for index in range(len(obstacles))
-                ]
-            )
-            used_safety_radii = np.column_stack(
-                [
-                    np.interp(
-                        target,
-                        source,
-                        chance_profile.safety_radii_m[:, index],
-                    )
-                    for index in range(len(obstacles))
-                ]
-            )
-            used_obstacle_predictions = diagnostic_obstacle_predictions
-            evaluation_radii = used_safety_radii
-        else:
-            evaluation_radii = used_safety_radii
-        margins, slacks = evaluate_spherical_constraints(
-            vehicle_positions=nominal_states[:, :3],
-            obstacle_positions=used_obstacle_predictions,
-            safety_radii_m=evaluation_radii,
-            distance_smoothing_m2=self._chance_options.distance_smoothing_m2,
-        )
         if self._chance_options.enabled:
             solver_status = (
                 "SOLVED_SAFE"
@@ -611,4 +625,5 @@ class DeterministicNMPCController:
                 else ""
             ),
             chance_profile_solve_attempt_id=solve_attempt_id,
+            controller_timing=timing_recorder.snapshot(),
         )
