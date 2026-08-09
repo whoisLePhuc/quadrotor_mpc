@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from quadrotor_mpc.interfaces.dashboard import theme
 from quadrotor_mpc.interfaces.dashboard.common import (
     aggregate_frame,
     load_named_scenario,
@@ -14,6 +15,8 @@ from quadrotor_mpc.interfaces.dashboard.common import (
 from quadrotor_mpc.reporting.plotly_views import comparison_metrics, trajectory_3d
 
 st.set_page_config(page_title="Compare Controllers", page_icon="⚖️", layout="wide")
+theme.apply_theme(st)
+theme.register_dashboard_plotly_theme()
 st.title("Compare Controllers")
 st.caption("Both controllers use the same plant, initial state, disturbance sequence and seed.")
 

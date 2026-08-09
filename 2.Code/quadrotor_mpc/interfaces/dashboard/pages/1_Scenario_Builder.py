@@ -6,9 +6,11 @@ import streamlit as st
 import yaml
 
 from quadrotor_mpc.application.simulation.config import ScenarioConfig
+from quadrotor_mpc.interfaces.dashboard import theme
 from quadrotor_mpc.interfaces.dashboard.common import load_named_scenario, scenario_files
 
 st.set_page_config(page_title="Scenario Builder", page_icon="🧩", layout="wide")
+theme.apply_theme(st)
 st.title("Scenario Builder")
 selected = st.selectbox("Template", list(scenario_files()))
 base = load_named_scenario(selected).to_mapping()

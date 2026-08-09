@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from quadrotor_mpc.interfaces.dashboard import theme
 from quadrotor_mpc.interfaces.dashboard.common import (
     aggregate_frame,
     load_named_scenario,
@@ -13,6 +14,8 @@ from quadrotor_mpc.interfaces.dashboard.common import (
 from quadrotor_mpc.reporting.plotly_views import monte_carlo_distributions
 
 st.set_page_config(page_title="Monte Carlo", page_icon="🎲", layout="wide")
+theme.apply_theme(st)
+theme.register_dashboard_plotly_theme()
 st.title("Monte Carlo Robustness")
 
 with st.sidebar:

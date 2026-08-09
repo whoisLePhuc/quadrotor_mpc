@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import streamlit as st
 
+from quadrotor_mpc.interfaces.dashboard import theme
+
 st.set_page_config(page_title="Quadrotor MPC Workbench", page_icon="🚁", layout="wide")
+theme.apply_theme(st)
 st.title("Quadrotor MPC Research Workbench")
 st.caption("Learn · Run · Compare · Validate — deterministic MPC and chance-constrained MPC")
 
@@ -12,10 +15,10 @@ left, right = st.columns([1.1, 1.0])
 with left:
     st.subheader("Closed-loop architecture")
     st.graphviz_chart(
-        """
-    digraph G {
+        f"""
+    digraph G {{
       rankdir=LR; bgcolor="transparent";
-      node [shape=box, style="rounded,filled", fillcolor="#172033", fontcolor="white", color="#4c6fff"];
+      node [shape=box, style="rounded,filled", fillcolor="{theme.PALETTE["bg_secondary"]}", fontcolor="{theme.PALETTE["text"]}", color="{theme.PALETTE["primary"]}"];
       scenario [label="Scenario + seed"];
       estimator [label="Estimator + covariance"];
       controller [label="MPC / CC-MPC"];
@@ -23,7 +26,7 @@ with left:
       logger [label="Metrics + artifacts"];
       scenario -> estimator -> controller -> plant -> estimator;
       controller -> logger; plant -> logger; estimator -> logger;
-    }
+    }}
     """,
         use_container_width=True,
     )

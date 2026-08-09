@@ -5,7 +5,11 @@ from __future__ import annotations
 import numpy as np
 import streamlit as st
 
+from quadrotor_mpc.interfaces.dashboard import theme
+
 st.set_page_config(page_title="NMPC + MuJoCo", page_icon="🛰️", layout="wide")
+theme.apply_theme(st)
+theme.register_dashboard_plotly_theme()
 st.title("13-State NMPC + MuJoCo Plant")
 st.caption("Optional high-fidelity track for model-mismatch and contact-collision studies.")
 

@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import streamlit as st
 
+from quadrotor_mpc.interfaces.dashboard import theme
+
 st.set_page_config(page_title="Theory Mode", page_icon="📐", layout="wide")
+theme.apply_theme(st)
 st.title("Theory ↔ Code Mapping")
 st.markdown(r"""
 ### Chance-constrained obstacle residual

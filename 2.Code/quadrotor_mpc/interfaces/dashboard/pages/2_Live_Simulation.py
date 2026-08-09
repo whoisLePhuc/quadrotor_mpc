@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from quadrotor_mpc.interfaces.dashboard import theme
 from quadrotor_mpc.interfaces.dashboard.common import (
     load_named_scenario,
     render_kpis,
@@ -18,6 +19,8 @@ from quadrotor_mpc.reporting.plotly_views import (
 )
 
 st.set_page_config(page_title="Live Simulation", page_icon="▶️", layout="wide")
+theme.apply_theme(st)
+theme.register_dashboard_plotly_theme()
 st.title("Live Simulation")
 
 with st.sidebar:
