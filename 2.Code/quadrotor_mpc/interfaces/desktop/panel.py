@@ -24,6 +24,69 @@ from quadrotor_mpc.interfaces.desktop.model import (
     panel_transition_alerts,
 )
 
+# Semantic color tokens (WCAG 2.2 AA targets). Raw hex values belong ONLY here.
+# Light theme — verified in Tasks 1-2 (contrast ≥4.5:1 text, ≥3:1 non-text,
+# ΔE pass, hues preserved, Okabe-Ito color-blind-safe series).
+PALETTE = {
+    # ── Surfaces ──────────────────────────────────────────────────────
+    "surface":            "#f8f9fa",   # main panel background
+    "surface_elevated":   "#ffffff",   # cards, elevated panels
+    "surface_inset":      "#e8eaed",   # inset / recessed areas (darker)
+    "surface_hover":      "#f1f3f4",   # hover bg for list items, rows
+
+    # ── Text on surface ───────────────────────────────────────────────
+    "on_surface":         "#1a1a1a",   # primary text (highest contrast)
+    "on_surface_muted":   "#5f6368",   # secondary text
+    "on_surface_dim":     "#5b6166",   # tertiary text (still ≥4.5:1 on all surfaces)
+
+    # ── Interactive ────────────────────────────────────────────────────
+    "interactive":          "#1558c0", # blue accent — links, focus, plot pens
+    "interactive_hover":    "#e8f0fe", # light-blue hover bg for interactive elems
+    "interactive_secondary": "#f1f3f4", # secondary button bg (light gray)
+    "interactive_focus":    "#1558c0", # focus-ring outline color
+
+    # ── Borders (non-text, ≥3:1) ──────────────────────────────────────
+    "border":             "#80868b",  # general UI border
+    "button_border":      "#80868b",  # button border
+
+    # ── Buttons (white text on colored bg, ≥4.5:1) ───────────────────
+    "button_ok":          "#137333",  # green — white text passes 4.5:1
+    "button_danger":      "#c5221f",  # red — white text passes 4.5:1
+
+    # ── Semantic tones (bg, fg) — fg ≥4.5:1 on bg ────────────────────
+    "tone_ok":      ("#e6f4ea", "#137333"),   # light-green bg, green fg
+    "tone_info":    ("#e8f0fe", "#1558c0"),    # light-blue bg, blue fg
+    "tone_warning": ("#fef7e0", "#b45309"),   # light-amber bg, amber fg
+    "tone_danger":  ("#fce8e6", "#c5221f"),   # light-red bg, red fg
+    "tone_muted":   ("#f1f3f4", "#5f6368"),    # light-gray bg, gray fg
+
+    # ── Badges & status ───────────────────────────────────────────────
+    "badge_bg":           "#e8eaed",   # badge / chip background
+    "status_bg":          "#f1f3f4",   # status-banner background
+    "label_title":        "#202124",   # card-title label (dark, prominent)
+
+    # ── Plot series (Okabe-Ito color-blind-safe) ──────────────────────
+    "series_purple":      "#CC79A7",   # Okabe-Ito "reddish purple"
+    "series_cyan":        "#56B4E9",   # Okabe-Ito "sky blue"
+    "series_orange":      "#E69F00",   # Okabe-Ito "orange"
+}
+
+# ── Modular typography scale ──────────────────────────────────────────────
+# Minor Third ratio (1.200) — recommended for general desktop UIs (qt-ui-design §1.2).
+# base = 16px (WCAG/accessibility minimum for body text).
+#   ms(-1) = 16 ÷ 1.2 ≈ 13px  → caption (card title, card detail)
+#   ms( 0) = 16px              → body (QWidget base, status banner, alert list)
+#   ms(+1) = 16 × 1.2 ≈ 19px  → value (KPI numbers, mode badge)
+#   ms(+2) = 19 × 1.2 ≈ 23px  → title (header scenario label)
+# ≤4 distinct sizes on screen.  font-size in QSS is device-independent px and
+# respects Qt's default DPI scaling — do NOT use pt (would mis-scale on HiDPI).
+TYPE_SCALE = {
+    "caption": 13,  # ms(-1)
+    "body": 16,     # ms( 0)
+    "value": 19,    # ms(+1)
+    "title": 23,    # ms(+2)
+}
+
 
 @dataclass(frozen=True, slots=True)
 class DesktopPanelOptions:
@@ -144,18 +207,29 @@ def _panel_main(
     from PySide6 import QtCore, QtGui, QtWidgets
 
     app = QtWidgets.QApplication(sys.argv)
-    pg.setConfigOptions(antialias=True, background="#10151f", foreground="#d7e0ea")
+    pg.setConfigOptions(
+        antialias=True,
+        background=PALETTE["surface"],
+        foreground=PALETTE["on_surface"],
+    )
     app.setStyleSheet(
-        """
-        QWidget { background:#10151f; color:#d7e0ea; font-size:12px; }
-        QPushButton {
-            background:#202b3b; border:1px solid #36465d; border-radius:5px;
+        f"""
+        QWidget {{ background:{PALETTE["surface"]}; color:{PALETTE["on_surface"]}; font-size:{TYPE_SCALE["body"]}px; }}
+        QPushButton {{
+            background:{PALETTE["interactive_secondary"]}; border:1px solid {PALETTE["button_border"]}; border-radius:5px;
             padding:7px 11px;
-        }
-        QPushButton:hover { background:#2a3950; }
-        QListWidget {
-            background:#0c1119; border:1px solid #26354a; border-radius:5px;
-        }
+        }}
+        QPushButton:hover {{ background:{PALETTE["interactive_hover"]}; }}
+        QPushButton:focus {{
+            border:2px solid {PALETTE["interactive_focus"]};
+            outline:1px solid {PALETTE["interactive_focus"]};
+        }}
+        QListWidget {{
+            background:{PALETTE["surface_inset"]}; border:1px solid {PALETTE["border"]}; border-radius:5px;
+        }}
+        QListWidget:focus {{
+            border:2px solid {PALETTE["interactive_focus"]};
+        }}
         """
     )
 
@@ -200,9 +274,13 @@ def _panel_main(
 
             header = QtWidgets.QHBoxLayout()
             scenario = QtWidgets.QLabel(f"<b>{title}</b>")
-            scenario.setStyleSheet("font-size:17px")
+            scenario.setStyleSheet(f"font-size:{TYPE_SCALE['title']}px")
             mode = QtWidgets.QLabel(context.mode_label)
-            mode.setStyleSheet("padding:5px 9px;background:#172131;color:#9fb4cf;border-radius:5px")
+            mode.setStyleSheet(
+                f"padding:5px 9px;background:{PALETTE['badge_bg']};"
+                f"color:{PALETTE['on_surface_dim']};border-radius:5px;"
+                f"font-size:{TYPE_SCALE['value']}px"
+            )
             header.addWidget(scenario)
             header.addStretch(1)
             header.addWidget(mode)
@@ -220,10 +298,30 @@ def _panel_main(
                 button = QtWidgets.QPushButton(label)
                 button.clicked.connect(lambda _checked=False, n=name: self._send(n))
                 if name == CommandName.RUN_AGAIN:
-                    button.setStyleSheet("background:#267a4a;color:white;font-weight:bold")
+                    button.setStyleSheet(
+                        f"background:{PALETTE['button_ok']};color:white;font-weight:bold"
+                    )
                 if name == CommandName.STOP:
-                    button.setStyleSheet("background:#8f2430;color:white;font-weight:bold")
+                    button.setStyleSheet(
+                        f"background:{PALETTE['button_danger']};color:white;font-weight:bold"
+                    )
                 controls.addWidget(button)
+            controls.addStretch(1)
+            # Visual grouping (Hick's Law / Proximity, qt-ui-design §1): the six
+            # control actions and the four view toggles are distinct groups — a
+            # thin divider keeps the row from reading as one undifferentiated
+            # wall of equal-weight buttons. QFrame is not focusable, so this
+            # separator does not affect keyboard tab order.
+            group_separator = QtWidgets.QFrame()
+            group_separator.setFixedWidth(2)
+            group_separator.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Fixed,
+                QtWidgets.QSizePolicy.Policy.Expanding,
+            )
+            group_separator.setStyleSheet(
+                f"QFrame{{background:{PALETTE['border']};border:none;}}"
+            )
+            controls.addWidget(group_separator)
             controls.addStretch(1)
             for label, name in (
                 ("Trail", CommandName.TOGGLE_TRAIL),
@@ -255,7 +353,8 @@ def _panel_main(
             self.status = QtWidgets.QLabel("Waiting for simulation telemetry…")
             self.status.setWordWrap(True)
             self.status.setStyleSheet(
-                "padding:8px;background:#1a2230;border:1px solid #26354a;border-radius:5px"
+                f"padding:8px;background:{PALETTE['status_bg']};"
+                f"border:1px solid {PALETTE['border']};border-radius:5px"
             )
             outer.addWidget(self.status)
 
@@ -288,60 +387,60 @@ def _panel_main(
             self.position_curves = [
                 self.position_plot.plot(pen=pg.mkPen(color, width=2), name=axis)
                 for color, axis in (
-                    ("#4ea1ff", "x"),
-                    ("#62d68b", "y"),
-                    ("#ffcf5a", "z"),
+                    (PALETTE["interactive"], "x"),
+                    (PALETTE["tone_ok"][1], "y"),
+                    (PALETTE["tone_warning"][1], "z"),
                 )
             ]
             self.goal_curve = self.safety_plot.plot(
-                pen=pg.mkPen("#d783ff", width=2),
+                pen=pg.mkPen(PALETTE["series_purple"], width=2),
                 name="goal error",
             )
             self.clearance_curve = self.safety_plot.plot(
-                pen=pg.mkPen("#62d68b", width=2), name="clearance"
+                pen=pg.mkPen(PALETTE["tone_ok"][1], width=2), name="clearance"
             )
             self.chance_curve = self.safety_plot.plot(
-                pen=pg.mkPen("#ffcf5a", width=2), name="min chance residual"
+                pen=pg.mkPen(PALETTE["tone_warning"][1], width=2), name="min chance residual"
             )
             self.slack_curve = self.safety_plot.plot(
-                pen=pg.mkPen("#f05a67", width=2), name="max slack"
+                pen=pg.mkPen(PALETTE["tone_danger"][1], width=2), name="max slack"
             )
             self.horizon_sigma_curve = self.uncertainty_plot.plot(
-                pen=pg.mkPen("#58d5e8", width=2, style=QtCore.Qt.DashLine),
+                pen=pg.mkPen(PALETTE["series_cyan"], width=2, style=QtCore.Qt.DashLine),
                 name="max terminal σ position",
             )
             self.projected_uncertainty_curve = self.uncertainty_plot.plot(
-                pen=pg.mkPen("#d783ff", width=2),
+                pen=pg.mkPen(PALETTE["series_purple"], width=2),
                 name="max projected σ",
             )
             self.tightened_radius_curve = self.uncertainty_plot.plot(
-                pen=pg.mkPen("#ff704d", width=2),
+                pen=pg.mkPen(PALETTE["series_orange"], width=2),
                 name="max tightened radius",
             )
             self.thrust_curve = self.control_plot.plot(
-                pen=pg.mkPen("#4ea1ff", width=2), name="thrust dev."
+                pen=pg.mkPen(PALETTE["interactive"], width=2), name="thrust dev."
             )
             self.torque_curve = self.control_plot.plot(
-                pen=pg.mkPen("#ffcf5a", width=2), name="||torque||"
+                pen=pg.mkPen(PALETTE["tone_warning"][1], width=2), name="||torque||"
             )
             self.solve_curve = self.solver_plot.plot(
-                pen=pg.mkPen("#62d68b", width=2),
+                pen=pg.mkPen(PALETTE["tone_ok"][1], width=2),
                 name="solve time",
             )
             self.deadline_curve = self.solver_plot.plot(
-                pen=pg.mkPen("#f05a67", width=2, style=QtCore.Qt.DashLine),
+                pen=pg.mkPen(PALETTE["tone_danger"][1], width=2, style=QtCore.Qt.DashLine),
                 name="accept deadline",
             )
             self.risk_curve = self.supervisor_plot.plot(
-                pen=pg.mkPen("#4ea1ff", width=2),
+                pen=pg.mkPen(PALETTE["interactive"], width=2),
                 name="joint risk fraction",
             )
             self.accepted_curve = self.supervisor_plot.plot(
-                pen=pg.mkPen("#62d68b", width=2),
+                pen=pg.mkPen(PALETTE["tone_ok"][1], width=2),
                 name="solution accepted",
             )
             self.fallback_curve = self.supervisor_plot.plot(
-                pen=pg.mkPen("#f05a67", width=2),
+                pen=pg.mkPen(PALETTE["tone_danger"][1], width=2),
                 name="fallback level",
             )
             plots.addWidget(self.position_plot, 0, 0)
@@ -368,17 +467,18 @@ def _panel_main(
             layout.setContentsMargins(10, 7, 10, 7)
             layout.setSpacing(2)
             title_label = QtWidgets.QLabel(title_text)
-            title_label.setStyleSheet("color:#8ea1ba;font-size:10px")
+            title_label.setStyleSheet(f"color:{PALETTE['label_title']};font-size:{TYPE_SCALE['caption']}px")
             value_label = QtWidgets.QLabel("WAITING")
-            value_label.setStyleSheet("font-size:15px;font-weight:bold")
+            value_label.setStyleSheet(f"font-size:{TYPE_SCALE['value']}px;font-weight:bold")
             detail_label = QtWidgets.QLabel("No telemetry")
-            detail_label.setStyleSheet("color:#aab7c8;font-size:10px")
+            detail_label.setStyleSheet(f"color:{PALETTE['on_surface_muted']};font-size:{TYPE_SCALE['caption']}px")
             detail_label.setWordWrap(True)
             layout.addWidget(title_label)
             layout.addWidget(value_label)
             layout.addWidget(detail_label)
             frame.setStyleSheet(
-                "QFrame{background:#171f2b;border:1px solid #26354a;border-radius:6px}"
+                f"QFrame{{background:{PALETTE['surface_elevated']};"
+                f"border:1px solid {PALETTE['border']};border-radius:6px}}"
             )
             return frame, value_label, detail_label
 
@@ -414,11 +514,11 @@ def _panel_main(
 
         def _render_view(self, view: PanelViewState) -> None:
             colors = {
-                OK: ("#143525", "#62d68b"),
-                INFO: ("#172d46", "#4ea1ff"),
-                WARNING: ("#3a3118", "#ffcf5a"),
-                DANGER: ("#421f27", "#f05a67"),
-                MUTED: ("#202735", "#9fb0c4"),
+                OK: PALETTE["tone_ok"],
+                INFO: PALETTE["tone_info"],
+                WARNING: PALETTE["tone_warning"],
+                DANGER: PALETTE["tone_danger"],
+                MUTED: PALETTE["tone_muted"],
             }
             for card in view.cards:
                 frame, value, detail = self._card_widgets[card.key]
@@ -429,7 +529,7 @@ def _panel_main(
                     "border-radius:6px}"
                 )
                 value.setText(card.value)
-                value.setStyleSheet(f"font-size:15px;font-weight:bold;color:{foreground}")
+                value.setStyleSheet(f"font-size:{TYPE_SCALE['value']}px;font-weight:bold;color:{foreground}")
                 detail.setText(card.detail)
             background, foreground = colors[view.runtime_tone]
             self.status.setText(view.banner)
@@ -440,11 +540,11 @@ def _panel_main(
 
         def _add_alert(self, time_s: float, tone: str, message: str) -> None:
             colors = {
-                OK: "#62d68b",
-                INFO: "#4ea1ff",
-                WARNING: "#ffcf5a",
-                DANGER: "#f05a67",
-                MUTED: "#9fb0c4",
+                OK: PALETTE["tone_ok"][1],
+                INFO: PALETTE["tone_info"][1],
+                WARNING: PALETTE["tone_warning"][1],
+                DANGER: PALETTE["tone_danger"][1],
+                MUTED: PALETTE["tone_muted"][1],
             }
             item = QtWidgets.QListWidgetItem(f"{time_s:7.2f}s  {message}")
             item.setForeground(QtGui.QColor(colors[tone]))
